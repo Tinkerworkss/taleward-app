@@ -78,7 +78,10 @@ async function requestOn<T>(conn: Connection, method: string, path: string, opts
       method,
       headers,
       // Bei FormData setzt der Browser den Content-Type mit Boundary selbst
-      body: opts.form ?? opts.raw ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined)
+      body: opts.form ?? opts.raw ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
+      // Nie aus einem Zwischenspeicher antworten: Proxys, CDNs oder die WebView könnten sonst veraltete Listen
+      // liefern (z. B. neue Kampagne fehlt nach dem Anlegen)
+      cache: 'no-store'
     });
   } catch {
     throw new ApiRequestError(0, {

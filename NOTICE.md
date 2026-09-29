@@ -5,7 +5,7 @@
 Taleward – App (dieses Repository) steht unter der **GNU Affero General Public License v3.0 only**
 (SPDX: `AGPL-3.0-only`), siehe `LICENSE`.
 
-Copyright (C) 2026 Benjamin Welk
+Copyright (C) 2026 Tinkerworks (Benjamin)
 
 Wer eine veränderte Fassung betreibt oder Nutzern über ein Netzwerk anbietet, muss ihnen den Quellcode
 dieser Fassung zugänglich machen (AGPL §13). Die App verlinkt ihren Quellcode unter „Konten und Server“.
@@ -13,7 +13,7 @@ dieser Fassung zugänglich machen (AGPL §13). Die App verlinkt ihren Quellcode 
 ## Name und Zeichen
 
 Name „Taleward“, das Taleward-Zeichen, die Wortmarke und das App-Symbol (`src/assets/taleward/logos`,
-`native-android/res`, `public/icons`) sind **nicht** Teil der AGPL-Lizenz. Sie dürfen nicht für eigene, veränderte Fassungen
+`native-android/res`, `public/icons`, `docs/marke`) sind **nicht** Teil der AGPL-Lizenz. Sie dürfen nicht für eigene, veränderte Fassungen
 verwendet werden, die nicht vom Rechteinhaber stammen. Wer einen Fork verbreitet, gibt ihm einen eigenen
 Namen und eigene Zeichen.
 

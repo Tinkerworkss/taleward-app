@@ -1,3 +1,18 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/marke/taleward-lockup-inverse.svg">
+    <img src="docs/marke/taleward-lockup.svg" alt="Taleward" width="280">
+  </picture>
+</p>
+
+<p align="center"><em>Eure Geschichte, gut verwahrt.</em></p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-17313B" alt="License: AGPL-3.0"></a>
+  <img src="https://img.shields.io/badge/API-0.4.5-9E2A3A" alt="API 0.4.5">
+  <img src="https://img.shields.io/badge/Android%20%7C%20Web-App-3D6A48" alt="Android | Web">
+</p>
+
 # Taleward – App
 
 **Taleward** nimmt Pen-&-Paper-Runden auf und macht daraus Recaps und eine Kampagnenbibel – mit Spoilerschutz,
