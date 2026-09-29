@@ -1,0 +1,42 @@
+name: Patch einspielen
+# Lädt man eine *.patch-Datei ins Hauptverzeichnis hoch, spielt dieser Ablauf sie ein,
+# prüft den Code und schiebt das Ergebnis auf main. Die Patch-Datei selbst wird wieder entfernt.
+on:
+  push:
+    branches: [main]
+    paths: ["*.patch"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  einspielen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch anwenden
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/patches
+          ls *.patch
+          cp *.patch /tmp/patches/
+          git rm -q *.patch
+          git commit -q -m "Patch-Datei entfernt"
+          git am --3way --committer-date-is-author-date /tmp/patches/*.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Prüfen
+        run: |
+          npm ci
+          npm run i18n:check
+          npx tsc -b
+          npm run build:mock
+          npm run build:web
+      - name: Hochladen
+        run: git push

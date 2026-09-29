@@ -1,0 +1,328 @@
+import { getLang, t } from '../i18n';
+import { APP_VERSION, currentConnection, hasValidToken, serverKnowsAppVersion, updateConnection, type Connection } from './connections';
+import type {
+  ApiError,
+  Campaign,
+  CampaignSummary,
+  Entry,
+  EntryInput,
+  EntryType,
+  Member,
+  AuthProviderId,
+  OidcExchange,
+  GameSystem,
+  Organization,
+  ServerInfo,
+  Usage,
+  CampaignDocument,
+  DocumentKind,
+  DatePoll,
+  Comment,
+  VoteAnswer,
+  ProcessingStatus,
+  Proposal,
+  ProposalDecision,
+  Recap,
+  Session,
+  SessionSummary,
+  Speaker,
+  UploadCreated,
+  User,
+  Attendee,
+  Visibility,
+  VoiceProfile
+} from './types';
+
+export class ApiRequestError extends Error {
+  status: number;
+  code: string;
+  constructor(status: number, err: ApiError) {
+    super(err.message);
+    this.status = status;
+    this.code = err.code;
+  }
+}
+
+/** Meldung, falls der Server (z. B. ein Proxy davor) keinen {code, message}-Körper liefert. */
+function fallbackMessage(status: number): string {
+  if (status === 401) return t('Bitte melde dich erneut an.');
+  if (status === 403) return t('Das darf nur die Spielleitung.');
+  if (status === 404) return t('Nicht gefunden.');
+  if (status === 409) return t('Das ist gerade nicht möglich.');
+  if (status === 413) return t('Die Datei ist zu groß.');
+  if (status >= 500) return t('Der Server hat einen Fehler gemeldet. Versuch es gleich noch einmal.');
+  return t('Anfrage fehlgeschlagen ({status}).', { status });
+}
+
+interface RequestOptions {
+  body?: unknown;
+  raw?: BodyInit;
+  form?: FormData;
+  headers?: Record<string, string>;
+}
+
+async function requestOn<T>(conn: Connection, method: string, path: string, opts: RequestOptions = {}): Promise<T> {
+  // Der Server antwortet mit message in dieser Sprache
+  const headers: Record<string, string> = { 'Accept-Language': getLang(), ...opts.headers };
+  // Eigene Version nur an Server schicken, die den Header kennen (CORS) – ab Schnittstelle 0.3.9
+  if (serverKnowsAppVersion(conn)) headers['X-Taleward-App'] = APP_VERSION;
+  // Das Token gehört genau zu diesem Server und geht nirgendwo anders hin
+  const token = hasValidToken(conn) ? conn.token : null;
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (opts.raw !== undefined && !headers['Content-Type']) headers['Content-Type'] = 'application/octet-stream';
+
+  let res: Response;
+  try {
+    res = await fetch(conn.baseUrl + path, {
+      method,
+      headers,
+      // Bei FormData setzt der Browser den Content-Type mit Boundary selbst
+      body: opts.form ?? opts.raw ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined)
+    });
+  } catch {
+    throw new ApiRequestError(0, {
+      code: 'network',
+      message: t('Server nicht erreichbar. Prüfe WLAN und die Serveradresse.')
+    });
+  }
+
+  if (!res.ok) {
+    let err: ApiError = { code: 'http_' + res.status, message: fallbackMessage(res.status) };
+    try {
+      const parsed = await res.json();
+      if (parsed && typeof parsed.message === 'string') {
+        err = { code: String(parsed.code ?? err.code), message: parsed.message };
+      }
+    } catch {
+      /* kein JSON-Fehlerkörper */
+    }
+    // 401 = Anmeldung ungültig oder abgelaufen (not_authenticated, token_invalid):
+    // Token verwerfen und zum Login. Beim Login selbst heißt 401 nur "falsches Passwort".
+    // 426: Diese App ist für den Server zu alt – Kampagnen dieses Servers sperren, bis aktualisiert wird
+    if (res.status === 426 && conn.id !== '_probe') updateConnection(conn.id, { appOutdated: true });
+    if (res.status === 401 && token && !path.startsWith('/auth/')) {
+      updateConnection(conn.id, { token: null, expiresAt: null });
+    }
+    throw new ApiRequestError(res.status, err);
+  }
+  if (res.status === 204) return undefined as T;
+  const type = res.headers.get('Content-Type') ?? '';
+  return (type.includes('application/json') ? res.json() : res.blob()) as Promise<T>;
+}
+
+/** Ist das ein Fehler mit diesem code (z. B. 'audio_gone')? */
+export function isApiError(e: unknown, code?: string): e is ApiRequestError {
+  return e instanceof ApiRequestError && (code === undefined || e.code === code);
+}
+
+/** Alle Endpunkte, gebunden an eine Verbindung */
+function makeApi(conn: () => Connection) {
+  const request = <T,>(method: string, path: string, opts?: RequestOptions) => requestOn<T>(conn(), method, path, opts);
+  return {
+  login: (username: string, password: string) =>
+    request<{ accessToken: string; expiresAt: string; user: User }>('POST', '/auth/login', { body: { username, password } }),
+  me: () => request<User>('GET', '/me'),
+  info: () => request<ServerInfo>('GET', '/info'),
+  register: (data:
+    | { inviteCode: string; username: string; displayName: string; password: string; acceptPrivacy: true; ageConfirmed: true }
+    | { inviteCode: string; registrationToken: string; displayName: string; acceptPrivacy: true; ageConfirmed: true }) =>
+    request<{ accessToken: string; expiresAt: string; user: User }>('POST', '/auth/register', { body: data }),
+  exportMe: () => request<Blob>('GET', '/me/export'),
+  /** Konten mit Passwort: { password }, ohne Passwort: { confirmUsername } */
+  deleteMe: (confirm: { password: string } | { confirmUsername: string }) => request<void>('DELETE', '/me', { body: confirm }),
+  // Anmeldung (ab 0.4.0)
+  passwordReset: (login: string) => request<void>('POST', '/auth/password-reset', { body: { login } }),
+  oidcExchange: (ticket: string, verifier: string) => request<OidcExchange>('POST', '/auth/oidc/exchange', { body: { ticket, verifier } }),
+  setEmail: (email: string) => request<void>('PUT', '/me/email', { body: { email } }),
+  deleteEmail: () => request<void>('DELETE', '/me/email'),
+  setPassword: (newPassword: string, currentPassword?: string) =>
+    request<void>('PUT', '/me/password', { body: currentPassword ? { currentPassword, newPassword } : { newPassword } }),
+  linkProvider: (provider: AuthProviderId) => request<{ linkToken: string }>('POST', `/me/providers/${provider}/link`),
+  unlinkProvider: (provider: AuthProviderId) => request<void>('DELETE', `/me/providers/${provider}`),
+  organizations: () => request<Organization[]>('GET', '/organizations'),
+  usage: (campaignId: string, month?: string) =>
+    request<Usage>('GET', `/campaigns/${campaignId}/usage${month ? `?month=${month}` : ''}`),
+
+  voiceProfile: () => request<VoiceProfile>('GET', '/me/voice-profile'),
+  createVoiceProfile: (audio: Blob, fileName: string, learnFromSessions: boolean) => {
+    const form = new FormData();
+    form.append('audio', audio, fileName);
+    form.append('consent', 'true');
+    form.append('learnFromSessions', String(learnFromSessions));
+    return request<VoiceProfile>('POST', '/me/voice-profile', { form });
+  },
+  updateVoiceProfile: (learnFromSessions: boolean) =>
+    request<VoiceProfile>('PATCH', '/me/voice-profile', { body: { learnFromSessions } }),
+  deleteVoiceProfile: () => request<void>('DELETE', '/me/voice-profile'),
+
+  campaigns: () => request<CampaignSummary[]>('GET', '/campaigns'),
+  campaign: (id: string) => request<Campaign>('GET', `/campaigns/${id}`),
+  createCampaign: (
+    title: string,
+    description = '',
+    language?: 'de' | 'en',
+    system?: GameSystem | null,
+    systemName?: string | null
+  ) => request<Campaign>('POST', '/campaigns', { body: { title, description, language, system, systemName } }),
+  joinCampaign: (code: string, characterName?: string) =>
+    request<Campaign>('POST', '/campaigns/join', { body: { code, characterName } }),
+  updateCampaign: (
+    campaignId: string,
+    change: {
+      title?: string;
+      description?: string;
+      worldInfo?: string;
+      language?: 'de' | 'en';
+      coverPreset?: string | null;
+      /** true = abschließen, false = wieder aufnehmen (ab 0.4.5) */
+      archived?: boolean;
+      system?: GameSystem | null;
+      systemName?: string | null;
+      allowExternalTranscription?: boolean;
+      allowCloudSummary?: boolean;
+    }
+  ) =>
+    request<Campaign>('PATCH', `/campaigns/${campaignId}`, { body: change }),
+  updateMember: (
+    campaignId: string,
+    memberId: string,
+    change: { characterName?: string; characterSummary?: string; characterBackstory?: string; role?: 'gm' | 'player' }
+  ) =>
+    request<Member>('PATCH', `/campaigns/${campaignId}/members/${memberId}`, { body: change }),
+  coverImage: (campaignId: string) => request<Blob>('GET', `/campaigns/${campaignId}/cover-image`),
+  uploadCoverImage: (campaignId: string, image: Blob) =>
+    request<Campaign>('PUT', `/campaigns/${campaignId}/cover-image`, { raw: image, headers: { 'Content-Type': image.type || 'image/jpeg' } }),
+  /** Kampagne endgültig löschen – confirmTitle muss dem Titel entsprechen (ab 0.4.5) */
+  deleteCampaign: (campaignId: string, confirmTitle: string) =>
+    request<void>('DELETE', `/campaigns/${campaignId}`, { body: { confirmTitle } }),
+  /** Mitglied entfernen (SL) oder selbst verlassen (eigene memberId) (ab 0.4.5) */
+  removeMember: (campaignId: string, memberId: string) => request<void>('DELETE', `/campaigns/${campaignId}/members/${memberId}`),
+  /** Unveröffentlichtes Kapitel verwerfen, samt Aufnahme (ab 0.4.5) */
+  deleteSession: (sessionId: string) => request<void>('DELETE', `/sessions/${sessionId}`),
+  deleteCoverImage: (campaignId: string) => request<void>('DELETE', `/campaigns/${campaignId}/cover-image`),
+  markSeen: (campaignId: string, area: 'chronicle' | 'bible') =>
+    request<void>('POST', `/campaigns/${campaignId}/seen`, { body: { area } }),
+  markSessionSeen: (sessionId: string) => request<void>('POST', `/sessions/${sessionId}/seen`),
+
+  portrait: (campaignId: string, memberId: string, size: 'thumb' | 'full') =>
+    request<Blob>('GET', `/campaigns/${campaignId}/members/${memberId}/portrait?size=${size}`),
+  /** crop: quadratischer Ausschnitt für den Kreis in Pixeln des hochgeladenen Bildes (ab 0.3.6) */
+  uploadPortrait: (campaignId: string, memberId: string, image: Blob, crop?: { x: number; y: number; size: number }) =>
+    request<Member>('PUT', `/campaigns/${campaignId}/members/${memberId}/portrait${crop ? `?cropX=${crop.x}&cropY=${crop.y}&cropSize=${crop.size}` : ''}`, {
+      raw: image,
+      headers: { 'Content-Type': image.type || 'image/jpeg' }
+    }),
+  deletePortrait: (campaignId: string, memberId: string) =>
+    request<void>('DELETE', `/campaigns/${campaignId}/members/${memberId}/portrait`),
+
+  setRecordingConsent: (campaignId: string, granted: boolean) =>
+    request<Member>('PUT', `/campaigns/${campaignId}/recording-consent`, { body: { granted } }),
+  createInvite: (campaignId: string) =>
+    request<{ code: string; expiresAt: string }>('POST', `/campaigns/${campaignId}/invites`),
+
+  sessions: (campaignId: string) => request<SessionSummary[]>('GET', `/campaigns/${campaignId}/sessions`),
+  session: (id: string) => request<Session>('GET', `/sessions/${id}`),
+  createSession: (campaignId: string, playedAt: string, attendees: Attendee[], title?: string) =>
+    request<Session>('POST', `/campaigns/${campaignId}/sessions`, { body: { playedAt, attendees, title } }),
+  status: (sessionId: string) => request<ProcessingStatus>('GET', `/sessions/${sessionId}/status`),
+  retry: (sessionId: string) => request<ProcessingStatus>('POST', `/sessions/${sessionId}/retry`),
+
+  startUpload: (
+    sessionId: string,
+    source: 'table' | 'discord',
+    files: { fileName: string; sizeBytes: number; mimeType: string; trackMemberId?: string }[]
+  ) => request<UploadCreated>('POST', `/sessions/${sessionId}/uploads`, { body: { source, files } }),
+  putChunk: (uploadId: string, fileId: string, index: number, data: Blob, sha256?: string) =>
+    request<void>('PUT', `/uploads/${uploadId}/files/${fileId}/chunks/${index}`, {
+      raw: data,
+      headers: sha256 ? { 'X-Chunk-SHA256': sha256 } : undefined
+    }),
+  uploadState: (uploadId: string) =>
+    request<{ files: { fileId: string; missingChunks: number[] }[] }>('GET', `/uploads/${uploadId}`),
+  completeUpload: (uploadId: string) => request<ProcessingStatus>('POST', `/uploads/${uploadId}/complete`),
+
+  speakers: (sessionId: string) => request<Speaker[]>('GET', `/sessions/${sessionId}/speakers`),
+  assignSpeakers: (sessionId: string, mapping: { speakerId: string; memberId: string | null }[]) =>
+    request<ProcessingStatus>('PUT', `/sessions/${sessionId}/speakers`, { body: mapping }),
+  speakerSample: (sessionId: string, speakerId: string) =>
+    request<Blob>('GET', `/sessions/${sessionId}/speakers/${speakerId}/sample`),
+
+  proposals: (sessionId: string) => request<Proposal[]>('GET', `/sessions/${sessionId}/proposals`),
+  decide: (
+    proposalId: string,
+    change: { decision?: ProposalDecision; title?: string; detail?: string; gmNotes?: string; visibility?: Visibility; hiddenFromMemberIds?: string[] }
+  ) => request<Proposal>('PATCH', `/proposals/${proposalId}`, { body: change }),
+
+  // Terminabstimmung
+  datePoll: (campaignId: string) => request<DatePoll>('GET', `/campaigns/${campaignId}/date-poll`),
+  createDatePoll: (campaignId: string, note?: string) =>
+    request<DatePoll>('POST', `/campaigns/${campaignId}/date-poll`, { body: { note } }),
+  addDateOption: (pollId: string, startsAt: string) =>
+    request<DatePoll>('POST', `/date-polls/${pollId}/options`, { body: { startsAt } }),
+  removeDateOption: (pollId: string, optionId: string) =>
+    request<DatePoll>('DELETE', `/date-polls/${pollId}/options/${optionId}`),
+  vote: (pollId: string, optionId: string, answer: VoteAnswer) =>
+    request<DatePoll>('PUT', `/date-polls/${pollId}/options/${optionId}/vote`, { body: { answer } }),
+  closeDatePoll: (pollId: string, optionId: string) =>
+    request<DatePoll>('POST', `/date-polls/${pollId}/close`, { body: { optionId } }),
+  cancelDatePoll: (pollId: string) => request<void>('DELETE', `/date-polls/${pollId}`),
+
+  // Kommentare pro Kapitel
+  comments: (sessionId: string) => request<Comment[]>('GET', `/sessions/${sessionId}/comments`),
+  addComment: (sessionId: string, text: string, recipientMemberId: string | null) =>
+    request<Comment>('POST', `/sessions/${sessionId}/comments`, { body: { text, recipientMemberId } }),
+  editComment: (commentId: string, text: string) =>
+    request<Comment>('PATCH', `/comments/${commentId}`, { body: { text } }),
+  deleteComment: (commentId: string) => request<void>('DELETE', `/comments/${commentId}`),
+
+  // SL-Unterlagen
+  documents: (campaignId: string) => request<CampaignDocument[]>('GET', `/campaigns/${campaignId}/documents`),
+  uploadDocument: (campaignId: string, file: File, kind: DocumentKind, title: string) => {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    form.append('kind', kind);
+    form.append('title', title);
+    return request<CampaignDocument>('POST', `/campaigns/${campaignId}/documents`, { form });
+  },
+  document: (documentId: string) => request<CampaignDocument>('GET', `/documents/${documentId}`),
+  documentProposals: (documentId: string) => request<Proposal[]>('GET', `/documents/${documentId}/proposals`),
+  applyDocument: (documentId: string, applyWorldInfo: boolean) =>
+    request<CampaignDocument>('POST', `/documents/${documentId}/apply`, { body: { applyWorldInfo } }),
+  retryDocument: (documentId: string) => request<CampaignDocument>('POST', `/documents/${documentId}/retry`),
+  deleteDocument: (documentId: string) => request<void>('DELETE', `/documents/${documentId}`),
+
+  recap: (sessionId: string) => request<Recap>('GET', `/sessions/${sessionId}/recap`),
+  updateRecap: (sessionId: string, change: { title?: string; text?: string; openThreads?: string[] }) =>
+    request<Recap>('PUT', `/sessions/${sessionId}/recap`, { body: change }),
+  publish: (sessionId: string) => request<Session>('POST', `/sessions/${sessionId}/publish`),
+  gmNote: (sessionId: string) => request<{ text: string; updatedAt: string }>('GET', `/sessions/${sessionId}/gm-note`),
+  saveGmNote: (sessionId: string, text: string) => request<void>('PUT', `/sessions/${sessionId}/gm-note`, { body: { text } }),
+
+  entries: (campaignId: string, type?: EntryType, q?: string) => {
+    const p = new URLSearchParams();
+    if (type) p.set('type', type);
+    if (q) p.set('q', q);
+    const qs = p.toString();
+    return request<Entry[]>('GET', `/campaigns/${campaignId}/entries${qs ? '?' + qs : ''}`);
+  },
+  updateEntry: (entryId: string, change: Partial<EntryInput>) =>
+    request<Entry>('PATCH', `/entries/${entryId}`, { body: change }),
+  deleteEntry: (entryId: string) => request<void>('DELETE', `/entries/${entryId}`),
+  createEntry: (campaignId: string, input: EntryInput) =>
+    request<Entry>('POST', `/campaigns/${campaignId}/entries`, { body: input })
+  };
+}
+
+/** Endpunkte des aktuell geöffneten Servers (aus der Adresse /v/<id>/…) */
+export const api = makeApi(currentConnection);
+
+/** Endpunkte eines bestimmten Servers, z. B. für die Kampagnenliste über alle Server */
+export function apiFor(conn: Connection) {
+  return makeApi(() => conn);
+}
+
+/** Öffentliche Info eines Servers, ohne Verbindung (vor dem Anmelden) */
+export function fetchServerInfo(baseUrl: string): Promise<ServerInfo> {
+  return requestOn<ServerInfo>({ id: '_probe', baseUrl, name: '', operator: null, apiVersion: null, token: null, expiresAt: null, user: null }, 'GET', '/info');
+}

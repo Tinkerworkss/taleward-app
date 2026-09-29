@@ -1,0 +1,63 @@
+name: Android-APK
+# Baut bei jedem Release die signierte APK (APK-Fassung mit Updater) und hängt sie an das Release.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Version prüfen
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+            [ "${TAG#app-}" = "v$VERSION" ] || [ "$TAG" = "v$VERSION" ] || { echo "Tag $TAG passt nicht zu package.json $VERSION"; exit 1; }
+          fi
+      - run: npm ci
+      - run: npm run i18n:check
+      - name: Web-Teil bauen und Android-Projekt anlegen
+        run: |
+          npm run build
+          npx cap add android
+          node scripts/setup-android.mjs
+          npx cap sync android
+      - name: Signierte APK bauen
+        env:
+          KEYSTORE_B64: ${{ secrets.TALEWARD_KEYSTORE_BASE64 }}
+          TALEWARD_KEYSTORE_PASSWORD: ${{ secrets.TALEWARD_KEYSTORE_PASSWORD }}
+          TALEWARD_KEY_ALIAS: ${{ secrets.TALEWARD_KEY_ALIAS }}
+          TALEWARD_KEY_PASSWORD: ${{ secrets.TALEWARD_KEY_PASSWORD }}
+        run: |
+          [ -n "$KEYSTORE_B64" ] || { echo "Secret TALEWARD_KEYSTORE_BASE64 fehlt"; exit 1; }
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/taleward.jks"
+          export TALEWARD_KEYSTORE="$RUNNER_TEMP/taleward.jks"
+          cd android && ./gradlew assembleRelease --no-daemon
+          cd ..
+          cp android/app/build/outputs/apk/release/app-release.apk "taleward-$VERSION.apk"
+          sha256sum "taleward-$VERSION.apk" > "taleward-$VERSION.apk.sha256"
+          rm -f "$RUNNER_TEMP/taleward.jks"
+      - name: An das Release hängen
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "taleward-$VERSION.apk" "taleward-$VERSION.apk.sha256" --clobber
+      - uses: actions/upload-artifact@v4
+        with:
+          name: taleward-apk
+          path: taleward-*.apk*

@@ -1,0 +1,9 @@
+node_modules
+dist
+android
+.env
+.env.local
+screenshots/
+tsconfig.tsbuildinfo
+*.jks
+*.keystore

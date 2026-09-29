@@ -1,0 +1,95 @@
+/* Taleward – Design-Tokens. Quelle: Markenhandbuch (Design System „Taleward“). */
+
+@font-face { font-family: "Alegreya"; src: url("./fonts/Alegreya-Variable.woff2") format("woff2"); font-weight: 400 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Alegreya"; src: url("./fonts/Alegreya-Italic-Variable.woff2") format("woff2"); font-weight: 400 900; font-style: italic; font-display: swap; }
+@font-face { font-family: "Alegreya Sans"; src: url("./fonts/AlegreyaSans-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Alegreya Sans"; src: url("./fonts/AlegreyaSans-Medium.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Alegreya Sans"; src: url("./fonts/AlegreyaSans-Bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+
+:root, [data-theme="light"] {
+  --paper: #f3f3ee;
+  --paper-raised: #ffffff;
+  --paper-sunken: #e6e8e0;
+  --line: #d3d6cd;
+  --line-strong: #7a878d;
+  --ink: #1b2328;
+  --ink-muted: #525f67;
+  --tinte: #17313b;
+  --on-tinte: #f3f3ee;
+  --siegel: #9e2a3a;
+  --on-siegel: #ffffff;
+  --siegel-soft: #f5e3e5;
+  --siegel-text: #9e2a3a;
+  --messing: #c49235;
+  --salbei: #3d6a48;
+  --focus-ring: var(--siegel);
+  --shadow-card: 0 1px 0 rgba(23,49,59,0.08), 0 6px 18px -10px rgba(23,49,59,0.35);
+  color-scheme: light;
+}
+[data-theme="dark"] {
+  --paper: #121d22;
+  --paper-raised: #1a2930;
+  --paper-sunken: #0c1518;
+  --line: #2e424b;
+  --line-strong: #6f838b;
+  --ink: #e9ece6;
+  --ink-muted: #a2aeb2;
+  --tinte: #2c5361;
+  --on-tinte: #f3f3ee;
+  --siegel: #d4596c;
+  --on-siegel: #1a0f12;
+  --siegel-soft: #3b1c23;
+  --siegel-text: #ec8a9a;
+  --messing: #d9ad55;
+  --salbei: #8cc096;
+  --focus-ring: var(--siegel);
+  --shadow-card: 0 1px 0 rgba(0,0,0,0.45), 0 8px 20px -10px rgba(0,0,0,0.7);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #121d22;
+    --paper-raised: #1a2930;
+    --paper-sunken: #0c1518;
+    --line: #2e424b;
+    --line-strong: #6f838b;
+    --ink: #e9ece6;
+    --ink-muted: #a2aeb2;
+    --tinte: #2c5361;
+    --on-tinte: #f3f3ee;
+    --siegel: #d4596c;
+    --on-siegel: #1a0f12;
+    --siegel-soft: #3b1c23;
+    --siegel-text: #ec8a9a;
+    --messing: #d9ad55;
+    --salbei: #8cc096;
+    --focus-ring: var(--siegel);
+    --shadow-card: 0 1px 0 rgba(0,0,0,0.45), 0 8px 20px -10px rgba(0,0,0,0.7);
+    color-scheme: dark;
+  }
+}
+:root {
+  --font-serif: "Alegreya", Georgia, "Times New Roman", serif;
+  --font-sans: "Alegreya Sans", system-ui, "Segoe UI", sans-serif;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --radius-sm: 4px;
+  --radius-md: 10px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+}
+
+.text-display { font-family: var(--font-serif); font-size: 44px; line-height: 48px; font-weight: 800; letter-spacing: -0.01em; }
+.text-titel { font-family: var(--font-serif); font-size: 30px; line-height: 36px; font-weight: 700; }
+.text-kapitel { font-family: var(--font-serif); font-size: 22px; line-height: 28px; font-weight: 700; }
+.text-recap { font-family: var(--font-serif); font-size: 19px; line-height: 31px; font-weight: 400; }
+.text-recap-kursiv { font-family: var(--font-serif); font-size: 19px; line-height: 31px; font-weight: 400; font-style: italic; }
+.text-ui { font-family: var(--font-sans); font-size: 16px; line-height: 24px; font-weight: 400; }
+.text-ui-stark { font-family: var(--font-sans); font-size: 16px; line-height: 24px; font-weight: 700; }
+.text-label { font-family: var(--font-sans); font-size: 14px; line-height: 20px; font-weight: 500; }
+.text-klein { font-family: var(--font-sans); font-size: 13px; line-height: 18px; font-weight: 400; }
