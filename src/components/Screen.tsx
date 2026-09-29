@@ -17,19 +17,22 @@ interface Props {
   nav?: boolean;
   /** Innerhalb einer Kampagne: Titelbild als Kopf (groß auf der Übersicht, flach sonst) */
   hero?: { campaign: CoverInfo | null | undefined; large?: boolean };
+  /** Schmale Seiten (Aufnahme, Formulare) bleiben auch auf breiten Bildschirmen mittig und schmal */
+  narrow?: boolean;
   children: ReactNode;
 }
 
-export function Screen({ overline, title, back, backTo, nav = true, hero, children }: Props) {
+export function Screen({ overline, title, back, backTo, nav = true, hero, narrow, children }: Props) {
   const navigate = useNavigate();
   const withHero = !!hero?.campaign && hasCover(hero.campaign);
+  // Breite Bildschirme: Navigation links statt unten (siehe theme.css, .screen.with-nav)
+  const cls = ['screen', nav ? 'with-nav' : '', narrow ? 'narrow' : ''].filter(Boolean).join(' ');
   if (withHero) {
-    const h = hero!.large ? 200 : 128;
     return (
-      <div className="screen">
+      <div className={cls}>
         <main className="screen-main" style={{ paddingTop: 0 }}>
-          <div className="hero" style={{ height: h, margin: '0 -20px 8px' }}>
-            <CampaignCover campaign={hero!.campaign!} height={h} />
+          <div className={hero!.large ? 'hero large' : 'hero'}>
+            <CampaignCover campaign={hero!.campaign!} height="100%" />
             <div className="hero-shade" />
             {(back || backTo) && (backTo
               ? <Link className="hero-back" to={backTo.to}><IconBack size={18} /> {backTo.label}</Link>
@@ -47,7 +50,7 @@ export function Screen({ overline, title, back, backTo, nav = true, hero, childr
     );
   }
   return (
-    <div className="screen">
+    <div className={cls}>
       <header className="screen-header">
         {back && (
           <button type="button" className="btn ghost small back" onClick={() => navigate(-1)}>

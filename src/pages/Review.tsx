@@ -77,8 +77,13 @@ export function Review() {
     >
       <ErrorBox error={error} />
 
+      {/* Breit: links Recap, Notiz und Veröffentlichen – rechts die Vorschläge; schmal in dieser Reihenfolge untereinander */}
+      <div className="split">
+      <div className="a">
       {recap && <RecapEditor sessionId={sessionId} recap={recap} onSaved={setRecap} onError={setError} />}
+      </div>
 
+      <div className="b">
       <p className="muted small" style={{ margin: 0 }}>
         {t('Nur Übernommenes kommt in die Bibel.')}
       </p>
@@ -98,6 +103,9 @@ export function Review() {
       {proposals?.length === 0 && (
         <div className="empty">{t('Für dieses Kapitel gibt es keine Vorschläge für die Bibel.')}</div>
       )}
+      </div>
+
+      <div className="c">
 
       {proposals && (
         <div className="card secret">
@@ -128,6 +136,8 @@ export function Review() {
           </button>
         </>
       )}
+      </div>
+      </div>
     </Screen>
   );
 }

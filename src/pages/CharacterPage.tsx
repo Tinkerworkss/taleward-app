@@ -72,7 +72,7 @@ export function CharacterPage() {
   const title = member ? member.characterName ?? member.displayName : ' ';
 
   return (
-    <Screen back overline={campaign?.title ?? ' '} title={member?.role === 'gm' ? member.displayName : title}>
+    <Screen narrow back overline={campaign?.title ?? ' '} title={member?.role === 'gm' ? member.displayName : title}>
       <ErrorBox error={error} />
       {campaign && !member && !error && <div className="empty">{t('Nicht gefunden.')}</div>}
       {campaign && member && (editing ? (

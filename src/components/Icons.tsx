@@ -60,3 +60,11 @@ export const IconBack = ({ size = 24 }: { size?: number }) => (
 export const IconCheck = ({ size = 14 }: { size?: number }) => (
   <svg {...base(size)}><path d="M5 12.5 10 17 19 7" /></svg>
 );
+/** Einfügen aus der Zwischenablage (zwei Blätter, wie üblich) */
+export const IconPaste = ({ size }: { size?: number }) => (
+  <svg {...base(size)}><rect x="8" y="3" width="12" height="15" rx="2.5" /><path d="M5 7.5v10A3.5 3.5 0 0 0 8.5 21H16" /></svg>
+);
+/** QR-Code scannen (Suchrahmen) */
+export const IconScan = ({ size }: { size?: number }) => (
+  <svg {...base(size)}><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16" /><path d="M8 12h8" /></svg>
+);

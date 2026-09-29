@@ -1,8 +1,7 @@
 import { ProviderButton } from '../components/ProviderButton';
 import { clearPendingRegister, readPendingRegister, startProviderLogin, type PendingRegister } from '../auth/oidc';
-import { QrScanner } from '../components/QrScanner';
+import { LinkInput } from '../components/LinkInput';
 import { DownloadButton } from '../components/UpdateNotices';
-import { findInviteInText, readClipboard } from '../invite';
 import { Wordmark } from '../components/Wordmark';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -39,7 +38,6 @@ export function ConnectPage() {
   const [privacy, setPrivacy] = useState(false);
   const [age, setAge] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [scanning, setScanning] = useState(false);
   const oidc = params.get('oidc');
   const [pendingReg] = useState(() => (oidc === 'register' ? readPendingRegister() : null));
   const [error, setError] = useState<unknown>(null);
@@ -112,7 +110,7 @@ export function ConnectPage() {
     : !!code.trim() && !!username.trim() && !!displayName.trim() && password.length >= 8 && password === password2 && privacy && age;
 
   return (
-    <div className="screen">
+    <div className="screen narrow">
       <main className="screen-main" style={{ gap: 18 }}>
         <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 16 }}>
           <Wordmark />
@@ -125,24 +123,7 @@ export function ConnectPage() {
             <h2>{active.length ? t('Weiteren Server verbinden') : t('Mit einem Server verbinden')}</h2>
             <div className="field">
               <label htmlFor="address">{t('Einladungslink oder Serveradresse')}</label>
-              <div className="row" style={{ gap: 8 }}>
-                <input id="address" type="text" autoCapitalize="none" autoCorrect="off" value={address}
-                  placeholder="https://chronik.mein-verein.de/einladung/RABE-4821" onChange={(e) => setAddress(e.target.value)} />
-                <button type="button" className="btn small outline" onClick={async () => {
-                  const text = await readClipboard();
-                  const link = findInviteInText(text) ?? text.trim();
-                  if (link) setAddress(link);
-                }}>{t('Einfügen')}</button>
-              </div>
-              <button type="button" className="btn small quiet" style={{ alignSelf: 'flex-start' }} onClick={() => setScanning(true)}>
-                {t('QR-Code scannen')}
-              </button>
-              {scanning && (
-                <QrScanner onClose={() => setScanning(false)} onResult={(text) => {
-                  setScanning(false);
-                  setAddress(findInviteInText(text) ?? text.trim());
-                }} />
-              )}
+              <LinkInput id="address" value={address} onChange={setAddress} placeholder="https://taleward.mein-verein.de/einladung/RABE-4821" />
               <span className="muted small">{t('Den Link bekommst du von deiner SL.')}</span>
             </div>
             <ErrorBox error={error} />

@@ -126,6 +126,7 @@ export function DocumentsPage() {
       </section>
 
       {docs && docs.length > 0 && <h2>{t('Hochgeladen')}</h2>}
+      <div className="grid-cards">
       {docs?.map((d) => (
         <div key={d.id} className={d.state === 'awaiting_review' || d.state === 'failed' ? 'card warn' : 'card'}>
           <div className="row between" style={{ alignItems: 'flex-start' }}>
@@ -155,6 +156,7 @@ export function DocumentsPage() {
           </div>
         </div>
       ))}
+      </div>
     </Screen>
   );
 }

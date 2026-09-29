@@ -38,7 +38,7 @@ export function RecapPage() {
   }, [sessionId]);
 
   return (
-    <Screen back overline={campaign?.title ?? t('Chronik')} title={recap ? t('Kapitel {n}', { n: recap.number }) : ' '}>
+    <Screen narrow back overline={campaign?.title ?? t('Chronik')} title={recap ? t('Kapitel {n}', { n: recap.number }) : ' '}>
       <ErrorBox error={error} />
       {recap && (
         <>

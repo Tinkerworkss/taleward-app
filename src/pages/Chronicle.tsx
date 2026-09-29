@@ -79,19 +79,20 @@ export function Chronicle() {
         </div>
       )}
 
+      <div className="split">
       {latest && (
-        <>
+        <div className="a">
           <RecapView recap={latest} collapsible playedAt={sessions?.find((s) => s.id === latest.sessionId)?.playedAt} />
           <OpenThreads threads={latest.openThreads} />
           <Link to={p(`/s/${latest.sessionId}/recap`)} className="btn outline small" style={{ alignSelf: 'flex-start' }}>
             {t('Kommentare zu Kapitel {n}', { n: latest.number })}
             {!!unreadOf(latest.sessionId) && <span className="pill seal">{t('{n} neu', { n: unreadOf(latest.sessionId) })}</span>}
           </Link>
-        </>
+        </div>
       )}
 
       {earlier.length > 0 && (
-        <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <section className="b" style={{ gap: 8 }}>
           <h2>{t('Frühere Kapitel')}</h2>
           {earlier.map((s) => (
             <Link key={s.id} to={p(`/s/${s.id}/recap`)} className="chapter-card">
@@ -106,6 +107,7 @@ export function Chronicle() {
           ))}
         </section>
       )}
+      </div>
 
     </Screen>
   );

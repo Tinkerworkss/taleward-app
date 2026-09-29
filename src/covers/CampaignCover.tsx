@@ -18,7 +18,7 @@ export function hasCover(c: CoverInfo): boolean {
 /** Titelbild einer Kampagne: eigenes Foto, sonst mitgeliefertes Motiv, sonst nichts. */
 export function CampaignCover({ campaign, height, radius = 0, conn }: {
   campaign: CoverInfo;
-  height: number;
+  height: number | string;
   radius?: number | string;
   /** Server der Kampagne; ohne Angabe der aktuell geöffnete (in der Liste über alle Server nötig) */
   conn?: Connection;

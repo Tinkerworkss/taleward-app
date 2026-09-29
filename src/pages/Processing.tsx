@@ -93,7 +93,7 @@ export function Processing() {
   });
 
   return (
-    <Screen back overline={session ? t('Kapitel {n}', { n: session.number }) : ' '} title={t('Verarbeitung')}>
+    <Screen narrow back overline={session ? t('Kapitel {n}', { n: session.number }) : ' '} title={t('Verarbeitung')}>
       <ErrorBox error={error} />
 
       {failed && (

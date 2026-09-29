@@ -86,11 +86,13 @@ export function Bible() {
         <div className="empty">{query ? t('Nichts gefunden für „{q}“.', { q: query }) : t('Hier steht noch nichts. Einträge entstehen aus freigegebenen Vorschlägen.')}</div>
       )}
 
+      <div className="grid-cards">
       {entries?.map((e) => (
         <EntryCard key={e.id} entry={e} gm={campaign?.myRole === 'gm'} holder={holder(e.holderMemberId)}
           players={campaign?.members.filter((m) => m.role === 'player' && !isDeletedMember(m)) ?? []}
           onChanged={(u) => setEntries((list) => (u ? list?.map((x) => (x.id === u.id ? u : x)) : list?.filter((x) => x.id !== e.id)) ?? null)} />
       ))}
+      </div>
 
       {campaign?.myRole === 'gm' &&
         (adding ? (

@@ -70,7 +70,7 @@ export function Speakers() {
   const autoCount = speakers?.filter((s) => s.source === 'intro_round' || s.source === 'voice_match').length ?? 0;
 
   return (
-    <Screen back title={t('Stimmen zuordnen')} overline={t('Transkript fertig')}>
+    <Screen narrow back title={t('Stimmen zuordnen')} overline={t('Transkript fertig')}>
       <ErrorBox error={error} />
       {speakers && (
         <p className="muted small" style={{ margin: 0 }}>

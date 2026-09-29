@@ -133,7 +133,7 @@ export function VoiceProfile() {
   const showSetup = profile && (profile.status === 'none' || profile.status === 'failed' || redo);
 
   return (
-    <Screen back overline={t('Freiwillig')} title={t('Mein Stimmprofil')} nav={false}>
+    <Screen narrow back overline={t('Freiwillig')} title={t('Mein Stimmprofil')} nav={false}>
       <ErrorBox error={error} />
       {!profile && !error && <div className="empty">{t('Lade …')}</div>}
 

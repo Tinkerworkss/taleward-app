@@ -117,12 +117,12 @@ export function Recording() {
     };
   }, []);
 
-  if (loadError) return <Screen title={t('Aufnahme')}><ErrorBox error={loadError} /></Screen>;
-  if (!campaign) return <Screen title={t('Aufnahme')}><div className="empty">{t('Lade …')}</div></Screen>;
+  if (loadError) return <Screen narrow title={t('Aufnahme')}><ErrorBox error={loadError} /></Screen>;
+  if (!campaign) return <Screen narrow title={t('Aufnahme')}><div className="empty">{t('Lade …')}</div></Screen>;
 
   if (campaign.myRole !== 'gm') {
     return (
-      <Screen overline={campaign.title} title={t('Aufnahme')}>
+      <Screen narrow overline={campaign.title} title={t('Aufnahme')}>
         <div className="empty">{t('Aufnahmen startet die SL. Den Recap findest du danach in der Chronik.')}</div>
       </Screen>
     );
@@ -264,7 +264,7 @@ export function Recording() {
   const titleForPhase = phase === 'recording' ? t('Aufnahme läuft') : phase === 'uploading' ? t('Wird hochgeladen') : t('Neues Kapitel aufnehmen');
 
   return (
-    <Screen overline={campaign.title} title={titleForPhase} nav={phase === 'prepare'} hero={{ campaign }}>
+    <Screen narrow overline={campaign.title} title={titleForPhase} nav={phase === 'prepare'} hero={{ campaign }}>
       <ErrorBox error={error} />
 
       {phase === 'prepare' && leftover && (

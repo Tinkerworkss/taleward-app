@@ -62,10 +62,12 @@ export function DocumentReview() {
         </div>
       )}
 
+      <div className="grid-cards">
       {proposals?.map((p) => (
         <ProposalCard key={p.id} proposal={p} players={players} onError={setError}
           onChange={(u) => setProposals((list) => list?.map((x) => (x.id === u.id ? u : x)) ?? null)} />
       ))}
+      </div>
       {proposals?.length === 0 && <div className="empty">{t('In dieser Unterlage wurde nichts für die Bibel gefunden.')}</div>}
 
       {doc?.worldInfoSuggestion && (

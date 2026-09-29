@@ -36,7 +36,7 @@ export function WelcomePage() {
   const done = () => navigate(p(`/k/${campaignId}`), { replace: true });
 
   return (
-    <Screen nav={false} overline={t('Willkommen am Tisch')} title={campaign?.title ?? ' '} hero={{ campaign, large: true }}>
+    <Screen narrow nav={false} overline={t('Willkommen am Tisch')} title={campaign?.title ?? ' '} hero={{ campaign, large: true }}>
       <ErrorBox error={error} />
       {campaign?.description && <p className="muted" style={{ margin: 0 }}>{campaign.description}</p>}
 

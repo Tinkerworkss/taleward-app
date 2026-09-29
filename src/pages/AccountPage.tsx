@@ -23,7 +23,7 @@ export function AccountPage() {
   const linked = query.get('linked');
   const oidcError = query.get('oidc') === 'error' ? query.get('code') ?? 'oidc_failed' : null;
   return (
-    <Screen backTo={{ to: '/', label: t('Deine Kampagnen') }} title={t('Konten und Server')} nav={false}>
+    <Screen narrow backTo={{ to: '/', label: t('Deine Kampagnen') }} title={t('Konten und Server')} nav={false}>
       <p className="muted" style={{ margin: 0 }}>
         {t('Jeder Server hat ein eigenes Konto.')}
       </p>

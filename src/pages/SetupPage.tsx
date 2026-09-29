@@ -28,7 +28,7 @@ export function SetupPage() {
   }, [campaignId]);
 
   return (
-    <Screen nav={false} overline={t('Neue Kampagne einrichten')} title={campaign?.title ?? ' '}>
+    <Screen narrow nav={false} overline={t('Neue Kampagne einrichten')} title={campaign?.title ?? ' '}>
       <ErrorBox error={error} />
       {campaign && (
         <>

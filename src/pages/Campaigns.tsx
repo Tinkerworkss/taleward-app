@@ -1,6 +1,5 @@
-import { QrScanner } from '../components/QrScanner';
+import { LinkInput } from '../components/LinkInput';
 import { UpdateNotices } from '../components/UpdateNotices';
-import { findInviteInText, readClipboard } from '../invite';
 import type { GameSystem } from '../api/types';
 import { GameSystemFields } from '../components/GameSystemFields';
 import type { CampaignSummary } from '../api/types';
@@ -45,7 +44,6 @@ export function Campaigns() {
   const [system, setSystem] = useState<GameSystem | null>(null);
   const [systemName, setSystemName] = useState('');
   const [actionError, setActionError] = useState<unknown>(null);
-  const [scanning, setScanning] = useState(false);
   const multi = connections.length > 1;
   const expired = connections.filter((c) => !hasValidToken(c));
 
@@ -136,6 +134,7 @@ export function Campaigns() {
       {loading && <div className="empty">{t('Lade Kampagnen …')}</div>}
       {entries?.length === 0 && failed.length === 0 && <div className="empty">{t('Du bist noch in keiner Kampagne. Leg eine an oder tritt mit einem Einladungscode bei.')}</div>}
 
+      <div className="grid-cards">
       {entries?.filter(({ c }) => !c.archivedAt).map(({ conn, c }, i) => (
         <Link key={conn.id + c.id} to={`/v/${conn.id}/k/${c.id}`} className="card">
           {hasCover(c) && (
@@ -179,6 +178,7 @@ export function Campaigns() {
           )}
         </Link>
       ))}
+      </div>
       {/* Abgeschlossene Kampagnen eingeklappt darunter */}
       {(entries?.filter(({ c }) => c.archivedAt).length ?? 0) > 0 && (
         <details className="card" style={{ gap: 12 }}>
@@ -196,6 +196,7 @@ export function Campaigns() {
 
       <Divider />
 
+      <div className="list-actions">
       {mode === 'none' ? (
         <>
           <button className="btn" type="button" onClick={() => { setMode('new'); setValue(''); }}>
@@ -209,27 +210,9 @@ export function Campaigns() {
         <div className="card">
           <div className="field">
             <label htmlFor="cval">{mode === 'new' ? t('Name der Kampagne') : t('Einladungslink oder -code')}</label>
-            <div className="row" style={{ gap: 8 }}>
-              <input id="cval" type="text" autoCapitalize={mode === 'join' ? 'none' : undefined} value={value} autoFocus onChange={(e) => setValue(e.target.value)} />
-              {mode === 'join' && (
-                <button type="button" className="btn small outline" onClick={async () => {
-                  const text = await readClipboard();
-                  const link = findInviteInText(text) ?? text.trim();
-                  if (link) setValue(link);
-                }}>{t('Einfügen')}</button>
-              )}
-            </div>
-            {mode === 'join' && (
-              <button type="button" className="btn small quiet" style={{ alignSelf: 'flex-start' }} onClick={() => setScanning(true)}>
-                {t('QR-Code scannen')}
-              </button>
-            )}
-            {scanning && (
-              <QrScanner onClose={() => setScanning(false)} onResult={(text) => {
-                setScanning(false);
-                setValue(findInviteInText(text) ?? text.trim());
-              }} />
-            )}
+            {mode === 'join'
+              ? <LinkInput id="cval" value={value} onChange={setValue} autoFocus />
+              : <input id="cval" type="text" value={value} autoFocus onChange={(e) => setValue(e.target.value)} />}
           </div>
           {(mode === 'new' || (mode === 'join' && !parseInvite(value)?.baseUrl)) && active.length > 1 && (
             <div className="field">
@@ -266,6 +249,7 @@ export function Campaigns() {
 
       <div className="row wrap" style={{ justifyContent: 'center', gap: 4 }}>
         <Link className="btn ghost small" to="/konto">{t('Konten und Server')}</Link>
+      </div>
       </div>
     </Screen>
   );

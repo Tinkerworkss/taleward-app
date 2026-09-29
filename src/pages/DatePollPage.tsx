@@ -76,7 +76,7 @@ export function DatePollPage() {
   const best = open && open.options.length > 1 ? [...open.options].sort((a, b) => score(b) - score(a))[0] : null;
 
   return (
-    <Screen overline={campaign?.title ?? ' '} title={t('Nächste Runde')} hero={{ campaign }}>
+    <Screen narrow overline={campaign?.title ?? ' '} title={t('Nächste Runde')} hero={{ campaign }}>
       <ErrorBox error={error} />
       {!loaded && <div className="empty">{t('Lade …')}</div>}
 

@@ -948,3 +948,209 @@ textarea {
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
+
+/* =====================================================================
+ * Breite Bildschirme (Tablet, Desktop, Web-Fassung)
+ * Handy (< 700 px): eine Spalte, Leiste unten – wie gehabt.
+ * Tablet hochkant (700–999 px): breitere Spalte, Karten zweispaltig.
+ * Tablet quer / Desktop (≥ 1000 px): Navigation links, Inhalte zweispaltig, Lesetext bleibt schmal.
+ * ===================================================================== */
+.screen {
+  --pad: 20px;
+}
+
+.screen-main {
+  padding-inline: var(--pad);
+}
+
+.hero {
+  height: 200px;
+  margin: 0 calc(-1 * var(--pad)) 8px;
+}
+
+.hero:not(.large) {
+  height: 128px;
+}
+
+/* Zweispaltig: a (Hauptsache), b (Seitenspalte), c (Hauptsache, unter a) – auf dem Handy in DOM-Reihenfolge */
+.split,
+.split > .a,
+.split > .b,
+.split > .c {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.grid-cards {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+@media (min-width: 700px) {
+  .screen {
+    --pad: 28px;
+    max-width: 920px;
+  }
+
+  .screen.narrow {
+    max-width: 720px;
+  }
+
+  .grid-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hero {
+    height: 240px;
+  }
+
+  .hero:not(.large) {
+    height: 150px;
+  }
+}
+
+@media (min-width: 1000px) {
+  .screen {
+    --pad: 40px;
+    max-width: 1280px;
+  }
+
+  /* Navigation als Leiste am linken Rand */
+  .screen:has(> .bottom-nav) {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: 'nav header' 'nav main';
+  }
+
+  .screen:has(> .bottom-nav) > .screen-header {
+    grid-area: header;
+  }
+
+  .screen:has(> .bottom-nav) > .screen-main {
+    grid-area: main;
+  }
+
+  .screen:has(> .bottom-nav) > .screen-main:first-child {
+    grid-row: 1 / span 2;
+  }
+
+  .screen:has(> .bottom-nav) > .bottom-nav {
+    grid-area: nav;
+    grid-row: 1 / span 2;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: calc(var(--safe-top) + 24px) 12px 24px;
+    border-top: none;
+    border-right: 1px solid var(--line);
+  }
+
+  .screen:has(> .bottom-nav) > .bottom-nav a {
+    flex: 0 0 auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    font-size: 16px;
+  }
+
+  .screen:has(> .bottom-nav) > .bottom-nav a.active {
+    background: var(--paper-sunken);
+  }
+
+  /* Schmale Seiten: Inhalt mittig, höchstens 640 px (Titelbild bleibt breit) */
+  .screen.narrow > .screen-main > :not(.hero),
+  .screen.narrow > .screen-header > * {
+    width: 100%;
+    max-width: 640px;
+    margin-inline: auto;
+  }
+
+  .screen.narrow > .screen-header > .back {
+    width: auto;
+    margin-inline: 0;
+  }
+
+  .hero {
+    height: 300px;
+  }
+
+  .hero:not(.large) {
+    height: 180px;
+  }
+
+  .split {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    grid-template-areas: 'a b' 'c b';
+    align-items: start;
+    column-gap: 32px;
+    row-gap: 14px;
+  }
+
+  .split > .b > .divider:first-child {
+    display: none;
+  }
+
+  .split > .a { grid-area: a; }
+  .split > .b { grid-area: b; }
+  .split > .c { grid-area: c; }
+
+  .grid-cards {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+
+  /* Lesetext nie zu breit */
+  .recap p {
+    max-width: 68ch;
+  }
+}
+
+/* Eingabefeld mit Symbolen darin (Einfügen, QR-Code) – bewusst unauffällig neben der Hauptaktion */
+.input-actions {
+  position: relative;
+}
+
+.input-actions > input {
+  width: 100%;
+  padding-right: 92px;
+}
+
+.input-actions-buttons {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 2px;
+}
+
+.input-actions-buttons .icon-btn {
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  border: none;
+  background: transparent;
+  color: var(--ink-muted);
+}
+
+.input-actions-buttons .icon-btn:hover {
+  color: var(--ink);
+  background: var(--paper-sunken);
+}
+
+/* Aktionen unter der Kampagnenliste: auf breiten Bildschirmen nicht über die ganze Breite */
+.list-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 560px;
+  margin-inline: auto;
+}

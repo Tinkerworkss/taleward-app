@@ -80,6 +80,8 @@ export function Overview() {
           {campaign.archivedAt && (
             <div className="notice"><strong>{t('Abgeschlossen')}</strong>&nbsp;{t('– nur noch zum Nachlesen, keine neuen Kapitel.')}</div>
           )}
+          <div className="split">
+          <div className="a">
           {/* Zuerst, was jetzt zu tun ist: Zustimmung (nur wenn sie fehlt), Charakter, offenes Kapitel, Termin, neuer Recap */}
           {me && !me.recordingConsentAt && <RecordingConsent campaign={campaign} onChanged={load} />}
           {characterIncomplete(me) && (
@@ -144,7 +146,9 @@ export function Overview() {
           <CloudNotice info={serverInfo} campaign={campaign} />
           <Divider />
           <WorldInfo campaign={campaign} onSaved={setCampaign} />
+          </div>
 
+          <div className="b">
           <Divider />
           <Members campaign={campaign} onChanged={load} />
           {me?.recordingConsentAt && <RecordingConsent campaign={campaign} onChanged={load} />}
@@ -152,6 +156,8 @@ export function Overview() {
           {gm && <InviteBox campaignId={campaignId} campaignTitle={campaign.title} />}
           {gm && <UsageLine campaignId={campaignId} />}
           {me && <CampaignManage campaign={campaign} me={me} onChanged={load} />}
+          </div>
+          </div>
         </>
       )}
     </Screen>
