@@ -3,7 +3,7 @@ import { DEMO_HOST, DEMO_USERS, demoSpeakers } from './demo';
 
 /** Alle Titelbild-IDs (Schnittstelle 0.4.3) – wie der Server: neue Kampagnen bekommen eines zufällig */
 const COVER_IDS = ['meadow', 'forest', 'desert', 'city', 'cyber', 'mountains', 'coast', 'swamp', 'dungeon', 'space', 'castle', 'dark-fantasy', 'moonwood', 'ancient-ruins', 'tavern', 'battlefield', 'frozen-north', 'arcane-ruins', 'fairy-wilds', 'underworld', 'storm-coast', 'steampunk', 'post-apocalypse', 'western', 'noir', 'space-opera', 'orient', 'necropolis', 'manor', 'riverside-mystery'];
-import type { CampaignDocument, CampaignSummary, Comment, Entry, DatePoll, EntryInput, ProcessingStatus, Proposal, Session, VoteAnswer, VoiceProfile } from '../api/types';
+import type { CampaignDocument, CampaignSummary, Comment, Correction, Entry, DatePoll, EntryInput, ProcessingStatus, Proposal, Recap, Session, UncertainTerm, VoteAnswer, VoiceProfile } from '../api/types';
 import {
   ME, NACHBAR_HOST, account, campaigns, comments, coverImages, datePolls, documents, portraits, proposalsForDocument, seen, entries, gmNotes, proposals, proposalsFor, recaps, sessions, speakersFor, uploads,
   type MockCampaign, type MockSession
@@ -97,7 +97,13 @@ function advance(s: MockSession): ProcessingStatus {
         message: 'Die Transkription ist abgebrochen (Testmodus: Dateiname enthält „fehler“).'
       };
     }
-    if (t > PHASES.transcribing) {
+    if (t > PHASES.transcribing && s.retranscribing) {
+      // Erneute Transkription nach Korrektur (0.4.6): Stimmzuordnung bleibt, gleich weiter zur Zusammenfassung
+      s.retranscribing = false;
+      s.state = 'summarizing';
+      s.phaseStartedAt = Date.now();
+      progress = 0;
+    } else if (t > PHASES.transcribing) {
       s.state = 'awaiting_speakers';
       s.transcriptionEngine = 'local';
       s.durationSeconds = 13920;
@@ -127,9 +133,38 @@ function advance(s: MockSession): ProcessingStatus {
     queuePosition: s.state === 'queued' ? 1 : null,
     message: s.state === 'failed' ? 'Die Transkription ist abgebrochen (Testmodus).'
       : s.state === 'queued' ? 'Zurzeit ist kein Worker für die Transkription verbunden. Die Session wird verarbeitet, sobald einer da ist. (Testmodus)'
+      // Ab 0.4.6: feste Schlüssel für die Schritte der Zusammenfassung, die App übersetzt sie
+      : s.state === 'summarizing' ? ((progress ?? 0) < 0.34 ? 'summarizing.recap' : (progress ?? 0) < 0.67 ? 'summarizing.proposals' : 'summarizing.review')
       : null,
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
+    ...(s.retranscribes && (s.state === 'transcribing' || s.state === 'summarizing') ? { estimatedSeconds: Math.max(0, Math.round(
+      (s.state === 'transcribing' ? PHASES.transcribing + PHASES.summarizing : PHASES.summarizing) - (s.phaseStartedAt ? (Date.now() - s.phaseStartedAt) / 1000 : 0))) } : {})
   };
+}
+
+// ---------------- Qualitätsprüfung (0.4.6): unsicher erkannte Namen im Testmodus
+
+const uncertain: Record<string, UncertainTerm[]> = {
+  's-c-grau-13': [
+    { id: 'ut1', heard: 'Ilsabeth', alternatives: ['Ilsabet', 'Elisabeth'], occurrences: 4, confidence: 0.41,
+      examples: [{ start: 1790, quote: 'Ilsabeth, kannst du dir den Wachmann ansehen?' }, { start: 1812, quote: 'Danke, Ilsabeth.' }],
+      suggestedEntryId: null, suggestedMemberId: 'm-lea' },
+    { id: 'ut2', heard: 'Kaltenfurth', alternatives: ['Kaltenfurt'], occurrences: 2, confidence: 0.55,
+      examples: [{ start: 320, quote: 'Morgen früh sind wir in Kaltenfurth.' }], suggestedEntryId: null, suggestedMemberId: null },
+    { id: 'ut3', heard: 'Veira', alternatives: ['Veyra', 'Vera'], occurrences: 3, confidence: 0.48,
+      examples: [{ start: 1530, quote: 'Veira, lass sie durch.' }], suggestedEntryId: null, suggestedMemberId: null }
+  ]
+};
+
+/** Recap so, wie diese Person ihn sehen darf: den Prüfteil bekommt nur die SL */
+function recapFor(r: Recap, gm: boolean): Recap {
+  if (gm) return r;
+  const { review: _r, ...rest } = r;
+  return rest;
+}
+
+function replaceWord(text: string, heard: string, correct: string): string {
+  return text.split(heard).join(correct);
 }
 
 function publicSession(s: MockSession): Session {
@@ -479,7 +514,7 @@ export const handlers = [
   http.get(`${B}/campaigns/:id`, ({ params }) => {
     const c = campaigns.find((x) => x.id === params.id);
     if (!c || !myMember(c)) return err(404, 'not_found', 'Kampagne nicht gefunden.');
-    return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, members: membersFor(c) });
+    return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, ...(isGm(c.id) ? { hotwords: c.hotwords ?? [] } : {}), members: membersFor(c) });
   }),
 
   http.patch(`${B}/campaigns/:id`, async ({ params, request }) => {
@@ -505,13 +540,20 @@ export const handlers = [
       c.allowExternalTranscription = (body as { allowExternalTranscription: boolean }).allowExternalTranscription;
     }
     if (body.systemName !== undefined) c.systemName = body.systemName || null;
+    const hotwords = (body as { hotwords?: unknown }).hotwords;
+    if (hotwords !== undefined) {
+      if (!Array.isArray(hotwords) || hotwords.length > 200 || hotwords.some((w) => typeof w !== 'string' || w.length > 40)) {
+        return err(400, 'invalid_input', 'Namenshilfe: höchstens 200 Einträge mit je höchstens 40 Zeichen.');
+      }
+      c.hotwords = [...new Set((hotwords as string[]).map((w) => w.trim()).filter(Boolean))];
+    }
     const archived = (body as { archived?: boolean }).archived;
     if (typeof archived === 'boolean') c.archivedAt = archived ? new Date().toISOString() : null;
     if (body.coverPreset !== undefined) {
       c.coverPreset = body.coverPreset;
       delete coverImages[c.id]; // Motiv gewählt: eigenes Bild entfällt
     }
-    return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, members: membersFor(c) });
+    return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, hotwords: c.hotwords ?? [], members: membersFor(c) });
   }),
 
   http.patch(`${B}/campaigns/:id/members/:mid`, async ({ params, request }) => {
@@ -1063,6 +1105,69 @@ export const handlers = [
     const s = sessions.find((x) => x.id === params.id);
     const r = recaps[params.id as string];
     if (!s || !r || (!isGm(s.campaignId) && s.state !== 'published')) return err(404, 'not_found', 'Für diese Session gibt es noch keinen Recap.');
+    return HttpResponse.json(recapFor(r, isGm(s.campaignId)));
+  }),
+
+  http.put(`${B}/sessions/:id/recap`, async ({ params, request }) => {
+    const s = sessions.find((x) => x.id === params.id);
+    const r = recaps[params.id as string];
+    if (!s || !r) return err(404, 'not_found', 'Für diese Session gibt es noch keinen Recap.');
+    if (!isGm(s.campaignId)) return err(403, 'forbidden', 'Nur die Spielleitung kann den Recap bearbeiten.');
+    if (s.state === 'published') return err(409, 'session_published', 'Das Kapitel ist schon veröffentlicht.');
+    const body = (await request.json()) as { title?: string; text?: string; openThreads?: string[] };
+    if (body.title !== undefined) r.title = body.title;
+    if (body.openThreads !== undefined) r.openThreads = body.openThreads;
+    if (body.text !== undefined && body.text !== r.text) {
+      r.text = body.text;
+      if (r.review) r.review.stale = true; // Absätze können verrutscht sein
+    }
+    return HttpResponse.json(r);
+  }),
+
+  http.get(`${B}/sessions/:id/uncertain-terms`, ({ params }) => {
+    const s = sessions.find((x) => x.id === params.id);
+    if (!s || !isGm(s.campaignId)) return err(404, 'not_found', 'Session nicht gefunden.');
+    return HttpResponse.json({
+      audioAvailable: !s.audioDeletedAt,
+      audioDeletesAt: s.audioDeletedAt ? null : new Date(Date.now() + 3 * 86400000).toISOString(),
+      retranscribesLeft: 2 - (s.retranscribes ?? 0),
+      terms: uncertain[s.id] ?? []
+    });
+  }),
+
+  http.post(`${B}/sessions/:id/corrections`, async ({ params, request }) => {
+    const s = sessions.find((x) => x.id === params.id);
+    const c = s && campaigns.find((x) => x.id === s.campaignId);
+    if (!s || !c || !myMember(c)) return err(404, 'not_found', 'Session nicht gefunden.');
+    if (!isGm(c.id)) return err(403, 'forbidden', 'Nur die Spielleitung kann Namen korrigieren.');
+    if (s.state !== 'awaiting_review' && s.state !== 'failed') return err(409, 'wrong_state', 'Korrigieren geht nur, solange das Kapitel auf deine Prüfung wartet.');
+    const body = (await request.json()) as { corrections?: Correction[]; retranscribe?: boolean };
+    if (!body.corrections?.length) return err(400, 'invalid_input', 'Keine Korrektur angegeben.');
+    if (body.retranscribe) {
+      if (s.audioDeletedAt) return err(409, 'audio_gone', 'Die Aufnahme ist schon gelöscht – erneut transkribieren geht nicht mehr.');
+      if ((s.retranscribes ?? 0) >= 2) return err(409, 'retranscribe_limit', 'Dieses Kapitel wurde schon zweimal neu transkribiert.');
+    }
+    const r = recaps[s.id];
+    for (const k of body.corrections) {
+      uncertain[s.id] = (uncertain[s.id] ?? []).filter((u) => u.heard !== k.heard);
+      const correct = k.correct.trim();
+      if (!correct) continue; // so lassen, nur nicht mehr melden
+      if (r) r.text = replaceWord(r.text, k.heard, correct);
+      for (const p of proposals.filter((x) => x.sessionId === s.id)) {
+        p.title = replaceWord(p.title, k.heard, correct);
+        p.detail = replaceWord(p.detail, k.heard, correct);
+        p.evidence = p.evidence.map((e) => ({ ...e, quote: replaceWord(e.quote, k.heard, correct) }));
+      }
+      if (k.addToHotwords !== false && !(c.hotwords ?? []).includes(correct)) c.hotwords = [...(c.hotwords ?? []), correct];
+    }
+    if (body.retranscribe) {
+      s.retranscribes = (s.retranscribes ?? 0) + 1;
+      s.retranscribing = true;
+      s.state = 'transcribing';
+      s.phaseStartedAt = Date.now();
+      return HttpResponse.json(advance(s), { status: 202 });
+    }
+    if (r?.review) Object.assign(r.review, { stale: false, checkedAt: new Date().toISOString() });
     return HttpResponse.json(r);
   }),
 

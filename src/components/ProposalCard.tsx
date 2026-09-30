@@ -72,7 +72,7 @@ export function ProposalCard({ proposal: p, players = [], onChange, onError }: {
     setEditing(false);
   };
 
-  const flagged = p.flags.includes('joke_suspected') || p.flags.includes('low_confidence');
+  const flagged = p.flags.includes('joke_suspected') || p.flags.includes('low_confidence') || p.flags.includes('evidence_not_found');
   const secretEntry = p.suggestedVisibility === 'gm_only';
   const ev = p.evidence[0];
 
@@ -84,7 +84,8 @@ export function ProposalCard({ proposal: p, players = [], onChange, onError }: {
         </span>
         <span className="row wrap" style={{ gap: 6 }}>
           {p.flags.includes('joke_suspected') && <span className="pill seal">{t('Vermutlich Scherz')}</span>}
-          {!p.flags.includes('joke_suspected') && p.flags.includes('low_confidence') && <span className="pill seal">{t('Unsicher')}</span>}
+          {!p.flags.includes('joke_suspected') && p.flags.includes('evidence_not_found') && <span className="pill seal">{t('Beleg im Transkript nicht gefunden')}</span>}
+          {!p.flags.includes('joke_suspected') && !p.flags.includes('evidence_not_found') && p.flags.includes('low_confidence') && <span className="pill seal">{t('Unsicher')}</span>}
           {p.flags.includes('contradicts_bible') && <span className="pill brass">{t('Widerspricht der Bibel')}</span>}
           {p.action === 'reveal'
             ? <span className="row" style={{ gap: 4 }}><VisTag gm /> → <VisTag gm={false} /></span>

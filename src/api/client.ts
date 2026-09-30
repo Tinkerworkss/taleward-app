@@ -23,6 +23,8 @@ import type {
   Proposal,
   ProposalDecision,
   Recap,
+  Correction,
+  UncertainTerms,
   Session,
   SessionSummary,
   Speaker,
@@ -184,6 +186,8 @@ function makeApi(conn: () => Connection) {
       systemName?: string | null;
       allowExternalTranscription?: boolean;
       allowCloudSummary?: boolean;
+      /** Namenshilfe ganz ersetzen (nur SL, ab 0.4.6) */
+      hotwords?: string[];
     }
   ) =>
     request<Campaign>('PATCH', `/campaigns/${campaignId}`, { body: change }),
@@ -298,6 +302,16 @@ function makeApi(conn: () => Connection) {
   recap: (sessionId: string) => request<Recap>('GET', `/sessions/${sessionId}/recap`),
   updateRecap: (sessionId: string, change: { title?: string; text?: string; openThreads?: string[] }) =>
     request<Recap>('PUT', `/sessions/${sessionId}/recap`, { body: change }),
+  /** Unsicher erkannte Namen (nur SL, ab 0.4.6) */
+  uncertainTerms: (sessionId: string) => request<UncertainTerms>('GET', `/sessions/${sessionId}/uncertain-terms`),
+  /**
+   * Schreibweisen korrigieren (nur SL, ab 0.4.6). Ohne retranscribe kommt der geänderte Recap zurück,
+   * mit retranscribe der neue Verarbeitungsstatus (erneute Transkription läuft).
+   */
+  corrections: async (sessionId: string, corrections: Correction[], retranscribe = false) => {
+    const r = await request<Recap | ProcessingStatus>('POST', `/sessions/${sessionId}/corrections`, { body: { corrections, retranscribe } });
+    return 'state' in r ? { status: r } : { recap: r };
+  },
   publish: (sessionId: string) => request<Session>('POST', `/sessions/${sessionId}/publish`),
   gmNote: (sessionId: string) => request<{ text: string; updatedAt: string }>('GET', `/sessions/${sessionId}/gm-note`),
   saveGmNote: (sessionId: string, text: string) => request<void>('PUT', `/sessions/${sessionId}/gm-note`, { body: { text } }),

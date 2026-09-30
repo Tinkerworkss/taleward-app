@@ -116,6 +116,8 @@ export interface Campaign extends CampaignSummary {
   language?: 'de' | 'en';
   /** Hintergrund der Spielwelt für alle Mitspielenden (ab Schnittstelle 0.3.2) */
   worldInfo?: string | null;
+  /** Namenshilfe für die Transkription – nur SL (ab 0.4.6) */
+  hotwords?: string[];
   members: Member[];
 }
 
@@ -157,8 +159,14 @@ export interface ProcessingStatus {
   state: ProcessingState;
   progress: number | null;
   queuePosition: number | null;
+  /**
+   * Hinweis beim Warten oder Fehlertext. Ab 0.4.6 in summarizing ein Schlüssel wie „summarizing.review“,
+   * den die App übersetzt (siehe statusMessage in i18n).
+   */
   message: string | null;
   updatedAt: string;
+  /** Geschätzte Restdauer in Sekunden, z. B. nach erneuter Transkription (ab 0.4.6) */
+  estimatedSeconds?: number | null;
 }
 
 export interface Speaker {
@@ -172,7 +180,8 @@ export interface Speaker {
 }
 
 export type ProposalDecision = 'open' | 'accepted' | 'rejected';
-export type ProposalFlag = 'joke_suspected' | 'low_confidence' | 'contradicts_bible';
+/** evidence_not_found: kein Zitat im Transkript gefunden (ab 0.4.6) */
+export type ProposalFlag = 'joke_suspected' | 'low_confidence' | 'contradicts_bible' | 'evidence_not_found';
 
 export interface Proposal {
   id: string;
@@ -213,6 +222,54 @@ export interface Recap {
   text: string;
   openThreads: string[];
   publishedAt: string | null;
+  /** Prüfteil – nur für die SL, Spieler bekommen das Feld nicht (ab 0.4.6) */
+  review?: RecapReview;
+}
+
+export type ReviewVerdict = 'supported' | 'partial' | 'unsupported' | 'contradicted' | 'off_game' | 'unchecked';
+
+/** Gegenprüfung des Recaps, Absatz = durch Leerzeile getrennter Block in Recap.text (ab 0.4.6) */
+export interface RecapReview {
+  state: 'pending' | 'done' | 'skipped';
+  /** Recap wurde nach der Prüfung bearbeitet – Angaben können verrutscht sein */
+  stale?: boolean;
+  checkedAt: string | null;
+  model: string | null;
+  revised: boolean;
+  report?: { total: number; supported: number; partial: number; unsupported: number; contradicted: number; offGame: number };
+  paragraphs: {
+    index: number;
+    verdict: ReviewVerdict;
+    note: string | null;
+    evidence: { start: number; end: number | null; quote: string; speakerMemberId: string | null }[];
+  }[];
+}
+
+/** Unsicher erkannter Name oder Begriff (ab 0.4.6) */
+export interface UncertainTerm {
+  id: string;
+  heard: string;
+  alternatives: string[];
+  occurrences: number;
+  confidence: number;
+  examples: { start: number; quote: string }[];
+  suggestedEntryId: string | null;
+  suggestedMemberId: string | null;
+}
+
+export interface UncertainTerms {
+  audioAvailable: boolean;
+  audioDeletesAt: string | null;
+  /** Wie oft noch erneut transkribiert werden darf */
+  retranscribesLeft?: number;
+  terms: UncertainTerm[];
+}
+
+export interface Correction {
+  heard: string;
+  /** Leer = Begriff so lassen, nur nicht mehr melden */
+  correct: string;
+  addToHotwords?: boolean;
 }
 
 export interface EntryInput {

@@ -685,4 +685,11 @@ export const en: Record<string, string> = {
   "Kapitel verwerfen": "Discard chapter",
   "Abgeschlossen ({n})": "Completed ({n})",
   "Nicht mehr dabei": "No longer in the group",
+  "Szenennotizen werden geschrieben …": "Writing scene notes …",
+  "Der Recap wird geschrieben …": "Writing the recap …",
+  "Vorschläge für die Bibel werden gesammelt …": "Collecting suggestions for the bible …",
+  "Der Recap wird mit dem Transkript gegengeprüft …": "Checking the recap against the transcript …",
+  "Unbelegte Stellen werden nachgebessert …": "Revising passages without evidence …",
+  "Noch etwa {n} Minuten.": "About {n} minutes left.",
+  "Beleg im Transkript nicht gefunden": "Evidence not found in the transcript",
 };

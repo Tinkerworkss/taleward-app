@@ -9,6 +9,18 @@ import { api, isApiError } from '../api/client';
 import type { ProcessingState, ProcessingStatus, Role, Session } from '../api/types';
 import { ErrorBox, Screen } from '../components/Screen';
 
+/** Schlüssel des Servers für die Schritte der Zusammenfassung (ab Schnittstelle 0.4.6); andere Texte unverändert */
+function statusText(message: string): string {
+  switch (message) {
+    case 'summarizing.notes': return t('Szenennotizen werden geschrieben …');
+    case 'summarizing.recap': return t('Der Recap wird geschrieben …');
+    case 'summarizing.proposals': return t('Vorschläge für die Bibel werden gesammelt …');
+    case 'summarizing.review': return t('Der Recap wird mit dem Transkript gegengeprüft …');
+    case 'summarizing.revision': return t('Unbelegte Stellen werden nachgebessert …');
+    default: return message;
+  }
+}
+
 const STEPS: { state: ProcessingState[]; label: string }[] = [
   { state: ['uploading', 'queued'], label: tk('Aufnahme angekommen') },
   { state: ['transcribing'], label: tk('Transkription') },
@@ -149,7 +161,10 @@ export function Processing() {
       {status?.message && !failed && (
         <div className="notice">
           <span style={{ flexShrink: 0, color: 'var(--ink-muted)' }}><IconInfo /></span>
-          <span>{status.message}</span>
+          <span>
+            {statusText(status.message)}
+            {status.estimatedSeconds ? ' ' + t('Noch etwa {n} Minuten.', { n: Math.max(1, Math.round(status.estimatedSeconds / 60)) }) : ''}
+          </span>
         </div>
       )}
       {status && status.progress !== null && !failed && (

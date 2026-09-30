@@ -27,6 +27,8 @@ export interface MockCampaign {
   allowExternalTranscription?: boolean;
   allowCloudSummary?: boolean;
   archivedAt?: string | null;
+  /** Namenshilfe (ab 0.4.6, nur SL) */
+  hotwords?: string[];
   coverPreset: string | null;
   /** Nur im Testmodus: auf welchem „Server“ die Kampagne liegt (fehlt = eingebauter Testserver) */
   host?: string;
@@ -42,6 +44,7 @@ export const campaigns: MockCampaign[] = [
     description: 'Düstere Stadtkampagne am Grauen Strom.',
     system: 'dsa',
     allowExternalTranscription: true, allowCloudSummary: true,
+    hotwords: ['Grauwacht', 'Kaltenfurt', 'Thorwald', 'Nyra', 'Ilsabet', 'Hedda', 'Rabenzirkel', 'Vier Wasser'],
     coverPreset: 'swamp',
     language: 'de',
     worldInfo: 'Grauwacht ist ein Dorf am Rand des Moores, eine Tagesreise flussaufwärts von der Hafenstadt Kaltenfurt. Seit Generationen läutet die Glocke von Grauwacht zu jedem Festtag.\n\nDie Menschen hier beten zu den Vier Wassern. Fremden begegnen sie höflich, aber vorsichtig – besonders seit die Raben zurückgekehrt sind.\n\nAm Tisch gilt: Handys weg während der Szenen, Pausen macht die SL.',
@@ -88,6 +91,9 @@ export interface MockSession extends Session {
   // Nur im Mock: Fehler simulieren (Dateiname enthält "fehler" bzw. "weg")
   failNext?: boolean;
   audioGone?: boolean;
+  // Nur im Mock: erneute Transkription nach Korrektur (ab 0.4.6) – danach gleich zur Zusammenfassung
+  retranscribing?: boolean;
+  retranscribes?: number;
 }
 
 const pastSession = (campaignId: string, n: number, title: string, playedAt: string): MockSession => ({
@@ -109,7 +115,8 @@ export const sessions: MockSession[] = [
   pastSession('c-grau', 10, 'Die Glocke schweigt', '2026-08-08T17:00:00Z'),
   pastSession('c-grau', 11, 'Der Handel im Weidenkrug', '2026-08-22T17:00:00Z'),
   pastSession('c-grau', 12, 'Nebel über dem Moor', '2026-09-05T17:00:00Z'),
-  { ...pastSession('c-grau', 13, 'Das Siegel von Kaltenfurt', '2026-09-19T17:00:00Z'), state: 'awaiting_review', publishedAt: null },
+  // Audio noch da (Aufbewahrung bis zur Freigabe) – unsichere Namen lassen sich mit erneuter Transkription korrigieren
+  { ...pastSession('c-grau', 13, 'Das Siegel von Kaltenfurt', '2026-09-19T17:00:00Z'), state: 'awaiting_review', publishedAt: null, audioDeletedAt: null },
   pastSession('c-drache', 7, 'Die Brücke aus Eis', '2026-09-14T16:00:00Z')
 ];
 
@@ -131,8 +138,24 @@ export const recaps: Record<string, Recap> = {
   },
   's-c-grau-13': {
     sessionId: 's-c-grau-13', number: 13, title: 'Das Siegel von Kaltenfurt', publishedAt: null,
-    text: 'Im Morgengrauen erreichten die Gefährten die Tore von Kaltenfurt – und fanden sie verschlossen. Hauptfrau Veyra Dornfeld ließ sie erst passieren, nachdem Ilsabet einen kranken Wachmann geheilt hatte, doch ihr Blick blieb misstrauisch.\n\nIn der Ertrunkenen Kapelle stießen Thorwald und Nyra bei Ebbe auf einen Runenschlüssel, der dasselbe Zeichen trägt wie das gestohlene Siegel. Als die Flut zurückkehrte, hörten alle das Läuten einer Glocke, die es dort längst nicht mehr gibt.',
-    openThreads: ['Wer hat das Siegel aus dem Tempel entwendet?', 'Welche Tür öffnet der Runenschlüssel?', 'Woher kam das Glockenläuten?']
+    text: 'Im Morgengrauen erreichten die Gefährten die Tore von Kaltenfurt – und fanden sie verschlossen. Hauptfrau Veyra Dornfeld ließ sie erst passieren, nachdem Ilsabeth einen kranken Wachmann geheilt hatte, doch ihr Blick blieb misstrauisch.\n\nIn der Ertrunkenen Kapelle stießen Thorwald und Nyra bei Ebbe auf einen Runenschlüssel, der dasselbe Zeichen trägt wie das gestohlene Siegel. Als die Flut zurückkehrte, hörten alle das Läuten einer Glocke, die es dort längst nicht mehr gibt.\n\nAuf dem Rückweg schwor Thorwald, den Raben noch vor dem Winter zu stellen.',
+    openThreads: ['Wer hat das Siegel aus dem Tempel entwendet?', 'Welche Tür öffnet der Runenschlüssel?', 'Woher kam das Glockenläuten?'],
+    // Gegenprüfung (ab 0.4.6): ein Absatz belegt, einer teilweise, einer ohne Beleg
+    review: {
+      state: 'done', stale: false, checkedAt: '2026-09-19T23:40:00Z', model: 'ollama/ministral-3:8b', revised: false,
+      report: { total: 3, supported: 1, partial: 1, unsupported: 1, contradicted: 0, offGame: 0 },
+      paragraphs: [
+        { index: 0, verdict: 'supported', note: null, evidence: [
+          { start: 1520, end: 1526, quote: 'Ich bin Hauptfrau Dornfeld, und ihr kommt hier nicht rein.', speakerMemberId: 'm-robin' },
+          { start: 1804, end: 1811, quote: 'Ich lege ihm die Hand auf die Stirn und spreche den Heilsegen.', speakerMemberId: 'm-lea' }
+        ] },
+        { index: 1, verdict: 'partial', note: 'Die Kapelle und der Schlüssel sind belegt, das Glockenläuten erwähnt nur die SL als Frage („Hört ihr das?“).', evidence: [
+          { start: 5400, end: 5404, quote: 'Die Kapelle steht halb im Wasser.', speakerMemberId: 'm-robin' },
+          { start: 6210, end: 6214, quote: 'Das Zeichen ist dasselbe wie auf dem Siegel!', speakerMemberId: null }
+        ] },
+        { index: 2, verdict: 'unsupported', note: 'Im Transkript nicht gefunden – vielleicht nach dem Ende der Aufnahme gesagt.', evidence: [] }
+      ]
+    }
   },
   's-c-drache-7': {
     sessionId: 's-c-drache-7', number: 7, title: 'Die Brücke aus Eis', publishedAt: '2026-09-14T16:00:00Z',
@@ -180,7 +203,7 @@ export function proposalsFor(sessionId: string): Proposal[] {
     base('p3', { entryType: 'item', title: 'Runenschlüssel', detail: 'Trägt das Zeichen des Siegels. Bei Nyra.',
       evidence: [{ start: 6190, quote: 'Ich stecke den Schlüssel ein.' }] }),
     base('p4', { entryType: 'location', title: 'Die Ertrunkene Kapelle', detail: 'Halb versunkene Kapelle am Grauen Strom, nur bei Ebbe betretbar.',
-      confidence: 0.8, evidence: [{ start: 5400, quote: 'Die Kapelle steht halb im Wasser.' }] }),
+      confidence: 0.6, flags: ['low_confidence', 'evidence_not_found'], evidence: [{ start: 5400, quote: 'Die Kapelle steht halb im Wasser.' }] }),
     // Geheimer Eintrag ist am Tisch aufgetaucht: nur ein Vorschlag, die SL gibt frei
     base('p6', { action: 'reveal', targetEntryId: 'e3', title: 'Der Rabe',
       detail: 'Anführer des Rabenzirkels, zeigt sich nie selbst. Seine Boten tragen Rabenfedern.',
