@@ -1,0 +1,67 @@
+name: Verlauf zusammenfassen (einmalig)
+# Ersetzt den Git-Verlauf durch einen sauberen: je ein Commit pro Release (v0.10.0, v0.10.1, v0.10.2 …) und,
+# falls main schon weiter ist, ein Commit mit dem aktuellen Stand. Inhalte bleiben genau gleich, die Tags
+# (und damit die Releases samt APK und Web-ZIP) zeigen danach auf die neuen Commits.
+# Diese Datei entfernt sich dabei selbst. Braucht das Secret VERLAUF_TOKEN (siehe Anleitung).
+on:
+  workflow_dispatch:
+    inputs:
+      bestaetigung:
+        description: 'Zum Bestätigen genau "ZUSAMMENFASSEN" eintippen'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  zusammenfassen:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.bestaetigung == 'ZUSAMMENFASSEN' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.VERLAUF_TOKEN }}
+      - name: Neuen Verlauf bauen
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          SELBST=".github/workflows/verlauf-zusammenfassen.yml"
+          ALT_MAIN=$(git rev-parse origin/main)
+          ELTERN=""
+          : > /tmp/tags.txt
+          # Releases in Versionsreihenfolge
+          for TAG in $(git tag -l 'v*' --sort=v:refname); do
+            ALT=$(git rev-parse "$TAG^{commit}")
+            BAUM=$(git rev-parse "$TAG^{tree}")
+            export GIT_AUTHOR_NAME="$(git log -1 --format=%an "$ALT")" GIT_AUTHOR_EMAIL="$(git log -1 --format=%ae "$ALT")" \
+                   GIT_AUTHOR_DATE="$(git log -1 --format=%aI "$ALT")" GIT_COMMITTER_NAME="$(git log -1 --format=%an "$ALT")" \
+                   GIT_COMMITTER_EMAIL="$(git log -1 --format=%ae "$ALT")" GIT_COMMITTER_DATE="$(git log -1 --format=%aI "$ALT")"
+            NEU=$(git commit-tree "$BAUM" ${ELTERN:+-p "$ELTERN"} -m "Taleward ${TAG#v}")
+            echo "$TAG $NEU" >> /tmp/tags.txt
+            ELTERN="$NEU"
+          done
+          # Aktueller Stand von main – ohne diese Datei
+          export GIT_INDEX_FILE=/tmp/index
+          git read-tree "$ALT_MAIN"
+          git rm -q --cached --ignore-unmatch "$SELBST"
+          BAUM=$(git write-tree)
+          unset GIT_INDEX_FILE GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE
+          if [ -z "$ELTERN" ] || [ "$BAUM" != "$(git rev-parse "$ELTERN^{tree}")" ]; then
+            git config user.name "$(git log -1 --format=%an "$ALT_MAIN")"
+            git config user.email "$(git log -1 --format=%ae "$ALT_MAIN")"
+            ELTERN=$(git commit-tree "$BAUM" ${ELTERN:+-p "$ELTERN"} -m "Aktueller Stand")
+          fi
+          echo "$ELTERN" > /tmp/main.txt
+          # Prüfen: gleicher Inhalt wie vorher, keine internen Dateien mehr im Verlauf
+          test -z "$(git diff "$ALT_MAIN" "$ELTERN" --name-only | grep -v "^$SELBST$" || true)"
+          if git log --format= --name-only "$ELTERN" | grep -iE '(^|/)(app-stand|produkt-notizen|server-wunsch|server-stand|website-)[^/]*\.md$|\.patch$'; then
+            echo "Interne Dateien gefunden – Abbruch"; exit 1
+          fi
+          echo "Neuer Verlauf:"; git log --oneline "$ELTERN"
+      - name: Auf GitHub ersetzen
+        run: |
+          set -euo pipefail
+          git push --force origin "$(cat /tmp/main.txt):refs/heads/main"
+          while read -r TAG NEU; do git push --force origin "$NEU:refs/tags/$TAG"; done < /tmp/tags.txt
+          echo "Fertig. Bitte jetzt das Token VERLAUF_TOKEN auf GitHub löschen (Secret und Token)."
