@@ -3,7 +3,7 @@ import { DEMO_HOST, DEMO_USERS, demoSpeakers } from './demo';
 
 /** Alle Titelbild-IDs (Schnittstelle 0.4.3) – wie der Server: neue Kampagnen bekommen eines zufällig */
 const COVER_IDS = ['meadow', 'forest', 'desert', 'city', 'cyber', 'mountains', 'coast', 'swamp', 'dungeon', 'space', 'castle', 'dark-fantasy', 'moonwood', 'ancient-ruins', 'tavern', 'battlefield', 'frozen-north', 'arcane-ruins', 'fairy-wilds', 'underworld', 'storm-coast', 'steampunk', 'post-apocalypse', 'western', 'noir', 'space-opera', 'orient', 'necropolis', 'manor', 'riverside-mystery'];
-import type { CampaignDocument, CampaignSummary, Comment, Correction, Entry, DatePoll, EntryInput, ProcessingStatus, Proposal, Recap, Session, UncertainTerm, VoteAnswer, VoiceProfile } from '../api/types';
+import type { CampaignDocument, CampaignSummary, Character, Chronicle, Comment, Correction, WorldEntryIn, WorldEntryStatus, Entry, DatePoll, EntryInput, ProcessingStatus, Proposal, Recap, Session, UncertainTerm, VoteAnswer, VoiceProfile, GmNotice, Member } from '../api/types';
 import {
   ME, NACHBAR_HOST, account, campaigns, comments, coverImages, datePolls, documents, portraits, proposalsForDocument, seen, entries, gmNotes, proposals, proposalsFor, recaps, sessions, speakersFor, uploads,
   type MockCampaign, type MockSession
@@ -193,6 +193,47 @@ function replaceWord(text: string, heard: string, correct: string): string {
   return text.split(heard).join(correct);
 }
 
+// ---------------- Charaktere (0.4.7): Serverkopie, mitgebrachte Welt, Hinweise an die SL
+
+type WorldRecord = { id: string; version: number; proposalId: string | null; entryId: string | null; serverVersion: number | null };
+/** memberId → (Eintrag der App → Stand auf dem Server) */
+const world: Record<string, Record<string, WorldRecord>> = {};
+const gmNotices: Record<string, GmNotice[]> = {};
+
+function worldStatus(w: WorldRecord): WorldEntryStatus {
+  const p = w.proposalId ? proposals.find((x) => x.id === w.proposalId) : undefined;
+  const state = !p ? 'accepted' : p.decision === 'open' ? 'pending' : p.decision;
+  return { id: w.id, proposalId: w.proposalId, entryId: w.entryId, state, serverVersion: w.serverVersion };
+}
+
+function applyCharacter(c: MockCampaign, m: Member, ch: Character) {
+  Object.assign(m, {
+    characterId: ch.id, characterVersion: ch.version, characterName: ch.name.trim(), characterNickname: ch.nickname ?? null,
+    characterSummary: ch.summary ?? null, characterBackstory: ch.backstory ?? null, characterStatus: ch.status
+  });
+  const pc = entries.find((e) => e.campaignId === c.id && e.type === 'pc' && e.holderMemberId === m.id);
+  if (pc) Object.assign(pc, { name: m.characterName, summary: ch.summary ?? '', updatedAt: new Date().toISOString() });
+  else entries.push({ id: 'pc-' + m.id, campaignId: c.id, type: 'pc', name: ch.name.trim(), summary: ch.summary ?? '', visibility: 'public',
+    status: null, holderMemberId: m.id, firstSessionNumber: null, lastSessionNumber: null, mentions: [], updatedAt: new Date().toISOString() });
+}
+
+function applyCharacterProposal(p: Proposal) {
+  const rec = p.submittedByMemberId && p.originEntryId ? world[p.submittedByMemberId]?.[p.originEntryId] : undefined;
+  if (p.decision !== 'accepted') return;
+  const c = campaigns.find((x) => x.members.some((m) => m.id === p.submittedByMemberId));
+  if (!c) return;
+  const target = p.targetEntryId ? entries.find((e) => e.id === p.targetEntryId) : undefined;
+  if (target) Object.assign(target, { name: p.title, summary: p.detail, updatedAt: new Date().toISOString() });
+  else {
+    const e: Entry = { id: 'e-' + crypto.randomUUID().slice(0, 8), campaignId: c.id, type: p.entryType, name: p.title, summary: p.detail,
+      visibility: p.suggestedVisibility, hiddenFromMemberIds: p.hiddenFromMemberIds ?? [], gmNotes: p.gmNotes ?? null, status: null,
+      holderMemberId: null, firstSessionNumber: null, lastSessionNumber: null, mentions: [], updatedAt: new Date().toISOString() };
+    entries.push(e);
+    if (rec) rec.entryId = e.id;
+  }
+  if (rec) rec.serverVersion = rec.version;
+}
+
 function publicSession(s: MockSession): Session {
   const { phaseStartedAt: _ignored, ...rest } = s;
   return rest;
@@ -319,8 +360,8 @@ export const handlers = [
       name: nachbar ? 'Chronik des Nachbarvereins' : 'Testserver',
       operator: nachbar ? 'Spielgemeinschaft Nachbarort e. V.' : 'Rollenspielverein (Testmodus)',
       contact: nachbar ? 'vorstand@nachbarverein.test' : null,
-      // Eingebauter Testserver kann alles bis 0.4.6; der Nachbarverein bleibt alt (zeigt das Ausblenden neuer Funktionen)
-      apiVersion: nachbar ? '0.3.9' : '0.4.6',
+      // Eingebauter Testserver kann alles bis 0.4.7; der Nachbarverein bleibt alt (zeigt das Ausblenden neuer Funktionen)
+      apiVersion: nachbar ? '0.3.9' : '0.4.7',
       registration: 'invite_only',
       authMethods: ['password'],
       privacyPolicyUrl: null,
@@ -527,12 +568,18 @@ export const handlers = [
   }),
 
   http.post(`${B}/campaigns/join`, async ({ request }) => {
-    const body = (await request.json()) as { code: string };
+    const body = (await request.json()) as { code: string; characterName?: string; character?: Character | null };
     const host = hostKey(request);
     const c = campaigns.find((x) => (x.host ?? 'local') === host && x.inviteCode.toUpperCase() === body.code.trim().toUpperCase());
     if (!c) return err(404, 'invite_invalid', 'Dieser Einladungscode ist ungültig oder abgelaufen. Frag deine Spielleitung nach einem neuen.');
     if (!myMember(c)) {
-      c.members.push({ id: 'm-' + crypto.randomUUID().slice(0, 8), userId: ME.id, displayName: ME.displayName, characterName: null, role: 'player', recordingConsentAt: null });
+      const ch = body.character;
+      if (ch && c.members.some((m) => m.characterId === ch.id && !m.leftAt && !m.deletedAt)) {
+        return err(409, 'character_in_campaign', 'Dieser Charakter spielt in dieser Kampagne schon mit.');
+      }
+      const m: Member = { id: 'm-' + crypto.randomUUID().slice(0, 8), userId: ME.id, displayName: ME.displayName, characterName: body.characterName?.trim() || null, role: 'player', recordingConsentAt: null };
+      c.members.push(m);
+      if (ch) applyCharacter(c, m, ch);
       seen.chronicle[c.id] = seen.bible[c.id] = new Date().toISOString();
     }
     return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, members: membersFor(c) });
@@ -541,7 +588,116 @@ export const handlers = [
   http.get(`${B}/campaigns/:id`, ({ params }) => {
     const c = campaigns.find((x) => x.id === params.id);
     if (!c || !myMember(c)) return err(404, 'not_found', 'Kampagne nicht gefunden.');
-    return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, ...(isGm(c.id) ? { hotwords: c.hotwords ?? [] } : {}), members: membersFor(c) });
+    return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, ...(isGm(c.id) ? { hotwords: c.hotwords ?? [], gmNotices: gmNotices[c.id] ?? [] } : {}), members: membersFor(c) });
+  }),
+
+  // ---------------- Charaktere (0.4.7)
+
+  http.put(`${B}/campaigns/:id/members/me/character`, async ({ params, request }) => {
+    const c = campaigns.find((x) => x.id === params.id);
+    const m = c && myMember(c);
+    if (!c || !m) return err(404, 'not_found', 'Kampagne nicht gefunden.');
+    const ch = (await request.json()) as Character;
+    if (!ch?.id || !ch.name?.trim() || !(ch.version >= 1)) return err(400, 'invalid_input', 'Charakter unvollständig.');
+    if (m.characterId && m.characterId !== ch.id) return err(409, 'character_mismatch', 'Du spielst hier einen anderen Charakter. Löse ihn zuerst.');
+    if (m.characterId && (m.characterVersion ?? 0) >= ch.version) {
+      return HttpResponse.json({ code: 'character_version_stale', message: 'Der Server kennt schon einen neueren Stand dieses Charakters.', details: { serverVersion: m.characterVersion } }, { status: 409 });
+    }
+    applyCharacter(c, m, ch);
+    return HttpResponse.json(m);
+  }),
+
+  http.delete(`${B}/campaigns/:id/members/me/character`, ({ params }) => {
+    const c = campaigns.find((x) => x.id === params.id);
+    const m = c && myMember(c);
+    if (!c || !m) return err(404, 'not_found', 'Kampagne nicht gefunden.');
+    if (!m.characterId) return err(409, 'no_character', 'Du hast in dieser Kampagne keinen Charakter aus deiner Sammlung.');
+    const pc = entries.find((e) => e.campaignId === c.id && e.type === 'pc' && e.holderMemberId === m.id);
+    if (pc) pc.holderMemberId = null;
+    Object.assign(m, { characterId: null, characterVersion: null });
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.get(`${B}/campaigns/:id/members/me/world`, ({ params }) => {
+    const c = campaigns.find((x) => x.id === params.id);
+    const m = c && myMember(c);
+    if (!c || !m) return err(404, 'not_found', 'Kampagne nicht gefunden.');
+    return HttpResponse.json({ entries: Object.values(world[m.id] ?? {}).map(worldStatus) });
+  }),
+
+  http.post(`${B}/campaigns/:id/members/me/world`, async ({ params, request }) => {
+    const c = campaigns.find((x) => x.id === params.id);
+    const m = c && myMember(c);
+    if (!c || !m) return err(404, 'not_found', 'Kampagne nicht gefunden.');
+    if (!m.characterId) return err(409, 'no_character', 'Mitgebrachte Welt geht nur mit einem Charakter aus deiner Sammlung.');
+    const body = (await request.json()) as { entries?: WorldEntryIn[] };
+    const list = body.entries ?? [];
+    if (list.length === 0) return err(400, 'invalid_input', 'Keine Einträge.');
+    if (list.length > 100) return err(400, 'world_too_many', 'Höchstens 100 Einträge auf einmal.');
+    const mine = (world[m.id] ??= {});
+    const others = c.members.filter((x) => x.id !== m.id && !x.leftAt && !x.deletedAt && x.role === 'player').map((x) => x.id);
+    const out: WorldEntryStatus[] = [];
+    for (const w of list) {
+      const known = mine[w.id];
+      if (known && known.version >= w.version) { out.push({ ...worldStatus(known), state: 'unchanged' }); continue; }
+      if (known?.proposalId) {
+        const old = proposals.find((p) => p.id === known.proposalId && p.decision === 'open');
+        if (old) old.decision = 'rejected';
+      }
+      const p: Proposal = {
+        id: 'cp-' + crypto.randomUUID().slice(0, 8), sessionId: null, documentId: null, source: 'character',
+        originCharacterId: m.characterId, originEntryId: w.id, submittedByMemberId: m.id,
+        entryType: w.type, action: known?.entryId ? 'update' : 'create', targetEntryId: known?.entryId ?? null,
+        title: w.name, detail: w.summary, gmNotes: null, suggestedVisibility: 'public',
+        hiddenFromMemberIds: w.secret ? others : [], confidence: 1, flags: [], evidence: [], decision: 'open'
+      };
+      proposals.push(p);
+      mine[w.id] = { id: w.id, version: w.version, proposalId: p.id, entryId: known?.entryId ?? null, serverVersion: known?.serverVersion ?? null };
+      out.push(worldStatus(mine[w.id]));
+    }
+    return HttpResponse.json({ entries: out });
+  }),
+
+  http.get(`${B}/campaigns/:id/members/me/chronicle`, ({ params, request }) => {
+    const c = campaigns.find((x) => x.id === params.id);
+    const m = c?.members.find((x) => x.userId === ME.id);
+    if (!c || !m) return err(404, 'not_found', 'Kampagne nicht gefunden.');
+    const pc = entries.find((e) => e.campaignId === c.id && e.type === 'pc' && e.holderMemberId === m.id);
+    const name = m.characterName ?? '';
+    const out: Chronicle = {
+      server: { name: 'Testserver', url: new URL(request.url).origin, version: '0.4.7' },
+      campaign: { id: c.id, title: c.title, system: c.systemName ?? c.system ?? null, language: c.language, createdAt: '2026-07-01T18:00:00Z', archivedAt: c.archivedAt ?? null },
+      member: { id: m.id, role: m.role, joinedAt: '2026-07-01T18:00:00Z', leftAt: m.leftAt ?? null, characterId: m.characterId ?? null, characterVersion: m.characterVersion ?? null },
+      sessions: sessions.filter((s) => s.campaignId === c.id).sort((a, b) => a.number - b.number).map((s) => {
+        const r = recaps[s.id];
+        const attended = s.attendees.length === 0 || s.attendees.some((a) => a.memberId === m.id);
+        return { id: s.id, number: s.number, title: s.title, playedAt: s.playedAt, attended,
+          recap: s.state === 'published' && attended && r ? { title: r.title, text: r.text, openThreads: r.openThreads, publishedAt: r.publishedAt ?? s.playedAt } : null };
+      }),
+      mentions: name ? entries.filter((e) => e.campaignId === c.id && e.visibility === 'public' && e.type !== 'pc' && !(e.hiddenFromMemberIds ?? []).includes(m.id) && (e.summary.includes(name) || (pc && e.holderMemberId === m.id)))
+        .map((e) => ({ entryId: e.id, entryType: e.type, name: e.name, summary: e.summary, updatedAt: e.updatedAt })) : [],
+      broughtEntries: Object.values(world[m.id] ?? {}).filter((w) => w.entryId).map((w) => {
+        const e = entries.find((x) => x.id === w.entryId)!;
+        return { originEntryId: w.id, entryId: e.id, entryType: e.type, name: e.name, summary: e.summary, hidden: e.visibility === 'gm_only', updatedAt: e.updatedAt };
+      }),
+      comments: comments.filter((k) => k.authorMemberId === m.id).map((k) => ({ sessionId: k.sessionId, text: k.text, createdAt: k.createdAt })),
+      takenAt: new Date().toISOString()
+    };
+    return HttpResponse.json(out);
+  }),
+
+  http.get(`${B}/campaigns/:id/character-proposals`, ({ params }) => {
+    const c = campaigns.find((x) => x.id === params.id);
+    if (!c || !isGm(c.id)) return err(404, 'not_found', 'Kampagne nicht gefunden.');
+    const mine = proposals.filter((p) => p.source === 'character' && c.members.some((m) => m.id === p.submittedByMemberId));
+    return HttpResponse.json([...mine.filter((p) => p.decision === 'open'), ...mine.filter((p) => p.decision !== 'open').slice(-50)]);
+  }),
+
+  http.delete(`${B}/campaigns/:id/gm-notices/:nid`, ({ params }) => {
+    const c = campaigns.find((x) => x.id === params.id);
+    if (!c || !isGm(c.id)) return err(404, 'not_found', 'Hinweis nicht gefunden.');
+    gmNotices[c.id] = (gmNotices[c.id] ?? []).filter((n) => n.id !== params.nid);
+    return new HttpResponse(null, { status: 204 });
   }),
 
   http.patch(`${B}/campaigns/:id`, async ({ params, request }) => {
@@ -1095,9 +1251,13 @@ export const handlers = [
     return HttpResponse.json(list);
   }),
 
-  http.put(`${B}/sessions/:id/speakers`, ({ params }) => {
+  http.put(`${B}/sessions/:id/speakers`, async ({ params, request }) => {
     const s = sessions.find((x) => x.id === params.id);
     if (!s || !isGm(s.campaignId)) return err(403, 'forbidden', 'Nur die Spielleitung ordnet Stimmen zu.');
+    const mapping = (await request.json().catch(() => [])) as { speakerId: string; memberId: string | null; guestName?: string | null }[];
+    if (mapping.some((x) => x.memberId && x.guestName)) return err(400, 'invalid_input', 'Eine Stimme ist entweder ein Mitglied oder ein Gast.');
+    const guests = s.attendees.map((a) => a.guestName).filter(Boolean);
+    if (mapping.some((x) => x.guestName && !guests.includes(x.guestName))) return err(400, 'guest_unknown', 'Diesen Gast gibt es in dieser Runde nicht.');
     s.state = 'summarizing';
     s.phaseStartedAt = Date.now();
     if (voiceStatus().status === 'ready' && voice.learnFromSessions) voice.learnedSessionCount++;
@@ -1125,6 +1285,8 @@ export const handlers = [
     if (body.title !== undefined) p.title = body.title;
     if (body.detail !== undefined) p.detail = body.detail;
     if (body.visibility) p.suggestedVisibility = body.visibility;
+    // Mitgebrachte Welt (0.4.7): Entscheidung wirkt sofort
+    if (p.source === 'character' && body.decision && body.decision !== 'open') applyCharacterProposal(p);
     return HttpResponse.json(p);
   }),
 

@@ -4,6 +4,10 @@ import type {
   ApiError,
   Campaign,
   CampaignSummary,
+  Character,
+  Chronicle,
+  WorldEntryIn,
+  WorldEntryStatus,
   Entry,
   EntryInput,
   EntryType,
@@ -39,10 +43,13 @@ import type {
 export class ApiRequestError extends Error {
   status: number;
   code: string;
+  /** Zusätzliche Angaben je Fehlercode (ab 0.4.7) */
+  details?: Record<string, unknown>;
   constructor(status: number, err: ApiError) {
     super(err.message);
     this.status = status;
     this.code = err.code;
+    this.details = err.details;
   }
 }
 
@@ -98,7 +105,7 @@ async function requestOn<T>(conn: Connection, method: string, path: string, opts
     try {
       const parsed = await res.json();
       if (parsed && typeof parsed.message === 'string') {
-        err = { code: String(parsed.code ?? err.code), message: parsed.message };
+        err = { code: String(parsed.code ?? err.code), message: parsed.message, ...(parsed.details && typeof parsed.details === 'object' ? { details: parsed.details } : {}) };
       }
     } catch {
       /* kein JSON-Fehlerkörper */
@@ -171,8 +178,24 @@ function makeApi(conn: () => Connection) {
     system?: GameSystem | null,
     systemName?: string | null
   ) => request<Campaign>('POST', '/campaigns', { body: { title, description, language, system, systemName } }),
-  joinCampaign: (code: string, characterName?: string) =>
-    request<Campaign>('POST', '/campaigns/join', { body: { code, characterName } }),
+  /** Beitreten – ab 0.4.7 optional mit einem Charakter aus der Sammlung */
+  joinCampaign: (code: string, characterName?: string, character?: Character | null) =>
+    request<Campaign>('POST', '/campaigns/join', { body: { code, characterName, ...(character ? { character } : {}) } }),
+  /** Eigenen Charakter setzen/aktualisieren (ab 0.4.7) */
+  putMyCharacter: (campaignId: string, character: Character) =>
+    request<Member>('PUT', `/campaigns/${campaignId}/members/me/character`, { body: character }),
+  /** Charakter lösen, z. B. für einen Charakterwechsel (ab 0.4.7) */
+  releaseMyCharacter: (campaignId: string) => request<void>('DELETE', `/campaigns/${campaignId}/members/me/character`),
+  /** Mitgebrachte Welt einreichen bzw. Stand abfragen (ab 0.4.7) */
+  submitWorld: (campaignId: string, entries: WorldEntryIn[]) =>
+    request<{ entries: WorldEntryStatus[] }>('POST', `/campaigns/${campaignId}/members/me/world`, { body: { entries } }),
+  myWorld: (campaignId: string) => request<{ entries: WorldEntryStatus[] }>('GET', `/campaigns/${campaignId}/members/me/world`),
+  /** Chronik des eigenen Charakters als Abschrift (ab 0.4.7) */
+  myChronicle: (campaignId: string) => request<Chronicle>('GET', `/campaigns/${campaignId}/members/me/chronicle`),
+  /** Vorschläge aus mitgebrachter Welt (nur SL, ab 0.4.7) */
+  characterProposals: (campaignId: string) => request<Proposal[]>('GET', `/campaigns/${campaignId}/character-proposals`),
+  /** Hinweis an die SL erledigen (ab 0.4.7) */
+  dismissGmNotice: (campaignId: string, noticeId: string) => request<void>('DELETE', `/campaigns/${campaignId}/gm-notices/${noticeId}`),
   updateCampaign: (
     campaignId: string,
     change: {
@@ -251,7 +274,8 @@ function makeApi(conn: () => Connection) {
   completeUpload: (uploadId: string) => request<ProcessingStatus>('POST', `/uploads/${uploadId}/complete`),
 
   speakers: (sessionId: string) => request<Speaker[]>('GET', `/sessions/${sessionId}/speakers`),
-  assignSpeakers: (sessionId: string, mapping: { speakerId: string; memberId: string | null }[]) =>
+  /** guestName (ab 0.4.7): Stimme als Gast benennen; memberId und guestName schließen sich aus */
+  assignSpeakers: (sessionId: string, mapping: { speakerId: string; memberId: string | null; guestName?: string | null }[]) =>
     request<ProcessingStatus>('PUT', `/sessions/${sessionId}/speakers`, { body: mapping }),
   speakerSample: (sessionId: string, speakerId: string) =>
     request<Blob>('GET', `/sessions/${sessionId}/speakers/${speakerId}/sample`),

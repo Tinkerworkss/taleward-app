@@ -131,7 +131,7 @@ export function DocumentsPage() {
         <div key={d.id} className={d.state === 'awaiting_review' || d.state === 'failed' ? 'card warn' : 'card'}>
           <div className="row between" style={{ alignItems: 'flex-start' }}>
             <div className="card-title">{d.title}</div>
-            <span className="pill">{t(KINDS.find((k) => k.value === d.kind)!.label)}</span>
+            <span className="pill">{d.kind === 'character_sheet' ? t('Charakterbogen') : t(KINDS.find((k) => k.value === d.kind)?.label ?? 'Sonstiges')}</span>
           </div>
           <div className="muted small">
             {d.fileName} · {d.sizeBytes < 1e5 ? `${Math.max(1, Math.round(d.sizeBytes / 1e3))} kB` : `${(d.sizeBytes / 1e6).toFixed(1)} MB`}{d.pageCount ? ' · ' + tn(d.pageCount, '{n} Seite', '{n} Seiten') : ''} · {formatDate(d.createdAt)}

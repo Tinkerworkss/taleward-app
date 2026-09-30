@@ -2,7 +2,8 @@
 
 export type Role = 'gm' | 'player';
 export type Visibility = 'public' | 'gm_only';
-export type EntryType = 'npc' | 'location' | 'quest' | 'item' | 'faction' | 'other';
+/** pc = Spielercharakter (ab 0.4.7, legt nur der Server an) */
+export type EntryType = 'npc' | 'location' | 'quest' | 'item' | 'faction' | 'other' | 'pc';
 
 export type ProcessingState =
   | 'created'
@@ -18,6 +19,8 @@ export type ProcessingState =
 export interface ApiError {
   code: string;
   message: string;
+  /** Zusätzliche Angaben je Fehlercode (ab 0.4.7), z. B. { serverVersion } bei character_version_stale */
+  details?: Record<string, unknown>;
 }
 
 export interface User {
@@ -66,6 +69,72 @@ export interface Member {
   deletedAt?: string | null;
   /** Hat die Kampagne verlassen oder wurde entfernt; bleibt wie ein gelöschtes Konto stehen (ab 0.4.5) */
   leftAt?: string | null;
+  /** Charakter aus der Sammlung der App (ab 0.4.7); null bei Altbestand und Gästen */
+  characterId?: string | null;
+  characterVersion?: number | null;
+  characterStatus?: CharacterStatus | null;
+  characterNickname?: string | null;
+}
+
+export type CharacterStatus = 'active' | 'retired' | 'deceased';
+
+/** Serverkopie der Stammdaten eines Charakters aus der Sammlung (ab 0.4.7) */
+export interface Character {
+  id: string;
+  version: number;
+  name: string;
+  nickname?: string | null;
+  summary?: string | null;
+  backstory?: string | null;
+  system?: string | null;
+  status: CharacterStatus;
+  statusChangedAt?: string | null;
+}
+
+/** Mitgebrachter Welt-Eintrag (ab 0.4.7) */
+export interface WorldEntryIn {
+  id: string;
+  version: number;
+  type: Exclude<EntryType, 'pc'>;
+  name: string;
+  summary: string;
+  secret: boolean;
+}
+
+export interface WorldEntryStatus {
+  id: string;
+  proposalId: string | null;
+  entryId: string | null;
+  state: 'pending' | 'accepted' | 'rejected' | 'unchanged';
+  serverVersion: number | null;
+}
+
+/** Abschrift der Erlebnisse eines Charakters in einer Kampagne (ab 0.4.7) */
+export interface Chronicle {
+  server: { name: string; url: string; version: string };
+  campaign: { id: string; title: string; system: string | null; language: 'de' | 'en'; createdAt: string; archivedAt: string | null };
+  member: { id: string; role: Role; joinedAt: string; leftAt: string | null; characterId: string | null; characterVersion: number | null };
+  sessions: {
+    id: string;
+    number: number;
+    title: string | null;
+    playedAt: string;
+    attended: boolean;
+    recap: { title: string; text: string; openThreads: string[]; publishedAt: string } | null;
+  }[];
+  mentions: { entryId: string; entryType: EntryType; name: string; summary: string; updatedAt: string }[];
+  broughtEntries: { originEntryId: string; entryId: string; entryType: EntryType; name: string; summary: string; hidden: boolean; updatedAt: string }[];
+  comments: { sessionId: string; text: string; createdAt: string }[];
+  takenAt: string;
+}
+
+/** Hinweis an die SL (ab 0.4.7) */
+export interface GmNotice {
+  id: string;
+  code: 'hidden_entries_for_newcomer' | string;
+  memberId: string | null;
+  entryIds: string[];
+  createdAt: string;
 }
 
 export interface CampaignSummary {
@@ -80,6 +149,8 @@ export interface CampaignSummary {
   memberCount: number;
   publishedSessionCount: number;
   pendingReviewCount: number;
+  /** Offene Vorschläge aus mitgebrachter Welt, nur für die SL (ab 0.4.7) */
+  openCharacterProposals?: number;
   lastPublishedAt: string | null;
   /** Mitgeliefertes Titelbild (ID aus src/covers/presets.tsx), ab 0.3.2 */
   coverPreset?: string | null;
@@ -118,6 +189,8 @@ export interface Campaign extends CampaignSummary {
   worldInfo?: string | null;
   /** Namenshilfe für die Transkription – nur SL (ab 0.4.6) */
   hotwords?: string[];
+  /** Hinweise an die SL (ab 0.4.7) */
+  gmNotices?: GmNotice[];
   members: Member[];
 }
 
@@ -177,6 +250,8 @@ export interface Speaker {
   suggestedMemberId: string | null;
   confidence: number;
   source: 'intro_round' | 'voice_match' | 'discord_track' | 'none';
+  /** Als Gast benannt (ab 0.4.7) */
+  assignedGuestName?: string | null;
 }
 
 export type ProposalDecision = 'open' | 'accepted' | 'rejected';
@@ -189,6 +264,12 @@ export interface Proposal {
   sessionId: string | null;
   /** Aus einer hochgeladenen Unterlage (ab 0.3.2) */
   documentId?: string | null;
+  /** Herkunft (ab 0.4.7); fehlt bei älteren Servern */
+  source?: 'session' | 'document' | 'character';
+  /** Bei source character: Charakter, Eintrag der App und einreichendes Mitglied (ab 0.4.7) */
+  originCharacterId?: string | null;
+  originEntryId?: string | null;
+  submittedByMemberId?: string | null;
   entryType: EntryType;
   /** create = neuer Eintrag, update = ergänzt, reveal = geheimer Eintrag ist am Tisch bekannt geworden (ab 0.3.5) */
   action: 'create' | 'update' | 'reveal';
@@ -353,7 +434,8 @@ export interface Comment {
   editedAt: string | null;
 }
 
-export type DocumentKind = 'handout' | 'gm' | 'mixed';
+/** character_sheet = Charakterbogen eines Mitglieds (ab 0.4.7; nur SL und Urheberin, keine Auswertung) */
+export type DocumentKind = 'handout' | 'gm' | 'mixed' | 'character_sheet';
 
 /** Hochgeladene SL-Unterlage (ab 0.3.2), nur für die SL sichtbar */
 export interface CampaignDocument {
@@ -371,6 +453,8 @@ export interface CampaignDocument {
   openProposalCount: number;
   /** Vorschlag für den Welt-Hintergrund aus den öffentlichen Teilen, falls sinnvoll */
   worldInfoSuggestion: string | null;
+  /** Wer hochgeladen hat (ab 0.4.7) */
+  uploadedByMemberId?: string | null;
   createdAt: string;
 }
 

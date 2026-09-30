@@ -13,7 +13,8 @@ export const ENTRY_KIND: Record<EntryType, string> = {
   quest: tk('Quest'),
   item: tk('Beute'),
   faction: tk('Fraktion'),
-  other: tk('Sonstiges')
+  other: tk('Sonstiges'),
+  pc: tk('Spielercharakter')
 };
 
 function formatStart(sec: number) {

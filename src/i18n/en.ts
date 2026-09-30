@@ -740,4 +740,6 @@ export const en: Record<string, string> = {
   "Hinzufügen": "Add",
   "{n} unsicheren Namen prüfen": "Check {n} uncertain name",
   "{n} unsichere Namen prüfen": "Check {n} uncertain names",
+  "Spielercharakter": "Player character",
+  "Charakterbogen": "Character sheet",
 };
