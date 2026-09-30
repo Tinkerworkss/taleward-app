@@ -681,7 +681,7 @@ export const en: Record<string, string> = {
   "Gelöscht werden alle Kapitel, Recaps, Aufnahmen, die Bibel, Kommentare und Bilder – für alle. Das lässt sich nicht rückgängig machen.": "All chapters, recaps, recordings, the bible, comments and images are deleted – for everyone. This can't be undone.",
   "Zur Bestätigung den Titel eingeben: {title}": "Type the title to confirm: {title}",
   "Kampagne löschen …": "Delete campaign …",
-  "Kapitel {n} verwerfen? Aufnahme, Transkript und Vorschläge werden gelöscht. Die Nummer wird wieder frei.": "Discard chapter {n}? The recording, transcript and suggestions are deleted. The number becomes free again.",
+  "Kapitel {n} verwerfen? Aufnahme, Transkript und Vorschläge werden gelöscht. Spätere Kapitel rücken um eins auf.": "Discard chapter {n}? The recording, transcript and suggestions are deleted. Later chapters move up by one.",
   "Kapitel verwerfen": "Discard chapter",
   "Abgeschlossen ({n})": "Completed ({n})",
   "Nicht mehr dabei": "No longer in the group",
