@@ -804,6 +804,51 @@ textarea {
   max-width: 68ch;
 }
 
+/* Gegenprüfung des Recaps (nur SL, ab Schnittstelle 0.4.6): Randmarke je Absatz, immer Symbol plus Wort */
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+.review-para {
+  border-left: 4px solid var(--line-strong);
+  padding-left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.review-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 13px/18px var(--font-sans);
+  color: var(--ink-muted);
+}
+.review-para.v-supported { border-left-color: var(--salbei); }
+.review-para.v-supported .review-mark { color: var(--salbei); }
+.review-para.v-partial { border-left-color: var(--messing); }
+.review-para.v-partial .review-mark { color: var(--ink); }
+.review-para.v-unsupported,
+.review-para.v-contradicted { border-left-color: var(--siegel); }
+.review-para.v-unsupported .review-mark,
+.review-para.v-contradicted .review-mark { color: var(--siegel-text); }
+.review-para.v-off_game,
+.review-para.v-unchecked { border-left-style: dashed; }
+.review-para summary { cursor: pointer; padding: 6px 0; color: var(--ink-muted); }
+.review-evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.transcript-line { margin: 0; padding: 6px 8px; border-radius: var(--radius-sm); }
+.transcript-line.hit { background: var(--paper-sunken); }
+
+/* Unsichere Namen (ab 0.4.6): Auswahl als Knöpfe */
+.term-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.term-choices .btn[aria-pressed='true'] { outline: 2px solid var(--salbei); outline-offset: 1px; }
+
 .thread {
   display: flex;
   gap: 10px;

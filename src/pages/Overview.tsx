@@ -16,7 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { Campaign, GameSystem, Member, SessionSummary, Usage } from '../api/types';
-import { IconInfo } from '../components/Icons';
+import { IconInfo, IconLock } from '../components/Icons';
 import { Divider, ErrorBox, Screen, rememberCampaign } from '../components/Screen';
 import { formatDateFull, formatDateTime } from '../components/format';
 import { CONSENT_STANDING, CONSENT_SUMMARY } from '../consent';
@@ -242,6 +242,14 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved: 
   const [primary, setPrimary] = useState(false);
   const [summaryProvider, setSummaryProvider] = useState<string | null>(null);
   const [allowSummary, setAllowSummary] = useState(!!campaign.allowCloudSummary);
+  // Namenshilfe (ab 0.4.6): nur vorhanden, wenn der Server sie der SL mitschickt
+  const [hotwords, setHotwords] = useState<string[]>(campaign.hotwords ?? []);
+  const [newWord, setNewWord] = useState('');
+  const addWord = () => {
+    const w = newWord.trim();
+    if (w && !hotwords.includes(w) && hotwords.length < 200) setHotwords([...hotwords, w]);
+    setNewWord('');
+  };
   useEffect(() => {
     if (editing) api.info().then((i) => {
       setExternalProvider(i.externalTranscription ?? null);
@@ -263,7 +271,8 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved: 
         description: description.trim(), worldInfo: world.trim(), language,
         system, systemName: system === 'other' ? systemName.trim() || null : null,
         ...(externalProvider ? { allowExternalTranscription: allowExternal } : {}),
-        ...(summaryProvider ? { allowCloudSummary: allowSummary } : {})
+        ...(summaryProvider ? { allowCloudSummary: allowSummary } : {}),
+        ...(campaign.hotwords !== undefined ? { hotwords } : {})
       }));
       setEditing(false);
     } catch (e) {
@@ -323,6 +332,28 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved: 
           <span style={{ flexShrink: 0, color: 'var(--ink-faint)' }}><IconInfo /></span>
           <span>{t('Sehen alle Spieler. Geheimes gehört in die Bibel.')}</span>
         </div>
+        {campaign.hotwords !== undefined && (
+          <div className="field">
+            <label htmlFor="w-hot" className="row" style={{ gap: 6 }}><IconLock size={14} /> {t('Namenshilfe für die Transkription')}</label>
+            <span className="muted small">{t('Namen und Begriffe aus euren Runden – damit erkennt die Transkription sie besser. Nur du siehst diese Liste.')}</span>
+            {hotwords.length > 0 && (
+              <div className="term-choices">
+                {hotwords.map((w) => (
+                  <button key={w} type="button" className="btn small outline" aria-label={t('{name} entfernen', { name: w })}
+                    onClick={() => setHotwords(hotwords.filter((x) => x !== w))}>
+                    {w} <span aria-hidden="true">×</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="row" style={{ gap: 8 }}>
+              <input id="w-hot" type="text" maxLength={40} value={newWord} placeholder={t('z. B. Kaltenfurt')}
+                onChange={(e) => setNewWord(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addWord(); } }} />
+              <button type="button" className="btn small outline" disabled={!newWord.trim() || hotwords.length >= 200} onClick={addWord}>{t('Hinzufügen')}</button>
+            </div>
+          </div>
+        )}
         <ErrorBox error={error} />
         <div className="row">
           <button type="button" className="btn small" disabled={busy} onClick={save}>{busy ? t('Speichern …') : t('Speichern')}</button>

@@ -24,6 +24,7 @@ import type {
   ProposalDecision,
   Recap,
   Correction,
+  TranscriptSegment,
   UncertainTerms,
   Session,
   SessionSummary,
@@ -302,6 +303,8 @@ function makeApi(conn: () => Connection) {
   recap: (sessionId: string) => request<Recap>('GET', `/sessions/${sessionId}/recap`),
   updateRecap: (sessionId: string, change: { title?: string; text?: string; openThreads?: string[] }) =>
     request<Recap>('PUT', `/sessions/${sessionId}/recap`, { body: change }),
+  /** Transkript (nur SL) – z. B. für „Im Transkript zeigen“ bei Belegstellen */
+  transcript: (sessionId: string) => request<TranscriptSegment[]>('GET', `/sessions/${sessionId}/transcript`),
   /** Unsicher erkannte Namen (nur SL, ab 0.4.6) */
   uncertainTerms: (sessionId: string) => request<UncertainTerms>('GET', `/sessions/${sessionId}/uncertain-terms`),
   /**

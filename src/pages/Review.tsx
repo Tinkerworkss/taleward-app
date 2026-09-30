@@ -9,6 +9,8 @@ import type { Member, Proposal, Recap, Session } from '../api/types';
 import { ProposalCard } from '../components/ProposalCard';
 import { IconLock } from '../components/Icons';
 import { ErrorBox, Screen } from '../components/Screen';
+import { RecapReviewView, reportSentence, reviewNeedsAttention } from '../components/RecapReviewView';
+import { namesSkipped, serverHasNameCheck } from './NamesPage';
 
 export function Review() {
   const { sessionId = '' } = useParams();
@@ -17,6 +19,9 @@ export function Review() {
   const [recap, setRecap] = useState<Recap | null>(null);
   const [proposals, setProposals] = useState<Proposal[] | null>(null);
   const [players, setPlayers] = useState<Member[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  // Unsichere Namen (ab 0.4.6): eigener Schritt davor; übersprungen → hier nur noch als Hinweis
+  const [termCount, setTermCount] = useState(0);
   const [note, setNote] = useState('');
   const [noteSaved, setNoteSaved] = useState(true);
   const [error, setError] = useState<unknown>(null);
@@ -30,13 +35,22 @@ export function Review() {
     Promise.all([api.session(sessionId), recapOrNull, api.proposals(sessionId), api.gmNote(sessionId)])
       .then(([s, r, p, n]) => {
         setSession(s);
-        api.campaign(s.campaignId).then((c) => setPlayers(c.members.filter((m) => m.role === 'player' && !isDeletedMember(m)))).catch(() => undefined);
+        api.campaign(s.campaignId).then((c) => {
+          setMembers(c.members);
+          setPlayers(c.members.filter((m) => m.role === 'player' && !isDeletedMember(m)));
+        }).catch(() => undefined);
         setRecap(r);
         setProposals(p);
         setNote(n.text);
       })
       .catch(setError);
-  }, [sessionId]);
+    if (serverHasNameCheck()) {
+      api.uncertainTerms(sessionId).then((u) => {
+        if (u.terms.length > 0 && !namesSkipped(sessionId)) navigate(p(`/s/${sessionId}/namen`), { replace: true });
+        else setTermCount(u.terms.length);
+      }).catch(() => undefined); // Namensprüfung ist freiwillig – Fehler hier stören das Prüfen nicht
+    }
+  }, [sessionId, navigate]);
 
 
   const saveNote = async () => {
@@ -80,7 +94,12 @@ export function Review() {
       {/* Breit: links Recap, Notiz und Veröffentlichen – rechts die Vorschläge; schmal in dieser Reihenfolge untereinander */}
       <div className="split">
       <div className="a">
-      {recap && <RecapEditor sessionId={sessionId} recap={recap} onSaved={setRecap} onError={setError} />}
+      {termCount > 0 && (
+        <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start' }} onClick={() => navigate(p(`/s/${sessionId}/namen`))}>
+          {tn(termCount, '{n} unsicheren Namen prüfen', '{n} unsichere Namen prüfen')}
+        </button>
+      )}
+      {recap && <RecapEditor sessionId={sessionId} recap={recap} members={members} onSaved={setRecap} onError={setError} />}
       </div>
 
       <div className="b">
@@ -146,9 +165,10 @@ export function Review() {
  * Recap-Entwurf vor dem Veröffentlichen: lesen und bei Bedarf korrigieren (Titel, Text, offene Fäden) –
  * z. B. falsch geschriebene Namen. Der Server nimmt Änderungen nur bis zum Veröffentlichen an.
  */
-function RecapEditor({ sessionId, recap, onSaved, onError }: {
+function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
   sessionId: string;
   recap: Recap;
+  members: Member[];
   onSaved: (r: Recap) => void;
   onError: (e: unknown) => void;
 }) {
@@ -198,12 +218,14 @@ function RecapEditor({ sessionId, recap, onSaved, onError }: {
   }
 
   return (
-    <details className="card">
+    <details className="card" open={reviewNeedsAttention(recap) || undefined}>
       <summary style={{ cursor: 'pointer', minHeight: 32 }}>
         <strong>{t('Recap-Entwurf:')}</strong> {recap.title}
+        {recap.review?.state === 'done' && <span className="muted small" style={{ display: 'block' }}>{reportSentence(recap)}</span>}
       </summary>
-      <div className="recap" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-        {recap.text.split(/\n\s*\n/).map((para, i) => <p key={i}>{para}</p>)}
+      {/* Mit Gegenprüfung (ab 0.4.6) je Absatz eine Randmarke mit Belegen, sonst der reine Text */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+        <RecapReviewView sessionId={sessionId} recap={recap} members={members} showReport={false} />
       </div>
       {recap.openThreads.length > 0 && (
         <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>

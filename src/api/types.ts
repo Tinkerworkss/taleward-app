@@ -265,6 +265,15 @@ export interface UncertainTerms {
   terms: UncertainTerm[];
 }
 
+/** Abschnitt des Transkripts (nur SL) */
+export interface TranscriptSegment {
+  start: number;
+  end: number;
+  speakerId: string;
+  memberId: string | null;
+  text: string;
+}
+
 export interface Correction {
   heard: string;
   /** Leer = Begriff so lassen, nur nicht mehr melden */

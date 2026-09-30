@@ -156,6 +156,32 @@ const uncertain: Record<string, UncertainTerm[]> = {
   ]
 };
 
+/** Kurzes Test-Transkript rund um die Belegstellen von Kapitel 13 (Korrekturen wirken auch hier) */
+const transcriptLines: [number, string | null, string][] = [
+  [318, 'm-jonas', 'Wie weit ist es noch?'],
+  [320, 'm-robin', 'Morgen früh sind wir in Kaltenfurth.'],
+  [1510, 'm-robin', 'Am Tor steht eine Frau in Rüstung, die Hand am Schwert.'],
+  [1520, 'm-robin', 'Ich bin Hauptfrau Dornfeld, und ihr kommt hier nicht rein.'],
+  [1530, 'm-jonas', 'Veira, lass sie durch.'],
+  [1790, 'm-robin', 'Ilsabeth, kannst du dir den Wachmann ansehen?'],
+  [1804, 'm-lea', 'Ich lege ihm die Hand auf die Stirn und spreche den Heilsegen.'],
+  [1812, 'm-robin', 'Danke, Ilsabeth.'],
+  [5390, 'm-robin', 'Das Wasser zieht sich zurück.'],
+  [5400, 'm-robin', 'Die Kapelle steht halb im Wasser.'],
+  [6190, 'm-sophie', 'Ich stecke den Schlüssel ein.'],
+  [6210, null, 'Das Zeichen ist dasselbe wie auf dem Siegel!'],
+  [6230, 'm-robin', 'Hört ihr das?']
+];
+const transcriptFixes: [string, string][] = [];
+
+function transcriptFor(sessionId: string) {
+  if (sessionId !== 's-c-grau-13') return [];
+  return transcriptLines.map(([start, memberId, text], i) => ({
+    start, end: start + 6, speakerId: `sp${i % 4}`, memberId,
+    text: transcriptFixes.reduce((acc, [a, b]) => replaceWord(acc, a, b), text)
+  }));
+}
+
 /** Recap so, wie diese Person ihn sehen darf: den Prüfteil bekommt nur die SL */
 function recapFor(r: Recap, gm: boolean): Recap {
   if (gm) return r;
@@ -293,7 +319,8 @@ export const handlers = [
       name: nachbar ? 'Chronik des Nachbarvereins' : 'Testserver',
       operator: nachbar ? 'Spielgemeinschaft Nachbarort e. V.' : 'Rollenspielverein (Testmodus)',
       contact: nachbar ? 'vorstand@nachbarverein.test' : null,
-      apiVersion: '0.3.9',
+      // Eingebauter Testserver kann alles bis 0.4.6; der Nachbarverein bleibt alt (zeigt das Ausblenden neuer Funktionen)
+      apiVersion: nachbar ? '0.3.9' : '0.4.6',
       registration: 'invite_only',
       authMethods: ['password'],
       privacyPolicyUrl: null,
@@ -1124,6 +1151,12 @@ export const handlers = [
     return HttpResponse.json(r);
   }),
 
+  http.get(`${B}/sessions/:id/transcript`, ({ params }) => {
+    const s = sessions.find((x) => x.id === params.id);
+    if (!s || !isGm(s.campaignId)) return err(404, 'not_found', 'Session nicht gefunden.');
+    return HttpResponse.json(transcriptFor(s.id));
+  }),
+
   http.get(`${B}/sessions/:id/uncertain-terms`, ({ params }) => {
     const s = sessions.find((x) => x.id === params.id);
     if (!s || !isGm(s.campaignId)) return err(404, 'not_found', 'Session nicht gefunden.');
@@ -1152,6 +1185,7 @@ export const handlers = [
       uncertain[s.id] = (uncertain[s.id] ?? []).filter((u) => u.heard !== k.heard);
       const correct = k.correct.trim();
       if (!correct) continue; // so lassen, nur nicht mehr melden
+      if (s.id === 's-c-grau-13') transcriptFixes.push([k.heard, correct]);
       if (r) r.text = replaceWord(r.text, k.heard, correct);
       for (const p of proposals.filter((x) => x.sessionId === s.id)) {
         p.title = replaceWord(p.title, k.heard, correct);

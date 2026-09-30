@@ -1,7 +1,7 @@
 import { confirmDialog } from '../components/confirm';
 import { IconInfo } from '../components/Icons';
 import { p } from '../api/connections';
-import { t, tk } from '../i18n';
+import { t, tk, tn } from '../i18n';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
@@ -158,12 +158,12 @@ export function Processing() {
       </ol>
 
       {/* Hinweis des Servers während des Wartens, z. B. „Zurzeit ist kein Worker … verbunden“ */}
-      {status?.message && !failed && (
+      {(status?.message || status?.estimatedSeconds) && !failed && (
         <div className="notice">
           <span style={{ flexShrink: 0, color: 'var(--ink-muted)' }}><IconInfo /></span>
           <span>
-            {statusText(status.message)}
-            {status.estimatedSeconds ? ' ' + t('Noch etwa {n} Minuten.', { n: Math.max(1, Math.round(status.estimatedSeconds / 60)) }) : ''}
+            {status.message ? statusText(status.message) + ' ' : ''}
+            {status.estimatedSeconds ? tn(Math.max(1, Math.round(status.estimatedSeconds / 60)), 'Noch etwa eine Minute.', 'Noch etwa {n} Minuten.') : ''}
           </span>
         </div>
       )}

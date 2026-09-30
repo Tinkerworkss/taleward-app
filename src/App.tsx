@@ -19,6 +19,7 @@ import { Processing } from './pages/Processing';
 import { RecapPage } from './pages/RecapPage';
 import { Recording } from './pages/Recording';
 import { Review } from './pages/Review';
+import { NamesPage } from './pages/NamesPage';
 import { Speakers } from './pages/Speakers';
 import { VoiceProfile } from './pages/VoiceProfile';
 import { WelcomePage } from './pages/WelcomePage';
@@ -71,6 +72,7 @@ function Routed() {
       <Route path="/v/:conn/k/:campaignId/unterlagen/:documentId" element={scoped(<DocumentReview />)} />
       <Route path="/v/:conn/s/:sessionId" element={scoped(<Processing />)} />
       <Route path="/v/:conn/s/:sessionId/stimmen" element={scoped(<Speakers />)} />
+      <Route path="/v/:conn/s/:sessionId/namen" element={scoped(<NamesPage />)} />
       <Route path="/v/:conn/s/:sessionId/freigabe" element={scoped(<Review />)} />
       <Route path="/v/:conn/s/:sessionId/recap" element={scoped(<RecapPage />)} />
       <Route path="/v/:conn/profil/stimme" element={scoped(<VoiceProfile />)} />
