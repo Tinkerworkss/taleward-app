@@ -1,0 +1,818 @@
+From b255651b08c8dee5231d3fb08826bb4192843880 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 30 Sep 2026 18:18:03 +0200
+Subject: [PATCH] =?UTF-8?q?Qualit=C3=A4tspr=C3=BCfung=20in=20der=20Oberfl?=
+ =?UTF-8?q?=C3=A4che:=20Recap-Pr=C3=BCfung,=20unsichere=20Namen,=20Namensh?=
+ =?UTF-8?q?ilfe?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Vorschläge prüfen: Der Recap-Entwurf zeigt bei Servern ab 0.4.6 den Prüfbericht als Satz und je Absatz
+  eine Randmarke mit Symbol und Wort (belegt, teilweise, nicht belegt, widerspricht, außerhalb des Spiels,
+  nicht geprüft). Aufklappbar mit Begründung und Belegen; „Im Transkript zeigen“ öffnet den Ausschnitt um
+  die Stelle. Hinweis, wenn die Prüfung von vor einer Änderung stammt. Klappt von selbst auf, wenn etwas
+  nicht belegt ist.
+- Neuer Schritt „Namen prüfen“ vor den Vorschlägen, nur wenn der Server unsichere Namen meldet: je Name
+  Vorschläge (Charakter, Bibel, Alternativen), eigene Schreibweise oder „so lassen“; übernehmen oder
+  übernehmen und neu transkribieren (mit Rückfrage, solange die Aufnahme da ist). Überspringbar; danach als
+  Knopf auf der Prüfseite.
+- Kampagne und Welt bearbeiten: Namenshilfe für die Transkription (nur SL), Einträge hinzufügen und entfernen.
+- Verarbeitung zeigt die geschätzte Restdauer auch während der erneuten Transkription.
+- Testserver: Server-Version 0.4.6, Transkript-Ausschnitte für Kapitel 13.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App.tsx                        |   2 +
+ src/api/client.ts                  |   3 +
+ src/api/types.ts                   |   9 ++
+ src/components/RecapReviewView.tsx | 154 ++++++++++++++++++++++++
+ src/i18n/en.ts                     |  48 ++++++++
+ src/mocks/handlers.ts              |  36 +++++-
+ src/pages/NamesPage.tsx            | 181 +++++++++++++++++++++++++++++
+ src/pages/Overview.tsx             |  35 +++++-
+ src/pages/Processing.tsx           |   8 +-
+ src/pages/Review.tsx               |  36 ++++--
+ src/theme.css                      |  45 +++++++
+ 11 files changed, 543 insertions(+), 14 deletions(-)
+ create mode 100644 src/components/RecapReviewView.tsx
+ create mode 100644 src/pages/NamesPage.tsx
+
+diff --git a/src/App.tsx b/src/App.tsx
+index caf2a60..dc547c3 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -19,6 +19,7 @@ import { Processing } from './pages/Processing';
+ import { RecapPage } from './pages/RecapPage';
+ import { Recording } from './pages/Recording';
+ import { Review } from './pages/Review';
++import { NamesPage } from './pages/NamesPage';
+ import { Speakers } from './pages/Speakers';
+ import { VoiceProfile } from './pages/VoiceProfile';
+ import { WelcomePage } from './pages/WelcomePage';
+@@ -71,6 +72,7 @@ function Routed() {
+       <Route path="/v/:conn/k/:campaignId/unterlagen/:documentId" element={scoped(<DocumentReview />)} />
+       <Route path="/v/:conn/s/:sessionId" element={scoped(<Processing />)} />
+       <Route path="/v/:conn/s/:sessionId/stimmen" element={scoped(<Speakers />)} />
++      <Route path="/v/:conn/s/:sessionId/namen" element={scoped(<NamesPage />)} />
+       <Route path="/v/:conn/s/:sessionId/freigabe" element={scoped(<Review />)} />
+       <Route path="/v/:conn/s/:sessionId/recap" element={scoped(<RecapPage />)} />
+       <Route path="/v/:conn/profil/stimme" element={scoped(<VoiceProfile />)} />
+diff --git a/src/api/client.ts b/src/api/client.ts
+index 19f4edd..426f821 100644
+--- a/src/api/client.ts
++++ b/src/api/client.ts
+@@ -24,6 +24,7 @@ import type {
+   ProposalDecision,
+   Recap,
+   Correction,
++  TranscriptSegment,
+   UncertainTerms,
+   Session,
+   SessionSummary,
+@@ -302,6 +303,8 @@ function makeApi(conn: () => Connection) {
+   recap: (sessionId: string) => request<Recap>('GET', `/sessions/${sessionId}/recap`),
+   updateRecap: (sessionId: string, change: { title?: string; text?: string; openThreads?: string[] }) =>
+     request<Recap>('PUT', `/sessions/${sessionId}/recap`, { body: change }),
++  /** Transkript (nur SL) – z. B. für „Im Transkript zeigen“ bei Belegstellen */
++  transcript: (sessionId: string) => request<TranscriptSegment[]>('GET', `/sessions/${sessionId}/transcript`),
+   /** Unsicher erkannte Namen (nur SL, ab 0.4.6) */
+   uncertainTerms: (sessionId: string) => request<UncertainTerms>('GET', `/sessions/${sessionId}/uncertain-terms`),
+   /**
+diff --git a/src/api/types.ts b/src/api/types.ts
+index 0cad0f0..6671567 100644
+--- a/src/api/types.ts
++++ b/src/api/types.ts
+@@ -265,6 +265,15 @@ export interface UncertainTerms {
+   terms: UncertainTerm[];
+ }
+ 
++/** Abschnitt des Transkripts (nur SL) */
++export interface TranscriptSegment {
++  start: number;
++  end: number;
++  speakerId: string;
++  memberId: string | null;
++  text: string;
++}
++
+ export interface Correction {
+   heard: string;
+   /** Leer = Begriff so lassen, nur nicht mehr melden */
+diff --git a/src/components/RecapReviewView.tsx b/src/components/RecapReviewView.tsx
+new file mode 100644
+index 0000000..14deb24
+--- /dev/null
++++ b/src/components/RecapReviewView.tsx
+@@ -0,0 +1,154 @@
++import { useState } from 'react';
++import { api } from '../api/client';
++import type { Member, Recap, ReviewVerdict, TranscriptSegment } from '../api/types';
++import { t } from '../i18n';
++import { Dialog } from './Dialog';
++import { IconCheck } from './Icons';
++import { ErrorBox } from './Screen';
++
++/*
++ * Gegenprüfung des Recap-Entwurfs (Schnittstelle 0.4.6, nur SL): Prüfbericht als Satz, je Absatz eine Randmarke
++ * mit Symbol und Wort, aufklappbar mit Begründung und Belegstellen. Farben nach Markenhandbuch:
++ * salbei = belegt, messing = teilweise (nur als Rand, nie als Schrift), siegel = nicht belegt / widersprochen,
++ * grau = außerhalb des Spiels / nicht geprüft.
++ */
++
++const svg = { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.75, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true };
++
++function VerdictIcon({ verdict }: { verdict: ReviewVerdict }) {
++  switch (verdict) {
++    case 'supported': return <IconCheck size={16} />;
++    case 'partial': return <svg {...svg}><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" /></svg>;
++    case 'unsupported': return <svg {...svg}><circle cx="12" cy="12" r="8" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.4M12 16.5v.01" /></svg>;
++    case 'contradicted': return <svg {...svg}><path d="M6 6l12 12M18 6 6 18" /></svg>;
++    case 'off_game': return <svg {...svg}><path d="M4 12h16" /><path d="M8 8l-4 4 4 4M16 8l4 4-4 4" /></svg>;
++    default: return <svg {...svg}><path d="M7 12h10" /></svg>;
++  }
++}
++
++function verdictLabel(v: ReviewVerdict): string {
++  switch (v) {
++    case 'supported': return t('Belegt');
++    case 'partial': return t('Teilweise belegt');
++    case 'unsupported': return t('Nicht belegt');
++    case 'contradicted': return t('Widerspricht dem Transkript');
++    case 'off_game': return t('Vermutlich außerhalb des Spiels');
++    default: return t('Nicht geprüft');
++  }
++}
++
++/** Sekunden → 1:02:03 bzw. 12:34 */
++export function clock(seconds: number): string {
++  const s = Math.max(0, Math.floor(seconds));
++  const h = Math.floor(s / 3600);
++  const m = Math.floor((s % 3600) / 60);
++  const sec = String(s % 60).padStart(2, '0');
++  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
++}
++
++/** Prüfbericht als ein Satz, z. B. „3 Absätze: 1 belegt, 1 teilweise, 1 nicht belegt.“ */
++export function reportSentence(recap: Recap): string | null {
++  const r = recap.review?.report;
++  if (!r) return null;
++  const parts = [
++    r.supported ? t('{n} belegt', { n: r.supported }) : '',
++    r.partial ? t('{n} teilweise', { n: r.partial }) : '',
++    r.unsupported ? t('{n} nicht belegt', { n: r.unsupported }) : '',
++    r.contradicted ? t('{n} widersprechen dem Transkript', { n: r.contradicted }) : '',
++    r.offGame ? t('{n} vermutlich außerhalb des Spiels', { n: r.offGame }) : ''
++  ].filter(Boolean);
++  return t('{total} Absätze geprüft: {parts}.', { total: r.total, parts: parts.join(', ') });
++}
++
++/** Braucht der Entwurf Aufmerksamkeit? (dann klappt die Ansicht von selbst auf) */
++export function reviewNeedsAttention(recap: Recap): boolean {
++  const r = recap.review;
++  return !!r && r.state === 'done' && r.paragraphs.some((p) => p.verdict === 'unsupported' || p.verdict === 'contradicted' || p.verdict === 'partial');
++}
++
++export function RecapReviewView({ sessionId, recap, members = [], showReport = true }: {
++  sessionId: string;
++  recap: Recap;
++  members?: Member[];
++  /** Prüfbericht-Satz zeigen (aus, wenn er schon in der Überschrift steht) */
++  showReport?: boolean;
++}) {
++  const review = recap.review;
++  const paragraphs = recap.text.split(/\n\s*\n/);
++  const [transcript, setTranscript] = useState<TranscriptSegment[] | null>(null);
++  const [excerptAt, setExcerptAt] = useState<number | null>(null);
++  const [error, setError] = useState<unknown>(null);
++
++  const speaker = (memberId: string | null) => {
++    const m = memberId ? members.find((x) => x.id === memberId) : undefined;
++    return m ? (m.role === 'gm' ? t('SL') : m.characterName || m.displayName) : null;
++  };
++
++  const showExcerpt = async (start: number) => {
++    setExcerptAt(start);
++    if (transcript) return;
++    try {
++      setTranscript(await api.transcript(sessionId));
++    } catch (e) {
++      setError(e);
++    }
++  };
++
++  if (!review || review.state === 'skipped') {
++    return <div className="recap" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{paragraphs.map((para, i) => <p key={i}>{para}</p>)}</div>;
++  }
++
++  const excerpt = excerptAt === null || !transcript ? [] : transcript.filter((s) => s.end >= excerptAt - 60 && s.start <= excerptAt + 60);
++  const closest = excerpt.reduce<TranscriptSegment | null>((best, s) => (!best || Math.abs(s.start - excerptAt!) < Math.abs(best.start - excerptAt!) ? s : best), null);
++
++  return (
++    <div className="review">
++      {review.state === 'pending' && <p className="muted small" style={{ margin: 0 }}>{t('Die Gegenprüfung läuft noch.')}</p>}
++      {showReport && review.state === 'done' && <p className="small" style={{ margin: 0 }}><strong>{reportSentence(recap)}</strong></p>}
++      {review.stale && <p className="muted small" style={{ margin: 0 }}>{t('Die Prüfung ist von vor deiner Änderung – die Zuordnung der Absätze kann verrutscht sein.')}</p>}
++      {review.revised && <p className="muted small" style={{ margin: 0 }}>{t('Beanstandete Absätze wurden einmal neu geschrieben.')}</p>}
++
++      {paragraphs.map((para, i) => {
++        const info = review.paragraphs.find((x) => x.index === i);
++        const verdict: ReviewVerdict = info?.verdict ?? 'unchecked';
++        const hasDetails = !!info && (!!info.note || info.evidence.length > 0);
++        return (
++          <div key={i} className={`review-para v-${verdict}`}>
++            <span className="review-mark"><VerdictIcon verdict={verdict} /> {verdictLabel(verdict)}</span>
++            <div className="recap"><p>{para}</p></div>
++            {hasDetails && (
++              <details>
++                <summary className="small">{info!.evidence.length ? t('Belege ({n})', { n: info!.evidence.length }) : t('Begründung')}</summary>
++                {info!.note && <p className="small" style={{ margin: '6px 0' }}>{info!.note}</p>}
++                {info!.evidence.map((ev, k) => (
++                  <div key={k} className="review-evidence">
++                    <span className="small">„{ev.quote}“</span>
++                    <span className="row wrap small muted" style={{ gap: 8 }}>
++                      <span>{clock(ev.start)}{speaker(ev.speakerMemberId) ? ' · ' + speaker(ev.speakerMemberId) : ''}</span>
++                      <button type="button" className="btn small ghost" onClick={() => showExcerpt(ev.start)}>{t('Im Transkript zeigen')}</button>
++                    </span>
++                  </div>
++                ))}
++              </details>
++            )}
++          </div>
++        );
++      })}
++
++      {excerptAt !== null && (
++        <Dialog title={t('Transkript um {time}', { time: clock(excerptAt) })} onClose={() => setExcerptAt(null)}>
++          <ErrorBox error={error} />
++          {!transcript && !error && <p className="muted">{t('Wird geladen …')}</p>}
++          {transcript && excerpt.length === 0 && <p className="muted">{t('An dieser Stelle ist das Transkript leer.')}</p>}
++          {excerpt.map((s) => (
++            <p key={s.start} className={s === closest ? 'transcript-line hit' : 'transcript-line'}>
++              <span className="muted small">{clock(s.start)}{speaker(s.memberId) ? ' · ' + speaker(s.memberId) : ''}</span>
++              <br />{s.text}
++            </p>
++          ))}
++          <button type="button" className="btn small outline" onClick={() => setExcerptAt(null)}>{t('Schließen')}</button>
++        </Dialog>
++      )}
++    </div>
++  );
++}
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index cc9aec9..7dc6332 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -691,5 +691,53 @@ export const en: Record<string, string> = {
+   "Der Recap wird mit dem Transkript gegengeprüft …": "Checking the recap against the transcript …",
+   "Unbelegte Stellen werden nachgebessert …": "Revising passages without evidence …",
+   "Noch etwa {n} Minuten.": "About {n} minutes left.",
++  "Noch etwa eine Minute.": "About a minute left.",
+   "Beleg im Transkript nicht gefunden": "Evidence not found in the transcript",
++  "Belegt": "Supported",
++  "Teilweise belegt": "Partly supported",
++  "Nicht belegt": "Not supported",
++  "Widerspricht dem Transkript": "Contradicts the transcript",
++  "Vermutlich außerhalb des Spiels": "Probably out of game",
++  "Nicht geprüft": "Not checked",
++  "{n} belegt": "{n} supported",
++  "{n} teilweise": "{n} partly",
++  "{n} nicht belegt": "{n} not supported",
++  "{n} widersprechen dem Transkript": "{n} contradict the transcript",
++  "{n} vermutlich außerhalb des Spiels": "{n} probably out of game",
++  "{total} Absätze geprüft: {parts}.": "{total} paragraphs checked: {parts}.",
++  "SL": "GM",
++  "Die Gegenprüfung läuft noch.": "The check against the transcript is still running.",
++  "Die Prüfung ist von vor deiner Änderung – die Zuordnung der Absätze kann verrutscht sein.": "The check is from before your edit – paragraphs may no longer line up.",
++  "Beanstandete Absätze wurden einmal neu geschrieben.": "Flagged paragraphs were rewritten once.",
++  "Belege ({n})": "Evidence ({n})",
++  "Begründung": "Reason",
++  "Im Transkript zeigen": "Show in transcript",
++  "Transkript um {time}": "Transcript at {time}",
++  "Wird geladen …": "Loading …",
++  "An dieser Stelle ist das Transkript leer.": "The transcript is empty at this point.",
++  "Neu transkribieren? Recap und Vorschläge entstehen danach neu – deine bisherigen Entscheidungen und Änderungen am Recap gehen dabei verloren.": "Transcribe again? The recap and suggestions will be created anew – your decisions and edits to the recap so far will be lost.",
++  "Neu transkribieren": "Transcribe again",
++  "Namen prüfen": "Check names",
++  "Bei {n} Namen war sich die Transkription unsicher. Wähle die richtige Schreibweise – sie wird in Transkript, Recap und Vorschlägen ersetzt.": "The transcription was unsure about {n} name. Pick the right spelling – it will be replaced in the transcript, recap and suggestions.",
++  "Bei {n} Namen war sich die Transkription unsicher. Wähle die richtigen Schreibweisen – sie werden in Transkript, Recap und Vorschlägen ersetzt.": "The transcription was unsure about {n} names. Pick the right spellings – they will be replaced in the transcript, recap and suggestions.",
++  "Einmal gehört": "Heard once",
++  "{n}-mal gehört": "Heard {n} times",
++  "Schreibweise für {name}": "Spelling for {name}",
++  "Charakter": "Character",
++  "So lassen": "Keep as is",
++  "Andere Schreibweise": "Other spelling",
++  "Keine unsicheren Namen – alles klar.": "No uncertain names – all good.",
++  "Korrigierte Namen als Namenshilfe der Kampagne merken": "Remember corrected names as name hints for the campaign",
++  "Übernehmen und neu transkribieren": "Apply and transcribe again",
++  "Neu transkribieren hört mit den richtigen Namen noch einmal genau hin. Das dauert etwa so lange wie beim ersten Mal.": "Transcribing again listens once more with the right names. It takes about as long as the first time.",
++  "Die Aufnahme ist noch bis {date} da.": "The recording is kept until {date}.",
++  "Die Aufnahme ist schon gelöscht – korrigiert wird nur die Schreibweise im Text.": "The recording has already been deleted – only the spelling in the text will be corrected.",
++  "Weiter zu den Vorschlägen": "Continue to the suggestions",
++  "Überspringen": "Skip",
++  "Namenshilfe für die Transkription": "Name hints for transcription",
++  "Namen und Begriffe aus euren Runden – damit erkennt die Transkription sie besser. Nur du siehst diese Liste.": "Names and terms from your sessions – they help the transcription recognise them. Only you can see this list.",
++  "z. B. Kaltenfurt": "e.g. Kaltenfurt",
++  "Hinzufügen": "Add",
++  "{n} unsicheren Namen prüfen": "Check {n} uncertain name",
++  "{n} unsichere Namen prüfen": "Check {n} uncertain names",
+ };
+diff --git a/src/mocks/handlers.ts b/src/mocks/handlers.ts
+index 8d111b2..9124a86 100644
+--- a/src/mocks/handlers.ts
++++ b/src/mocks/handlers.ts
+@@ -156,6 +156,32 @@ const uncertain: Record<string, UncertainTerm[]> = {
+   ]
+ };
+ 
++/** Kurzes Test-Transkript rund um die Belegstellen von Kapitel 13 (Korrekturen wirken auch hier) */
++const transcriptLines: [number, string | null, string][] = [
++  [318, 'm-jonas', 'Wie weit ist es noch?'],
++  [320, 'm-robin', 'Morgen früh sind wir in Kaltenfurth.'],
++  [1510, 'm-robin', 'Am Tor steht eine Frau in Rüstung, die Hand am Schwert.'],
++  [1520, 'm-robin', 'Ich bin Hauptfrau Dornfeld, und ihr kommt hier nicht rein.'],
++  [1530, 'm-jonas', 'Veira, lass sie durch.'],
++  [1790, 'm-robin', 'Ilsabeth, kannst du dir den Wachmann ansehen?'],
++  [1804, 'm-lea', 'Ich lege ihm die Hand auf die Stirn und spreche den Heilsegen.'],
++  [1812, 'm-robin', 'Danke, Ilsabeth.'],
++  [5390, 'm-robin', 'Das Wasser zieht sich zurück.'],
++  [5400, 'm-robin', 'Die Kapelle steht halb im Wasser.'],
++  [6190, 'm-sophie', 'Ich stecke den Schlüssel ein.'],
++  [6210, null, 'Das Zeichen ist dasselbe wie auf dem Siegel!'],
++  [6230, 'm-robin', 'Hört ihr das?']
++];
++const transcriptFixes: [string, string][] = [];
++
++function transcriptFor(sessionId: string) {
++  if (sessionId !== 's-c-grau-13') return [];
++  return transcriptLines.map(([start, memberId, text], i) => ({
++    start, end: start + 6, speakerId: `sp${i % 4}`, memberId,
++    text: transcriptFixes.reduce((acc, [a, b]) => replaceWord(acc, a, b), text)
++  }));
++}
++
+ /** Recap so, wie diese Person ihn sehen darf: den Prüfteil bekommt nur die SL */
+ function recapFor(r: Recap, gm: boolean): Recap {
+   if (gm) return r;
+@@ -293,7 +319,8 @@ export const handlers = [
+       name: nachbar ? 'Chronik des Nachbarvereins' : 'Testserver',
+       operator: nachbar ? 'Spielgemeinschaft Nachbarort e. V.' : 'Rollenspielverein (Testmodus)',
+       contact: nachbar ? 'vorstand@nachbarverein.test' : null,
+-      apiVersion: '0.3.9',
++      // Eingebauter Testserver kann alles bis 0.4.6; der Nachbarverein bleibt alt (zeigt das Ausblenden neuer Funktionen)
++      apiVersion: nachbar ? '0.3.9' : '0.4.6',
+       registration: 'invite_only',
+       authMethods: ['password'],
+       privacyPolicyUrl: null,
+@@ -1124,6 +1151,12 @@ export const handlers = [
+     return HttpResponse.json(r);
+   }),
+ 
++  http.get(`${B}/sessions/:id/transcript`, ({ params }) => {
++    const s = sessions.find((x) => x.id === params.id);
++    if (!s || !isGm(s.campaignId)) return err(404, 'not_found', 'Session nicht gefunden.');
++    return HttpResponse.json(transcriptFor(s.id));
++  }),
++
+   http.get(`${B}/sessions/:id/uncertain-terms`, ({ params }) => {
+     const s = sessions.find((x) => x.id === params.id);
+     if (!s || !isGm(s.campaignId)) return err(404, 'not_found', 'Session nicht gefunden.');
+@@ -1152,6 +1185,7 @@ export const handlers = [
+       uncertain[s.id] = (uncertain[s.id] ?? []).filter((u) => u.heard !== k.heard);
+       const correct = k.correct.trim();
+       if (!correct) continue; // so lassen, nur nicht mehr melden
++      if (s.id === 's-c-grau-13') transcriptFixes.push([k.heard, correct]);
+       if (r) r.text = replaceWord(r.text, k.heard, correct);
+       for (const p of proposals.filter((x) => x.sessionId === s.id)) {
+         p.title = replaceWord(p.title, k.heard, correct);
+diff --git a/src/pages/NamesPage.tsx b/src/pages/NamesPage.tsx
+new file mode 100644
+index 0000000..2614911
+--- /dev/null
++++ b/src/pages/NamesPage.tsx
+@@ -0,0 +1,181 @@
++import { useEffect, useState } from 'react';
++import { useNavigate, useParams } from 'react-router-dom';
++import { api } from '../api/client';
++import { currentConnection, currentConnectionId, p, versionLess } from '../api/connections';
++import type { Correction, Member, Session, UncertainTerms } from '../api/types';
++import { confirmDialog } from '../components/confirm';
++import { formatDate } from '../components/format';
++import { IconLock } from '../components/Icons';
++import { clock } from '../components/RecapReviewView';
++import { ErrorBox, Screen, sessionStorageGet, sessionStorageSet } from '../components/Screen';
++import { t, tn } from '../i18n';
++
++/** Kann der Server unsichere Namen melden? (Schnittstelle ab 0.4.6) */
++export function serverHasNameCheck(): boolean {
++  try {
++    const v = currentConnection().apiVersion;
++    return !!v && !versionLess(v, '0.4.6');
++  } catch {
++    return false;
++  }
++}
++
++const skipKey = (sessionId: string) => `names-skipped.${currentConnectionId() ?? '-'}.${sessionId}`;
++export const namesSkipped = (sessionId: string) => sessionStorageGet(skipKey(sessionId)) === '1';
++const markSkipped = (sessionId: string) => sessionStorageSet(skipKey(sessionId), '1');
++
++/**
++ * Unsicher erkannte Namen (Schnittstelle 0.4.6, nur SL): eigener Schritt vor „Vorschläge prüfen“, nur wenn der Server
++ * etwas meldet. Je Begriff eine Schreibweise wählen oder „so lassen“; optional mit den korrigierten Namen neu
++ * transkribieren, solange die Aufnahme noch da ist.
++ */
++export function NamesPage() {
++  const { sessionId = '' } = useParams();
++  const navigate = useNavigate();
++  const [session, setSession] = useState<Session | null>(null);
++  const [members, setMembers] = useState<Member[]>([]);
++  const [entryNames, setEntryNames] = useState<Record<string, string>>({});
++  const [data, setData] = useState<UncertainTerms | null>(null);
++  // heard → gewählte Schreibweise; '' = so lassen; fehlt = noch nicht entschieden
++  const [choice, setChoice] = useState<Record<string, string>>({});
++  const [custom, setCustom] = useState<Record<string, string>>({});
++  const [remember, setRemember] = useState(true);
++  const [busy, setBusy] = useState(false);
++  const [error, setError] = useState<unknown>(null);
++
++  useEffect(() => {
++    Promise.all([api.session(sessionId), api.uncertainTerms(sessionId)])
++      .then(([s, u]) => {
++        setSession(s);
++        setData(u);
++        api.campaign(s.campaignId).then((c) => setMembers(c.members)).catch(() => undefined);
++        if (u.terms.some((x) => x.suggestedEntryId)) {
++          api.entries(s.campaignId).then((list) => setEntryNames(Object.fromEntries(list.map((e) => [e.id, e.name])))).catch(() => undefined);
++        }
++      })
++      .catch(setError);
++  }, [sessionId]);
++
++  const toReview = () => navigate(p(`/s/${sessionId}/freigabe`), { replace: true });
++  const skip = () => { markSkipped(sessionId); toReview(); };
++
++  const corrections = (): Correction[] => Object.entries(choice).map(([heard, correct]) => ({ heard, correct, addToHotwords: remember && !!correct }));
++  const decided = Object.keys(choice).length;
++  const canRetranscribe = !!data?.audioAvailable && (data.retranscribesLeft ?? 1) > 0;
++
++  const apply = async (retranscribe: boolean) => {
++    if (retranscribe && !(await confirmDialog(
++      t('Neu transkribieren? Recap und Vorschläge entstehen danach neu – deine bisherigen Entscheidungen und Änderungen am Recap gehen dabei verloren.'),
++      { confirmLabel: t('Neu transkribieren') }))) return;
++    setBusy(true);
++    setError(null);
++    try {
++      const r = await api.corrections(sessionId, corrections(), retranscribe);
++      markSkipped(sessionId); // Rest nicht noch einmal automatisch zeigen
++      if ('status' in r) navigate(p(`/s/${sessionId}`), { replace: true });
++      else toReview();
++    } catch (e) {
++      setError(e);
++      setBusy(false);
++    }
++  };
++
++  const nameOf = (memberId: string | null) => {
++    const m = memberId ? members.find((x) => x.id === memberId) : undefined;
++    return m?.characterName || null;
++  };
++
++  return (
++    <Screen
++      back
++      overline={<span className="row" style={{ gap: 6 }}><IconLock size={14} /> {session ? t('Kapitel {n}', { n: session.number }) + ' · ' + t('nur für dich') : t('Nur für dich')}</span>}
++      title={t('Namen prüfen')}
++    >
++      <ErrorBox error={error} />
++      {data && (
++        <p className="muted" style={{ margin: 0 }}>
++          {tn(data.terms.length,
++            'Bei {n} Namen war sich die Transkription unsicher. Wähle die richtige Schreibweise – sie wird in Transkript, Recap und Vorschlägen ersetzt.',
++            'Bei {n} Namen war sich die Transkription unsicher. Wähle die richtigen Schreibweisen – sie werden in Transkript, Recap und Vorschlägen ersetzt.')}
++        </p>
++      )}
++
++      {data?.terms.map((term) => {
++        const options = [
++          ...(nameOf(term.suggestedMemberId) ? [nameOf(term.suggestedMemberId)!] : []),
++          ...(term.suggestedEntryId && entryNames[term.suggestedEntryId] ? [entryNames[term.suggestedEntryId]] : []),
++          ...term.alternatives
++        ].filter((x, i, all) => x !== term.heard && all.indexOf(x) === i);
++        const chosen = choice[term.heard];
++        const set = (value: string | undefined) => setChoice((c) => {
++          const next = { ...c };
++          if (value === undefined) delete next[term.heard]; else next[term.heard] = value;
++          return next;
++        });
++        return (
++          <section key={term.id} className="card">
++            <div className="row between wrap" style={{ gap: 8 }}>
++              <strong style={{ fontFamily: 'var(--display)', fontSize: 20 }}>{term.heard}</strong>
++              <span className="muted small">{tn(term.occurrences, 'Einmal gehört', '{n}-mal gehört')}</span>
++            </div>
++            {term.examples.map((ex) => (
++              <p key={ex.start} className="small" style={{ margin: 0 }}>
++                <span className="muted">{clock(ex.start)}</span> „{ex.quote}“
++              </p>
++            ))}
++            <div className="term-choices" role="group" aria-label={t('Schreibweise für {name}', { name: term.heard })}>
++              {options.map((o) => (
++                <button key={o} type="button" className="btn small outline" aria-pressed={chosen === o} onClick={() => set(chosen === o ? undefined : o)}>
++                  {o}{o === nameOf(term.suggestedMemberId) ? ' · ' + t('Charakter') : o === entryNames[term.suggestedEntryId ?? ''] ? ' · ' + t('Bibel') : ''}
++                </button>
++              ))}
++              <button type="button" className="btn small ghost" aria-pressed={chosen === ''} onClick={() => set(chosen === '' ? undefined : '')}>
++                {t('So lassen')}
++              </button>
++            </div>
++            <div className="field" style={{ margin: 0 }}>
++              <label htmlFor={`term-${term.id}`} className="small">{t('Andere Schreibweise')}</label>
++              <input id={`term-${term.id}`} type="text" maxLength={40} value={custom[term.heard] ?? ''}
++                onChange={(e) => {
++                  const v = e.target.value;
++                  setCustom((c) => ({ ...c, [term.heard]: v }));
++                  set(v.trim() ? v.trim() : undefined);
++                }} />
++            </div>
++          </section>
++        );
++      })}
++
++      {data && data.terms.length === 0 && <div className="empty">{t('Keine unsicheren Namen – alles klar.')}</div>}
++
++      {data && data.terms.length > 0 && (
++        <>
++          <label className="check">
++            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
++            <span>{t('Korrigierte Namen als Namenshilfe der Kampagne merken')}</span>
++          </label>
++          <button type="button" className="btn" disabled={busy || decided === 0} onClick={() => apply(false)}>
++            {t('Übernehmen')}
++          </button>
++          {canRetranscribe && (
++            <>
++              <button type="button" className="btn outline" disabled={busy || decided === 0} onClick={() => apply(true)}>
++                {t('Übernehmen und neu transkribieren')}
++              </button>
++              <p className="muted small" style={{ margin: 0 }}>
++                {t('Neu transkribieren hört mit den richtigen Namen noch einmal genau hin. Das dauert etwa so lange wie beim ersten Mal.')}
++                {data.audioDeletesAt ? ' ' + t('Die Aufnahme ist noch bis {date} da.', { date: formatDate(data.audioDeletesAt, 'long') }) : ''}
++              </p>
++            </>
++          )}
++          {!data.audioAvailable && (
++            <p className="muted small" style={{ margin: 0 }}>{t('Die Aufnahme ist schon gelöscht – korrigiert wird nur die Schreibweise im Text.')}</p>
++          )}
++        </>
++      )}
++      <button type="button" className="btn ghost" disabled={busy} onClick={skip}>
++        {data && data.terms.length === 0 ? t('Weiter zu den Vorschlägen') : t('Überspringen')}
++      </button>
++    </Screen>
++  );
++}
+diff --git a/src/pages/Overview.tsx b/src/pages/Overview.tsx
+index 2367b35..74b7caf 100644
+--- a/src/pages/Overview.tsx
++++ b/src/pages/Overview.tsx
+@@ -16,7 +16,7 @@ import { useNavigate } from 'react-router-dom';
+ import { api } from '../api/client';
+ import { useAuth } from '../auth/AuthContext';
+ import type { Campaign, GameSystem, Member, SessionSummary, Usage } from '../api/types';
+-import { IconInfo } from '../components/Icons';
++import { IconInfo, IconLock } from '../components/Icons';
+ import { Divider, ErrorBox, Screen, rememberCampaign } from '../components/Screen';
+ import { formatDateFull, formatDateTime } from '../components/format';
+ import { CONSENT_STANDING, CONSENT_SUMMARY } from '../consent';
+@@ -242,6 +242,14 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved:
+   const [primary, setPrimary] = useState(false);
+   const [summaryProvider, setSummaryProvider] = useState<string | null>(null);
+   const [allowSummary, setAllowSummary] = useState(!!campaign.allowCloudSummary);
++  // Namenshilfe (ab 0.4.6): nur vorhanden, wenn der Server sie der SL mitschickt
++  const [hotwords, setHotwords] = useState<string[]>(campaign.hotwords ?? []);
++  const [newWord, setNewWord] = useState('');
++  const addWord = () => {
++    const w = newWord.trim();
++    if (w && !hotwords.includes(w) && hotwords.length < 200) setHotwords([...hotwords, w]);
++    setNewWord('');
++  };
+   useEffect(() => {
+     if (editing) api.info().then((i) => {
+       setExternalProvider(i.externalTranscription ?? null);
+@@ -263,7 +271,8 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved:
+         description: description.trim(), worldInfo: world.trim(), language,
+         system, systemName: system === 'other' ? systemName.trim() || null : null,
+         ...(externalProvider ? { allowExternalTranscription: allowExternal } : {}),
+-        ...(summaryProvider ? { allowCloudSummary: allowSummary } : {})
++        ...(summaryProvider ? { allowCloudSummary: allowSummary } : {}),
++        ...(campaign.hotwords !== undefined ? { hotwords } : {})
+       }));
+       setEditing(false);
+     } catch (e) {
+@@ -323,6 +332,28 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved:
+           <span style={{ flexShrink: 0, color: 'var(--ink-faint)' }}><IconInfo /></span>
+           <span>{t('Sehen alle Spieler. Geheimes gehört in die Bibel.')}</span>
+         </div>
++        {campaign.hotwords !== undefined && (
++          <div className="field">
++            <label htmlFor="w-hot" className="row" style={{ gap: 6 }}><IconLock size={14} /> {t('Namenshilfe für die Transkription')}</label>
++            <span className="muted small">{t('Namen und Begriffe aus euren Runden – damit erkennt die Transkription sie besser. Nur du siehst diese Liste.')}</span>
++            {hotwords.length > 0 && (
++              <div className="term-choices">
++                {hotwords.map((w) => (
++                  <button key={w} type="button" className="btn small outline" aria-label={t('{name} entfernen', { name: w })}
++                    onClick={() => setHotwords(hotwords.filter((x) => x !== w))}>
++                    {w} <span aria-hidden="true">×</span>
++                  </button>
++                ))}
++              </div>
++            )}
++            <div className="row" style={{ gap: 8 }}>
++              <input id="w-hot" type="text" maxLength={40} value={newWord} placeholder={t('z. B. Kaltenfurt')}
++                onChange={(e) => setNewWord(e.target.value)}
++                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addWord(); } }} />
++              <button type="button" className="btn small outline" disabled={!newWord.trim() || hotwords.length >= 200} onClick={addWord}>{t('Hinzufügen')}</button>
++            </div>
++          </div>
++        )}
+         <ErrorBox error={error} />
+         <div className="row">
+           <button type="button" className="btn small" disabled={busy} onClick={save}>{busy ? t('Speichern …') : t('Speichern')}</button>
+diff --git a/src/pages/Processing.tsx b/src/pages/Processing.tsx
+index ef19b6f..21a9b3b 100644
+--- a/src/pages/Processing.tsx
++++ b/src/pages/Processing.tsx
+@@ -1,7 +1,7 @@
+ import { confirmDialog } from '../components/confirm';
+ import { IconInfo } from '../components/Icons';
+ import { p } from '../api/connections';
+-import { t, tk } from '../i18n';
++import { t, tk, tn } from '../i18n';
+ import { useEffect, useState } from 'react';
+ import { Link, useParams } from 'react-router-dom';
+ import { useNavigate } from 'react-router-dom';
+@@ -158,12 +158,12 @@ export function Processing() {
+       </ol>
+ 
+       {/* Hinweis des Servers während des Wartens, z. B. „Zurzeit ist kein Worker … verbunden“ */}
+-      {status?.message && !failed && (
++      {(status?.message || status?.estimatedSeconds) && !failed && (
+         <div className="notice">
+           <span style={{ flexShrink: 0, color: 'var(--ink-muted)' }}><IconInfo /></span>
+           <span>
+-            {statusText(status.message)}
+-            {status.estimatedSeconds ? ' ' + t('Noch etwa {n} Minuten.', { n: Math.max(1, Math.round(status.estimatedSeconds / 60)) }) : ''}
++            {status.message ? statusText(status.message) + ' ' : ''}
++            {status.estimatedSeconds ? tn(Math.max(1, Math.round(status.estimatedSeconds / 60)), 'Noch etwa eine Minute.', 'Noch etwa {n} Minuten.') : ''}
+           </span>
+         </div>
+       )}
+diff --git a/src/pages/Review.tsx b/src/pages/Review.tsx
+index d1dc2a0..79ef8dd 100644
+--- a/src/pages/Review.tsx
++++ b/src/pages/Review.tsx
+@@ -9,6 +9,8 @@ import type { Member, Proposal, Recap, Session } from '../api/types';
+ import { ProposalCard } from '../components/ProposalCard';
+ import { IconLock } from '../components/Icons';
+ import { ErrorBox, Screen } from '../components/Screen';
++import { RecapReviewView, reportSentence, reviewNeedsAttention } from '../components/RecapReviewView';
++import { namesSkipped, serverHasNameCheck } from './NamesPage';
+ 
+ export function Review() {
+   const { sessionId = '' } = useParams();
+@@ -17,6 +19,9 @@ export function Review() {
+   const [recap, setRecap] = useState<Recap | null>(null);
+   const [proposals, setProposals] = useState<Proposal[] | null>(null);
+   const [players, setPlayers] = useState<Member[]>([]);
++  const [members, setMembers] = useState<Member[]>([]);
++  // Unsichere Namen (ab 0.4.6): eigener Schritt davor; übersprungen → hier nur noch als Hinweis
++  const [termCount, setTermCount] = useState(0);
+   const [note, setNote] = useState('');
+   const [noteSaved, setNoteSaved] = useState(true);
+   const [error, setError] = useState<unknown>(null);
+@@ -30,13 +35,22 @@ export function Review() {
+     Promise.all([api.session(sessionId), recapOrNull, api.proposals(sessionId), api.gmNote(sessionId)])
+       .then(([s, r, p, n]) => {
+         setSession(s);
+-        api.campaign(s.campaignId).then((c) => setPlayers(c.members.filter((m) => m.role === 'player' && !isDeletedMember(m)))).catch(() => undefined);
++        api.campaign(s.campaignId).then((c) => {
++          setMembers(c.members);
++          setPlayers(c.members.filter((m) => m.role === 'player' && !isDeletedMember(m)));
++        }).catch(() => undefined);
+         setRecap(r);
+         setProposals(p);
+         setNote(n.text);
+       })
+       .catch(setError);
+-  }, [sessionId]);
++    if (serverHasNameCheck()) {
++      api.uncertainTerms(sessionId).then((u) => {
++        if (u.terms.length > 0 && !namesSkipped(sessionId)) navigate(p(`/s/${sessionId}/namen`), { replace: true });
++        else setTermCount(u.terms.length);
++      }).catch(() => undefined); // Namensprüfung ist freiwillig – Fehler hier stören das Prüfen nicht
++    }
++  }, [sessionId, navigate]);
+ 
+ 
+   const saveNote = async () => {
+@@ -80,7 +94,12 @@ export function Review() {
+       {/* Breit: links Recap, Notiz und Veröffentlichen – rechts die Vorschläge; schmal in dieser Reihenfolge untereinander */}
+       <div className="split">
+       <div className="a">
+-      {recap && <RecapEditor sessionId={sessionId} recap={recap} onSaved={setRecap} onError={setError} />}
++      {termCount > 0 && (
++        <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start' }} onClick={() => navigate(p(`/s/${sessionId}/namen`))}>
++          {tn(termCount, '{n} unsicheren Namen prüfen', '{n} unsichere Namen prüfen')}
++        </button>
++      )}
++      {recap && <RecapEditor sessionId={sessionId} recap={recap} members={members} onSaved={setRecap} onError={setError} />}
+       </div>
+ 
+       <div className="b">
+@@ -146,9 +165,10 @@ export function Review() {
+  * Recap-Entwurf vor dem Veröffentlichen: lesen und bei Bedarf korrigieren (Titel, Text, offene Fäden) –
+  * z. B. falsch geschriebene Namen. Der Server nimmt Änderungen nur bis zum Veröffentlichen an.
+  */
+-function RecapEditor({ sessionId, recap, onSaved, onError }: {
++function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
+   sessionId: string;
+   recap: Recap;
++  members: Member[];
+   onSaved: (r: Recap) => void;
+   onError: (e: unknown) => void;
+ }) {
+@@ -198,12 +218,14 @@ function RecapEditor({ sessionId, recap, onSaved, onError }: {
+   }
+ 
+   return (
+-    <details className="card">
++    <details className="card" open={reviewNeedsAttention(recap) || undefined}>
+       <summary style={{ cursor: 'pointer', minHeight: 32 }}>
+         <strong>{t('Recap-Entwurf:')}</strong> {recap.title}
++        {recap.review?.state === 'done' && <span className="muted small" style={{ display: 'block' }}>{reportSentence(recap)}</span>}
+       </summary>
+-      <div className="recap" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+-        {recap.text.split(/\n\s*\n/).map((para, i) => <p key={i}>{para}</p>)}
++      {/* Mit Gegenprüfung (ab 0.4.6) je Absatz eine Randmarke mit Belegen, sonst der reine Text */}
++      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
++        <RecapReviewView sessionId={sessionId} recap={recap} members={members} showReport={false} />
+       </div>
+       {recap.openThreads.length > 0 && (
+         <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+diff --git a/src/theme.css b/src/theme.css
+index 5e5f156..56dda10 100644
+--- a/src/theme.css
++++ b/src/theme.css
+@@ -804,6 +804,51 @@ textarea {
+   max-width: 68ch;
+ }
+ 
++/* Gegenprüfung des Recaps (nur SL, ab Schnittstelle 0.4.6): Randmarke je Absatz, immer Symbol plus Wort */
++.review {
++  display: flex;
++  flex-direction: column;
++  gap: var(--space-3, 12px);
++}
++.review-para {
++  border-left: 4px solid var(--line-strong);
++  padding-left: 12px;
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++}
++.review-mark {
++  display: inline-flex;
++  align-items: center;
++  gap: 6px;
++  font: 600 13px/18px var(--font-sans);
++  color: var(--ink-muted);
++}
++.review-para.v-supported { border-left-color: var(--salbei); }
++.review-para.v-supported .review-mark { color: var(--salbei); }
++.review-para.v-partial { border-left-color: var(--messing); }
++.review-para.v-partial .review-mark { color: var(--ink); }
++.review-para.v-unsupported,
++.review-para.v-contradicted { border-left-color: var(--siegel); }
++.review-para.v-unsupported .review-mark,
++.review-para.v-contradicted .review-mark { color: var(--siegel-text); }
++.review-para.v-off_game,
++.review-para.v-unchecked { border-left-style: dashed; }
++.review-para summary { cursor: pointer; padding: 6px 0; color: var(--ink-muted); }
++.review-evidence {
++  display: flex;
++  flex-direction: column;
++  gap: 2px;
++  padding: 6px 0;
++  border-top: 1px solid var(--line);
++}
++.transcript-line { margin: 0; padding: 6px 8px; border-radius: var(--radius-sm); }
++.transcript-line.hit { background: var(--paper-sunken); }
++
++/* Unsichere Namen (ab 0.4.6): Auswahl als Knöpfe */
++.term-choices { display: flex; flex-wrap: wrap; gap: 8px; }
++.term-choices .btn[aria-pressed='true'] { outline: 2px solid var(--salbei); outline-offset: 1px; }
++
+ .thread {
+   display: flex;
+   gap: 10px;
