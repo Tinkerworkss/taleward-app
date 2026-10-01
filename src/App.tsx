@@ -1,6 +1,7 @@
 import { BackButton } from './components/BackButton';
 import { AuthReturn } from './pages/AuthReturn';
 import { DeepLinks } from './components/DeepLinks';
+import { NotifierSync } from './notify/NotifySettings';
 import { ConfirmHost } from './components/confirm';
 import type { JSX } from 'react';
 import { LanguageProvider } from './i18n';
@@ -93,6 +94,7 @@ export function App() {
     <LanguageProvider>
     <AuthProvider>
       <ConfirmHost />
+      <NotifierSync />
       <BackButton />
       {/* HashRouter: funktioniert ohne Server-Konfiguration im Browser und in der APK */}
       <HashRouter>

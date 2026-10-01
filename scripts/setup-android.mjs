@@ -68,6 +68,18 @@ if (gradleNew !== gradle) {
   }
 }
 
+// Benachrichtigungen: regelmäßige Prüfung im Hintergrund (WorkManager)
+{
+  const g = readFileSync(gradlePath, 'utf8');
+  if (!g.includes('androidx.work:work-runtime')) {
+    const withWork = g.replace(/(\ndependencies\s*\{)/, `$1\n    implementation "androidx.work:work-runtime:2.10.0"`);
+    if (withWork !== g) {
+      writeFileSync(gradlePath, withWork);
+      console.log('WorkManager für Benachrichtigungen eingetragen');
+    }
+  }
+}
+
 const javaDir = join(android, 'app/src/main/java/app/taleward');
 mkdirSync(javaDir, { recursive: true });
 for (const f of readdirSync(join(root, 'native-android')).filter((f) => f.endsWith('.java'))) {

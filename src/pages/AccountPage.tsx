@@ -2,6 +2,7 @@ import { oidcErrorText } from './ConnectPage';
 import { LoginSettings } from '../components/LoginSettings';
 import { confirmDialog } from '../components/confirm';
 import { ThemeSwitch } from '../themeMode';
+import { NotifySettingsSection } from '../notify/NotifySettings';
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { apiFor } from '../api/client';
@@ -36,6 +37,7 @@ export function AccountPage() {
         <LanguageSwitch />
         <ThemeSwitch />
       </section>
+      <NotifySettingsSection />
       <p className="muted small" style={{ margin: 0, textAlign: 'center' }}>
         {t('Taleward {v}', { v: APP_VERSION })} · <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer">{t('Quellcode (AGPL-3.0)')}</a>
         <br />

@@ -25,6 +25,12 @@ export function DeepLinks() {
     let remove: (() => void) | undefined;
 
     const handle = async (url: string) => {
+      // Benachrichtigung angetippt: taleward://oeffnen?pfad=/v/<server>/k/<kampagne>/…
+      if (url.toLowerCase().startsWith('taleward://oeffnen')) {
+        const path = new URL(url.replace(/^taleward:/i, 'http:')).searchParams.get('pfad') ?? '';
+        navigate(path.startsWith('/v/') ? path : '/');
+        return;
+      }
       // Rückkehr vom Anmeldedienst
       if (url.toLowerCase().startsWith('taleward://auth')) {
         navigate(await handleAuthUrl(url), { replace: true });
