@@ -1,4 +1,5 @@
-import { p } from '../api/connections';
+import { currentConnection, p } from '../api/connections';
+import { serverHasCharacters } from '../characters/sync';
 import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -8,12 +9,15 @@ import { IconPlay } from '../components/Icons';
 import { ErrorBox, Screen } from '../components/Screen';
 
 const IGNORE = '__ignore';
+const GUEST = 'guest:';
 
 export function Speakers() {
   const { sessionId = '' } = useParams();
   const navigate = useNavigate();
   const [speakers, setSpeakers] = useState<Speaker[] | null>(null);
   const [campaign, setCampaign] = useState<Campaign | null>(null);
+  // Gäste der Runde (aus der Anwesenheit); benennbar ab Schnittstelle 0.4.7
+  const [guests, setGuests] = useState<string[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -26,7 +30,11 @@ export function Speakers() {
         const [c, sp] = await Promise.all([api.campaign(session.campaignId), api.speakers(sessionId)]);
         setCampaign(c);
         setSpeakers(sp);
-        setMapping(Object.fromEntries(sp.map((s) => [s.id, s.suggestedMemberId ?? ''])));
+        const named = serverHasCharacters(currentConnection())
+          ? [...new Set([...session.attendees.map((a) => a.guestName?.trim() ?? ''), ...sp.map((s) => s.assignedGuestName?.trim() ?? '')].filter(Boolean))]
+          : [];
+        setGuests(named);
+        setMapping(Object.fromEntries(sp.map((s) => [s.id, s.assignedGuestName ? GUEST + s.assignedGuestName : s.suggestedMemberId ?? ''])));
       } catch (e) {
         setError(e);
       }
@@ -57,7 +65,9 @@ export function Speakers() {
     try {
       await api.assignSpeakers(
         sessionId,
-        Object.entries(mapping).map(([speakerId, v]) => ({ speakerId, memberId: v === IGNORE ? null : v }))
+        Object.entries(mapping).map(([speakerId, v]) => v.startsWith(GUEST)
+          ? { speakerId, memberId: null, guestName: v.slice(GUEST.length) }
+          : { speakerId, memberId: v === IGNORE ? null : v })
       );
       navigate(p(`/s/${sessionId}`), { replace: true });
     } catch (e) {
@@ -105,7 +115,8 @@ export function Speakers() {
                     {m.displayName} · {m.characterName ?? t('Spielleitung')}
                   </option>
                 ))}
-                <option value={IGNORE}>{t('Gast / ignorieren')}</option>
+                {guests.map((g) => <option key={g} value={GUEST + g}>{g} · {t('Gast')}</option>)}
+                <option value={IGNORE}>{guests.length ? t('Ignorieren') : t('Gast / ignorieren')}</option>
               </select>
             </div>
             {unsure && <strong style={{ color: 'var(--seal)', fontSize: 15 }}>{t('Nicht automatisch erkannt – bitte auswählen.')}</strong>}

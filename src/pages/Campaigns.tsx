@@ -1,3 +1,5 @@
+import { listCharacters } from '../characters/store';
+import { serverHasCharacters } from '../characters/sync';
 import { LinkInput } from '../components/LinkInput';
 import { UpdateNotices } from '../components/UpdateNotices';
 import type { GameSystem } from '../api/types';
@@ -248,6 +250,8 @@ export function Campaigns() {
       )}
 
       <div className="row wrap" style={{ justifyContent: 'center', gap: 4 }}>
+        {active.some(serverHasCharacters) || listCharacters().length > 0
+          ? <Link className="btn ghost small" to="/charaktere">{t('Meine Charaktere')}</Link> : null}
         <Link className="btn ghost small" to="/konto">{t('Konten und Server')}</Link>
       </div>
       </div>

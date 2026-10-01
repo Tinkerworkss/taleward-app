@@ -1,4 +1,4 @@
-import type { CampaignDocument, Comment, DatePoll, Entry, Member, Proposal, Recap, Session, Speaker } from '../api/types';
+import type { CampaignDocument, Comment, DatePoll, Entry, GmNotice, Member, Proposal, Recap, Session, Speaker } from '../api/types';
 
 // Testdaten, angelehnt an den Klick-Prototyp. Alles erfunden.
 
@@ -280,6 +280,12 @@ export const seen = {
   // pro Kapitel; fehlt der Eintrag, gilt der Chronik-Marker der Kampagne
   comments: { 's-c-grau-12': '2026-09-06T12:00:00Z' } as Record<string, string>
 };
+
+// Charaktere (0.4.7): mitgebrachte Welt je Mitglied und Hinweise an die SL
+export type WorldRecord = { id: string; version: number; proposalId: string | null; entryId: string | null; serverVersion: number | null };
+/** memberId → (Eintrag der App → Stand auf dem Server) */
+export const world: Record<string, Record<string, WorldRecord>> = {};
+export const gmNotices: Record<string, GmNotice[]> = {};
 
 /** Charakterbilder im Speicher: Mitglieds-ID → Bild */
 export const portraits: Record<string, { data: ArrayBuffer; type: string; updatedAt: string; thumb?: ArrayBuffer }> = {};

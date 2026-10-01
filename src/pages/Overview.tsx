@@ -15,7 +15,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
-import type { Campaign, GameSystem, Member, SessionSummary, Usage } from '../api/types';
+import type { Campaign, GameSystem, GmNotice, Member, SessionSummary, Usage } from '../api/types';
 import { IconInfo, IconLock } from '../components/Icons';
 import { Divider, ErrorBox, Screen, rememberCampaign } from '../components/Screen';
 import { formatDateFull, formatDateTime } from '../components/format';
@@ -109,6 +109,16 @@ export function Overview() {
               </span>
             </Link>
           )}
+          {gm && !!campaign.openCharacterProposals && (
+            <Link to={p(`/k/${campaignId}/mitgebracht`)} className="card warn">
+              <div className="row between">
+                <strong>{t('Mitgebrachte Welt')}</strong>
+                <span className="pill seal">{tn(campaign.openCharacterProposals, '{n} offen', '{n} offen')}</span>
+              </div>
+              <span className="muted small">{t('Die Charaktere bringen Einträge für die Bibel mit. Tippen zum Prüfen.')}</span>
+            </Link>
+          )}
+          {gm && campaign.gmNotices?.map((n) => <GmNoticeCard key={n.id} campaign={campaign} notice={n} onDone={load} />)}
           {/* Nächste Runde */}
           <Link to={p(`/k/${campaignId}/termin`)} className={campaign.datePollNeedsMyVote ? 'card warn' : 'card'}>
             <div className="row between">
@@ -520,5 +530,36 @@ function CampaignManage({ campaign, me, onChanged }: { campaign: Campaign; me: M
       ))}
       </div>
     </details>
+  );
+}
+
+/** Hinweis an die SL (ab 0.4.7), z. B. ein Neuzugang ist vor teilweise verborgenen Einträgen verborgen */
+function GmNoticeCard({ campaign, notice, onDone }: { campaign: Campaign; notice: GmNotice; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const m = campaign.members.find((x) => x.id === notice.memberId);
+  const name = m ? m.characterName ?? m.displayName : t('Ein neues Mitglied');
+  const dismiss = async () => {
+    setBusy(true);
+    try {
+      await api.dismissGmNotice(campaign.id, notice.id);
+      onDone();
+    } catch {
+      setBusy(false);
+    }
+  };
+  if (notice.code !== 'hidden_entries_for_newcomer') return null;
+  return (
+    <div className="card">
+      <strong>{t('{name} ist neu am Tisch', { name })}</strong>
+      <span className="muted small">
+        {tn(notice.entryIds.length,
+          '{n} Eintrag der Bibel ist nur für einige Spieler sichtbar – für {name} bleibt er verborgen, bis du ihn freigibst.',
+          '{n} Einträge der Bibel sind nur für einige Spieler sichtbar – für {name} bleiben sie verborgen, bis du sie freigibst.', { name })}
+      </span>
+      <div className="row wrap" style={{ gap: 8 }}>
+        <Link className="btn small outline" to={p(`/k/${campaign.id}/bibel`)}>{t('Zur Bibel')}</Link>
+        <button type="button" className="btn small ghost" disabled={busy} onClick={dismiss}>{t('Erledigt')}</button>
+      </div>
+    </div>
   );
 }

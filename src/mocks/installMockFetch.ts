@@ -2,6 +2,7 @@ import { getResponse } from 'msw';
 import { handlers } from './handlers';
 import { ME } from './db';
 import { DEMO_USERS } from './demo';
+import { demoCollection } from './demoCharacters';
 
 const DEFAULT_ME = { ...ME };
 
@@ -12,6 +13,8 @@ const DEFAULT_ME = { ...ME };
  */
 export function installMockFetch(): void {
   const realFetch = window.fetch.bind(window);
+  // Für die Aufnahmen (scripts/screenshots.mjs): Demo-Sammlung „Meine Charaktere“
+  (window as unknown as { __talewardDemo: unknown }).__talewardDemo = { demoCollection };
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input, init);
     if (new URL(request.url).pathname.startsWith('/api/v1/')) {

@@ -6,6 +6,7 @@
  * Spielende sehen Iria Sehl nie.
  */
 import type { DatePoll, Entry, Proposal, Recap, Speaker } from '../api/types';
+import { seedDemoCharacters } from './demoCharacters';
 import { campaigns, datePolls, entries, gmNotes, proposals, recaps, seen, sessions, type MockSession } from './db';
 
 export const DEMO_HOST = 'taleward.euer-verein.de';
@@ -80,6 +81,8 @@ for (const lang of ['de', 'en'] as Lang[]) {
         characterSummary: lang === 'de' ? 'Wandernder Schreiber' : 'Wandering scribe' }
     ]
   });
+
+  seedDemoCharacters(lang, campaigns[campaigns.length - 1].members);
 
   // Kapitel 1–6: nur Titel
   t.chapters.forEach((title, i) => {

@@ -26,18 +26,22 @@ if (!CHROME) throw new Error('Chrome/Edge nicht gefunden – bitte CHROME_PATH s
 
 const L = {
   de: { cid: 'c-wasser', next: 'Weiter', askConsent: 'Zustimmen lassen', agree: 'Zustimmen', summarize: 'Zusammenfassung erstellen',
-    accept: 'Übernehmen', publish: 'Recap veröffentlichen', invite: 'Mitspielende einladen', qr: 'QR-Code zeigen' },
+    accept: 'Übernehmen', publish: 'Recap veröffentlichen', invite: 'Mitspielende einladen', qr: 'QR-Code zeigen',
+    all: 'Alle (', world: 'Mitgebrachte Welt', mara: '00000000-0000-4000-8000-000000000001' },
   en: { cid: 'c-waters', next: 'Continue', askConsent: 'Ask to agree', agree: 'Agree', summarize: 'Create summary',
-    accept: 'Accept', publish: 'Publish recap', invite: 'Invite players', qr: 'Show QR code' }
+    accept: 'Accept', publish: 'Publish recap', invite: 'Invite players', qr: 'Show QR code',
+    all: 'All (', world: 'Brought-along world', mara: '00000000-0000-4000-8000-000000000101' }
 };
 
 // Welche Aufnahmen in welchem Thema (Stern in der Anfrage = zusätzlich Spielabend)
+// 10–14: Charaktere (Schnittstelle 0.4.7) – Sammlung, Charakterseite, mitgebrachte Welt, Willkommen, SL-Prüfung
+const CHAR = [10, 11, 12, 13, 14];
 const RUNS = [
-  { lang: 'de', theme: 'pergament', shots: [1, 2, 3, 4, 5, 6, 7, 8, 9] },
-  { lang: 'en', theme: 'pergament', shots: [1, 2, 3, 4, 5, 6, 7, 8, 9] },
-  { lang: 'de', theme: 'spielabend', shots: [1, 7] },
-  { lang: 'en', theme: 'spielabend', shots: [1, 7] }
-];
+  { lang: 'de', theme: 'pergament', shots: [1, 2, 3, 4, 5, 6, 7, 8, 9, ...CHAR] },
+  { lang: 'en', theme: 'pergament', shots: [1, 2, 3, 4, 5, 6, 7, 8, 9, ...CHAR] },
+  { lang: 'de', theme: 'spielabend', shots: [1, 7, ...CHAR] },
+  { lang: 'en', theme: 'spielabend', shots: [1, 7, ...CHAR] }
+].map((r) => (process.env.SHOTS ? { ...r, shots: r.shots.filter((n) => process.env.SHOTS.split(',').map(Number).includes(n)) } : r));
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 mkdirSync(OUT, { recursive: true });
@@ -127,6 +131,25 @@ for (const run of RUNS) {
 
   await login('tom');
   await go(`${s}/recap`); await shot(6);
+
+  if (run.shots.some((n) => CHAR.includes(n))) {
+    // Sammlung liegt im Speicher der App; die Demo liefert sie fertig (nur im Testmodus)
+    const seed = (who) => page.evaluate((lang, w, c) => {
+      localStorage.setItem('taleward.characters', JSON.stringify(window.__talewardDemo.demoCollection(lang, w, c)));
+    }, run.lang, who, conn);
+    const scrollTo = (text) => page.evaluate((txt) => {
+      [...document.querySelectorAll('h2')].find((h) => h.textContent.trim() === txt)?.scrollIntoView({ block: 'start' });
+      document.querySelector('.screen-main').scrollBy(0, -12);
+    }, text);
+    await login('lea'); await seed('lea');
+    await go('/charaktere'); await click(t.all); await shot(10);
+    await go(`/charaktere/${t.mara}`); await shot(11);
+    await scrollTo(t.world); await shot(12);
+    await login('tom'); await seed('tom');
+    await go(`${k}/willkommen`); await shot(13);
+    await login('anja');
+    await go(`${k}/mitgebracht`); await shot(14);
+  }
 
   if (errors.length) console.log('   Fehler in der Seite:', errors);
   await page.close();

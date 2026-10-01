@@ -3,9 +3,9 @@ import { DEMO_HOST, DEMO_USERS, demoSpeakers } from './demo';
 
 /** Alle Titelbild-IDs (Schnittstelle 0.4.3) – wie der Server: neue Kampagnen bekommen eines zufällig */
 const COVER_IDS = ['meadow', 'forest', 'desert', 'city', 'cyber', 'mountains', 'coast', 'swamp', 'dungeon', 'space', 'castle', 'dark-fantasy', 'moonwood', 'ancient-ruins', 'tavern', 'battlefield', 'frozen-north', 'arcane-ruins', 'fairy-wilds', 'underworld', 'storm-coast', 'steampunk', 'post-apocalypse', 'western', 'noir', 'space-opera', 'orient', 'necropolis', 'manor', 'riverside-mystery'];
-import type { CampaignDocument, CampaignSummary, Character, Chronicle, Comment, Correction, WorldEntryIn, WorldEntryStatus, Entry, DatePoll, EntryInput, ProcessingStatus, Proposal, Recap, Session, UncertainTerm, VoteAnswer, VoiceProfile, GmNotice, Member } from '../api/types';
+import type { CampaignDocument, CampaignSummary, Character, Chronicle, Comment, Correction, WorldEntryIn, WorldEntryStatus, Entry, DatePoll, EntryInput, ProcessingStatus, Proposal, Recap, Session, UncertainTerm, VoteAnswer, VoiceProfile, Member } from '../api/types';
 import {
-  ME, NACHBAR_HOST, account, campaigns, comments, coverImages, datePolls, documents, portraits, proposalsForDocument, seen, entries, gmNotes, proposals, proposalsFor, recaps, sessions, speakersFor, uploads,
+  ME, NACHBAR_HOST, account, gmNotices, world, type WorldRecord, campaigns, comments, coverImages, datePolls, documents, portraits, proposalsForDocument, seen, entries, gmNotes, proposals, proposalsFor, recaps, sessions, speakersFor, uploads,
   type MockCampaign, type MockSession
 } from './db';
 
@@ -66,6 +66,8 @@ function summary(c: MockCampaign): CampaignSummary {
     memberCount: c.members.length,
     publishedSessionCount: published.length,
     pendingReviewCount: me.role === 'gm' ? cs.filter((s) => s.state === 'awaiting_review' || s.state === 'awaiting_speakers').length : 0,
+    openCharacterProposals: me.role === 'gm'
+      ? proposals.filter((p) => p.source === 'character' && p.decision === 'open' && c.members.some((m) => m.id === p.submittedByMemberId)).length : 0,
     lastPublishedAt: published.map((s) => s.publishedAt!).sort().pop() ?? null,
     unread: unreadFor(c),
     archivedAt: c.archivedAt ?? null,
@@ -195,10 +197,6 @@ function replaceWord(text: string, heard: string, correct: string): string {
 
 // ---------------- Charaktere (0.4.7): Serverkopie, mitgebrachte Welt, Hinweise an die SL
 
-type WorldRecord = { id: string; version: number; proposalId: string | null; entryId: string | null; serverVersion: number | null };
-/** memberId → (Eintrag der App → Stand auf dem Server) */
-const world: Record<string, Record<string, WorldRecord>> = {};
-const gmNotices: Record<string, GmNotice[]> = {};
 
 function worldStatus(w: WorldRecord): WorldEntryStatus {
   const p = w.proposalId ? proposals.find((x) => x.id === w.proposalId) : undefined;
@@ -351,7 +349,7 @@ export const handlers = [
     const nachbar = new URL(request.url).hostname === NACHBAR_HOST;
     if (hostKey(request) === DEMO_HOST) {
       return HttpResponse.json({
-        name: 'Taleward', operator: 'Euer Verein e. V.', contact: null, apiVersion: '0.3.9', registration: 'invite_only',
+        name: 'Taleward', operator: 'Euer Verein e. V.', contact: null, apiVersion: '0.4.7', registration: 'invite_only',
         authMethods: ['password'], privacyPolicyUrl: null, minAge: 16, externalTranscription: null,
         minAppVersion: null, latestAppVersion: null, appDownloadUrl: null, releaseNotes: null
       });
@@ -580,6 +578,10 @@ export const handlers = [
       const m: Member = { id: 'm-' + crypto.randomUUID().slice(0, 8), userId: ME.id, displayName: ME.displayName, characterName: body.characterName?.trim() || null, role: 'player', recordingConsentAt: null };
       c.members.push(m);
       if (ch) applyCharacter(c, m, ch);
+      // Neuzugang in alle nicht-leeren „verborgen vor“-Listen; die SL bekommt einen Hinweis
+      const partly = entries.filter((e) => e.campaignId === c.id && (e.hiddenFromMemberIds ?? []).length > 0);
+      partly.forEach((e) => e.hiddenFromMemberIds!.push(m.id));
+      if (partly.length) (gmNotices[c.id] ??= []).push({ id: 'gn-' + crypto.randomUUID().slice(0, 8), code: 'hidden_entries_for_newcomer', memberId: m.id, entryIds: partly.map((e) => e.id), createdAt: new Date().toISOString() });
       seen.chronicle[c.id] = seen.bible[c.id] = new Date().toISOString();
     }
     return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, members: membersFor(c) });
@@ -1277,6 +1279,8 @@ export const handlers = [
   http.patch(`${B}/proposals/:id`, async ({ params, request }) => {
     const p = proposals.find((x) => x.id === params.id);
     if (!p) return err(404, 'not_found', 'Vorschlag nicht gefunden.');
+    // Mitgebrachte Welt: Entscheidung wirkt sofort und ist endgültig (Server 0.4.7)
+    if (p.source === 'character' && p.decision !== 'open') return err(409, 'invalid_state', 'Dieser Vorschlag ist schon entschieden.');
     const body = (await request.json()) as Partial<Proposal> & { visibility?: Proposal['suggestedVisibility'] };
     if (body.gmNotes !== undefined) p.gmNotes = body.gmNotes || null;
     if (body.visibility) p.publicSuggested = false;

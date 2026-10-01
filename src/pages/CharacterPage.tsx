@@ -1,10 +1,12 @@
 import { confirmDialog } from '../components/confirm';
 import { isDeletedMember } from '../api/types';
-import { p } from '../api/connections';
+import { currentConnection, currentConnectionId, p } from '../api/connections';
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
-import type { Campaign } from '../api/types';
+import type { Campaign, Member } from '../api/types';
+import { blobToPortrait, characterForCampaign, createCharacter, updateCharacter } from '../characters/store';
+import { linkOutdated, pushToCampaign, serverHasCharacters } from '../characters/sync';
 import { useAuth } from '../auth/AuthContext';
 import { Avatar } from '../components/Avatar';
 import { CharacterForm } from '../components/CharacterForm';
@@ -104,9 +106,13 @@ export function CharacterPage() {
           {own && (
             <>
               <Divider />
-              <button type="button" className="btn outline" onClick={() => setEditing(true)}>
-                {member.role === 'gm' ? t('Bild ändern') : t('Charakter bearbeiten')}
-              </button>
+              {member.role === 'player' && serverHasCharacters(currentConnection())
+                ? <CollectionActions campaign={campaign} member={member} onChanged={load} onEdit={() => setEditing(true)} />
+                : (
+                  <button type="button" className="btn outline" onClick={() => setEditing(true)}>
+                    {member.role === 'gm' ? t('Bild ändern') : t('Charakter bearbeiten')}
+                  </button>
+                )}
             </>
           )}
           {/* Mitglieder verwalten (nur SL): Rolle ändern, entfernen */}
@@ -132,4 +138,84 @@ export function CharacterPage() {
       ))}
     </Screen>
   );
+}
+
+/**
+ * Eigener Charakter auf Servern ab 0.4.7: Bearbeitet wird in der Sammlung. Ältere Charaktere (vor der Sammlung
+ * angelegt) lassen sich einmal übernehmen; danach gilt der Stand aus der App.
+ */
+function CollectionActions({ campaign, member, onChanged, onEdit }: { campaign: Campaign; member: Member; onChanged: () => void; onEdit: () => void }) {
+  const navigate = useNavigate();
+  const connId = currentConnectionId() ?? currentConnection().id;
+  const linked = characterForCampaign(connId, campaign.id);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const link = linked?.links.find((l) => l.connId === connId && l.campaignId === campaign.id);
+
+  const run = async (action: () => Promise<void>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const adopt = () => run(async () => {
+    const c = createCharacter({ name: member.characterName ?? member.displayName, summary: member.characterSummary, backstory: member.characterBackstory });
+    if (member.portraitUpdatedAt) {
+      try {
+        const blob = await api.portrait(campaign.id, member.id, 'full');
+        const size = await squareOf(blob);
+        updateCharacter(c.id, await blobToPortrait(blob, size));
+      } catch { /* ohne Bild weiter */ }
+    }
+    await pushToCampaign(c.id, { connId, campaignId: campaign.id, campaignTitle: campaign.title, memberId: member.id });
+    onChanged();
+    navigate(`/charaktere/${c.id}`);
+  });
+
+  if (linked && link) {
+    return (
+      <>
+        <ErrorBox error={error} />
+        {linkOutdated(linked, link) && (
+          <button type="button" className="btn" disabled={busy}
+            onClick={() => run(async () => { await pushToCampaign(linked.id, link); onChanged(); })}>
+            {busy ? t('Schicke …') : t('Neuen Stand aus der Sammlung schicken')}
+          </button>
+        )}
+        <Link className="btn outline" to={`/charaktere/${linked.id}`}>{t('In meiner Sammlung öffnen')}</Link>
+      </>
+    );
+  }
+  if (member.characterId) {
+    return <span className="muted small" style={{ textAlign: 'center' }}>{t('Dieser Charakter liegt in der Sammlung auf einem anderen Gerät.')}</span>;
+  }
+  return (
+    <>
+      <ErrorBox error={error} />
+      {member.characterName ? (
+        <>
+          <button type="button" className="btn outline" disabled={busy} onClick={adopt}>{busy ? t('Übernehme …') : t('In meine Sammlung übernehmen')}</button>
+          <span className="muted small">{t('Dann kannst du ihn in andere Kampagnen mitnehmen, Notizen führen und Welt mitbringen.')}</span>
+        </>
+      ) : (
+        <Link className="btn outline" to="/charaktere">{t('Aus meiner Sammlung wählen')}</Link>
+      )}
+      <button type="button" className="btn ghost" disabled={busy} onClick={onEdit}>{t('Nur hier bearbeiten')}</button>
+    </>
+  );
+}
+
+/** Mittiger, quadratischer Ausschnitt eines Bildes */
+async function squareOf(blob: Blob): Promise<{ x: number; y: number; size: number }> {
+  const bmp = await createImageBitmap(blob);
+  const size = Math.min(bmp.width, bmp.height);
+  const r = { x: Math.round((bmp.width - size) / 2), y: Math.round((bmp.height - size) / 2), size };
+  bmp.close();
+  return r;
 }

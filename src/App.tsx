@@ -24,6 +24,9 @@ import { Speakers } from './pages/Speakers';
 import { VoiceProfile } from './pages/VoiceProfile';
 import { WelcomePage } from './pages/WelcomePage';
 import { SetupPage } from './pages/SetupPage';
+import { BroughtPage } from './pages/BroughtPage';
+import { CharactersPage } from './pages/CharactersPage';
+import { MyCharacterPage } from './pages/MyCharacterPage';
 import { CharacterPage } from './pages/CharacterPage';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { DocumentReview } from './pages/DocumentReview';
@@ -60,6 +63,8 @@ function Routed() {
       <Route path="/" element={<Campaigns />} />
       <Route path="/verbinden" element={<ConnectRoute />} />
       <Route path="/konto" element={<AccountPage />} />
+      <Route path="/charaktere" element={<CharactersPage />} />
+      <Route path="/charaktere/:characterId" element={<MyCharacterPage />} />
       <Route path="/v/:conn/k/:campaignId" element={scoped(<Overview />)} />
       <Route path="/v/:conn/k/:campaignId/chronik" element={scoped(<Chronicle />)} />
       <Route path="/v/:conn/k/:campaignId/aufnahme" element={scoped(<Recording />)} />
@@ -68,6 +73,7 @@ function Routed() {
       <Route path="/v/:conn/k/:campaignId/willkommen" element={scoped(<WelcomePage />)} />
       <Route path="/v/:conn/k/:campaignId/einrichten" element={scoped(<SetupPage />)} />
       <Route path="/v/:conn/k/:campaignId/charakter/:memberId" element={scoped(<CharacterPage />)} />
+      <Route path="/v/:conn/k/:campaignId/mitgebracht" element={scoped(<BroughtPage />)} />
       <Route path="/v/:conn/k/:campaignId/unterlagen" element={scoped(<DocumentsPage />)} />
       <Route path="/v/:conn/k/:campaignId/unterlagen/:documentId" element={scoped(<DocumentReview />)} />
       <Route path="/v/:conn/s/:sessionId" element={scoped(<Processing />)} />
