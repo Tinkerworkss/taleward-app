@@ -1,0 +1,223 @@
+From 012366486ea573ff8eb43daa10936b173aacabc4 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 1 Oct 2026 23:24:18 +0200
+Subject: [PATCH] =?UTF-8?q?Meine=20Charaktere=20geh=C3=B6ren=20dem=20Konto?=
+ =?UTF-8?q?,=20nicht=20dem=20Ger=C3=A4t?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Die Sammlung liegt im Speicher des Geräts. Meldete sich im selben Browser oder auf demselben Tablet ein
+anderes Konto an, sah es die Charaktere des vorigen – und konnte sie beim Beitritt sogar auswählen.
+
+- Jeder Charakter merkt sich seine Konten (owners, <Serveradresse>|<Benutzer-ID>); angezeigt werden nur
+  Charaktere der gerade angemeldeten Konten (Sammlung, Willkommen, Charakterseite).
+- Neue Charaktere gehören den angemeldeten Konten; beim Schicken an eine Kampagne kommt das Konto dazu.
+- Charaktere aus 0.11 ohne Besitzer: Mit Verknüpfung fragt die App den Server, wem das Mitglied gehört;
+  ohne Verknüpfung gehören sie dem ersten Konto, das die App danach öffnet.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ src/characters/store.ts       | 48 ++++++++++++++++++++++++++++++++---
+ src/characters/sync.ts        | 33 +++++++++++++++++++++++-
+ src/notify/NotifySettings.tsx | 12 +++++++--
+ src/pages/CharactersPage.tsx  |  7 ++++-
+ 4 files changed, 92 insertions(+), 8 deletions(-)
+
+diff --git a/src/characters/store.ts b/src/characters/store.ts
+index 5a35eeb..7fdd3e1 100644
+--- a/src/characters/store.ts
++++ b/src/characters/store.ts
+@@ -6,6 +6,7 @@
+  */
+ import { t } from '../i18n';
+ import type { Character, CharacterStatus, Chronicle, WorldEntryIn, WorldEntryStatus } from '../api/types';
++import { activeConnections, type Connection } from '../api/connections';
+ 
+ /** Mitgebrachter Welt-Eintrag in der Sammlung */
+ export type WorldItem = WorldEntryIn;
+@@ -43,6 +44,31 @@ export interface StoredCharacter extends Character {
+   chronicles: Record<string, Chronicle>;
+   createdAt: string;
+   updatedAt: string;
++  /**
++   * Konten, denen der Charakter gehört (`<baseUrl>|<userId>`). Die Sammlung liegt im Gerät; meldet sich auf demselben
++   * Gerät ein anderes Konto an (geteiltes Tablet, Testkonten), sieht es fremde Charaktere nicht. Fehlt das Feld
++   * (angelegt vor 0.12), ordnet claimLegacyCharacters() den Charakter zu; bis dahin ist er unsichtbar.
++   */
++  owners?: string[];
++}
++
++/** Schlüssel eines Kontos auf einem Server */
++export function accountKey(c: Pick<Connection, 'baseUrl' | 'user'>): string | null {
++  return c.user?.id ? `${c.baseUrl}|${c.user.id}` : null;
++}
++
++/** Konten, die gerade in der App angemeldet sind */
++export function myAccountKeys(): string[] {
++  return activeConnections().map(accountKey).filter((k): k is string => !!k);
++}
++
++function visible(c: StoredCharacter, mine: string[]): boolean {
++  return !!c.owners && c.owners.some((o) => mine.includes(o));
++}
++
++/** Alle Charaktere im Gerät, auch fremde – nur für die Zuordnung alter Charaktere */
++export function allStoredCharacters(): StoredCharacter[] {
++  return load();
+ }
+ 
+ export interface PortraitMeta {
+@@ -77,12 +103,26 @@ export function onCharactersChanged(listener: () => void): () => void {
+   return () => listeners.delete(listener);
+ }
+ 
++/** Charaktere der angemeldeten Konten */
+ export function listCharacters(): StoredCharacter[] {
+-  return load().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
++  const mine = myAccountKeys();
++  return load().filter((c) => visible(c, mine)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+ }
+ 
+ export function getCharacter(id: string): StoredCharacter | undefined {
+-  return load().find((c) => c.id === id);
++  const mine = myAccountKeys();
++  return load().find((c) => c.id === id && visible(c, mine));
++}
++
++/** Konten als Besitzer eintragen */
++export function addOwners(id: string, keys: string[]): void {
++  const list = load();
++  const i = list.findIndex((c) => c.id === id);
++  if (i < 0 || keys.length === 0) return;
++  const owners = [...new Set([...(list[i].owners ?? []), ...keys])];
++  if (owners.length === (list[i].owners ?? []).length && list[i].owners) return;
++  list[i] = { ...list[i], owners };
++  persist(list);
+ }
+ 
+ export function newId(): string {
+@@ -94,7 +134,7 @@ export function createCharacter(data: { name: string; nickname?: string | null;
+   const c: StoredCharacter = {
+     id: newId(), version: 1, name: data.name.trim(), nickname: data.nickname ?? null, summary: data.summary ?? null,
+     backstory: data.backstory ?? null, system: data.system ?? null, status: 'active', statusChangedAt: null,
+-    notes: '', portrait: data.portrait ?? null, portraitMeta: data.portraitMeta ?? null, portraitChangedAt: data.portrait ? now : null, world: [], links: [], chronicles: {}, createdAt: now, updatedAt: now
++    owners: myAccountKeys(), notes: '', portrait: data.portrait ?? null, portraitMeta: data.portraitMeta ?? null, portraitChangedAt: data.portrait ? now : null, world: [], links: [], chronicles: {}, createdAt: now, updatedAt: now
+   };
+   persist([...load(), c]);
+   return c;
+@@ -169,7 +209,7 @@ export function saveChronicle(characterId: string, connId: string, chronicle: Ch
+ 
+ /** Charakter, der in dieser Kampagne verknüpft ist */
+ export function characterForCampaign(connId: string, campaignId: string): StoredCharacter | undefined {
+-  return load().find((c) => c.links.some((l) => l.connId === connId && l.campaignId === campaignId));
++  return listCharacters().find((c) => c.links.some((l) => l.connId === connId && l.campaignId === campaignId));
+ }
+ 
+ /** Stammdaten für den Server (ohne Notizen, Bild, Welt, Abschriften) */
+diff --git a/src/characters/sync.ts b/src/characters/sync.ts
+index 0dab660..e1d4e4e 100644
+--- a/src/characters/sync.ts
++++ b/src/characters/sync.ts
+@@ -7,7 +7,7 @@ import { apiFor, isApiError } from '../api/client';
+ import { getConnection, versionLess, type Connection } from '../api/connections';
+ import type { Member } from '../api/types';
+ import {
+-  getCharacter, portraitToBlob, removeLink, saveChronicle, saveLink, setVersion, toServerCharacter,
++  accountKey, addOwners, allStoredCharacters, getCharacter, myAccountKeys, portraitToBlob, removeLink, saveChronicle, saveLink, setVersion, toServerCharacter,
+   type CharacterLink, type StoredCharacter
+ } from './store';
+ 
+@@ -68,6 +68,8 @@ export async function pushToCampaign(characterId: string, target: { connId: stri
+     world = (await api.myWorld(target.campaignId)).entries;
+   }
+ 
++  const key = accountKey(conn);
++  if (key) addOwners(characterId, [key]);
+   return saveLink(characterId, {
+     connId: conn.id, serverName: conn.name, campaignId: target.campaignId, campaignTitle: target.campaignTitle,
+     memberId: member.id, linkedAt: old?.linkedAt ?? new Date().toISOString(), syncedVersion: c.version,
+@@ -97,3 +99,32 @@ export async function releaseFromCampaign(characterId: string, l: CharacterLink)
+   }
+   return removeLink(characterId, l.connId, l.campaignId);
+ }
++
++/**
++ * Charaktere aus 0.11 (ohne Besitzer) zuordnen: Bei Verknüpfungen fragt die App den Server, welchem Konto das
++ * Mitglied gehört; ohne Verknüpfung gehört der Charakter den gerade angemeldeten Konten. Charaktere anderer Konten
++ * bleiben so unsichtbar.
++ */
++export async function claimLegacyCharacters(): Promise<void> {
++  const mine = myAccountKeys();
++  if (mine.length === 0) return;
++  for (const c of allStoredCharacters().filter((x) => !x.owners)) {
++    if (c.links.length === 0) {
++      addOwners(c.id, mine);
++      continue;
++    }
++    const owners: string[] = [];
++    for (const l of c.links) {
++      const conn = getConnection(l.connId);
++      if (!conn) continue;
++      try {
++        const campaign = await apiFor(conn).campaign(l.campaignId);
++        const m = campaign.members.find((x) => x.id === l.memberId);
++        if (m?.userId) owners.push(`${conn.baseUrl}|${m.userId}`);
++      } catch {
++        /* Kampagne für dieses Konto nicht sichtbar – dann gehört der Charakter nicht ihm */
++      }
++    }
++    if (owners.length) addOwners(c.id, owners);
++  }
++}
+diff --git a/src/notify/NotifySettings.tsx b/src/notify/NotifySettings.tsx
+index 48e8f27..bed4078 100644
+--- a/src/notify/NotifySettings.tsx
++++ b/src/notify/NotifySettings.tsx
+@@ -1,5 +1,6 @@
+ import { useEffect, useState } from 'react';
+ import { t, tk } from '../i18n';
++import { claimLegacyCharacters } from '../characters/sync';
+ import {
+   checkNotificationsNow, enableNotifications, notificationsAllowed, notifySettings, notifySupported,
+   openNotificationSettings, saveNotifySettings, syncNotifier, type NotifyKinds
+@@ -8,11 +9,18 @@ import {
+ /** Hält den nativen Teil aktuell: beim Start und nach jeder An- oder Abmeldung */
+ export function NotifierSync() {
+   useEffect(() => {
+-    if (!notifySupported()) return;
++    // Charaktere aus 0.11 einem Konto zuordnen (auch im Browser)
++    void claimLegacyCharacters();
++    const own = () => void claimLegacyCharacters();
++    window.addEventListener('session-chronik:connections', own);
++    if (!notifySupported()) return () => window.removeEventListener('session-chronik:connections', own);
+     void syncNotifier();
+     const h = () => void syncNotifier();
+     window.addEventListener('session-chronik:connections', h);
+-    return () => window.removeEventListener('session-chronik:connections', h);
++    return () => {
++      window.removeEventListener('session-chronik:connections', h);
++      window.removeEventListener('session-chronik:connections', own);
++    };
+   }, []);
+   return null;
+ }
+diff --git a/src/pages/CharactersPage.tsx b/src/pages/CharactersPage.tsx
+index e553279..3981b8a 100644
+--- a/src/pages/CharactersPage.tsx
++++ b/src/pages/CharactersPage.tsx
+@@ -18,7 +18,12 @@ export function CharactersPage() {
+   const [list, setList] = useState(listCharacters);
+   const [filter, setFilter] = useState<CharacterStatus | 'all'>('active');
+   const [creating, setCreating] = useState(false);
+-  useEffect(() => onCharactersChanged(() => setList(listCharacters())), []);
++  useEffect(() => {
++    const refresh = () => setList(listCharacters());
++    window.addEventListener('session-chronik:connections', refresh);
++    const off = onCharactersChanged(refresh);
++    return () => { off(); window.removeEventListener('session-chronik:connections', refresh); };
++  }, []);
+ 
+   const counts = Object.fromEntries(STATUS_ORDER.map((s) => [s, list.filter((c) => c.status === s).length])) as Record<CharacterStatus, number>;
+   const showFilter = counts.retired + counts.deceased > 0;
