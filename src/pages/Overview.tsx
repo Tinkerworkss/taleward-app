@@ -401,17 +401,19 @@ function Members({ campaign }: { campaign: Campaign; onChanged: () => void }) {
   const { user } = useAuth();
   const me = campaign.members.find((m) => m.userId === user?.id);
   const label = (m: Member) => (m.role === 'gm' ? t('Spielleitung') : m.characterName ?? t('noch ohne Charakter'));
+  const active = campaign.members.filter((m) => m.openSeat || !isDeletedMember(m));
+  const former = campaign.members.filter((m) => !m.openSeat && isDeletedMember(m));
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <h2>{t('Am Tisch')}</h2>
       <div className="card" style={{ gap: 2, padding: '8px 12px' }}>
-        {campaign.members.map((m) => isDeletedMember(m) ? (
-          <div key={m.id} className="row muted" style={{ minHeight: 52, gap: 10, opacity: 0.6 }}>
+        {active.map((m) => m.openSeat ? (
+          <div key={m.id} className="row muted" style={{ minHeight: 52, gap: 10 }}>
             <Avatar campaignId={campaign.id} member={m} size={40} />
             <span style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <span>{m.characterName ?? t('Gelöschtes Konto')}</span>
-              <span className="small">{m.leftAt ? t('Nicht mehr dabei') : t('Gelöschtes Konto')}</span>
+              <span>{m.characterName ?? t('Offener Platz')}</span>
+              <span className="small">{t('noch frei')}</span>
             </span>
           </div>
         ) : (
@@ -420,12 +422,29 @@ function Members({ campaign }: { campaign: Campaign; onChanged: () => void }) {
             <Avatar campaignId={campaign.id} member={m} size={40} />
             <span style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
               <span>{label(m)}</span>
-              <span className="muted small">{m.role === 'gm' ? m.displayName : m.displayName}{m === me ? ` (${t('du')})` : ''}</span>
+              <span className="muted small">{m.displayName}{m === me ? ` (${t('du')})` : ''}</span>
             </span>
             <span aria-hidden style={{ color: 'var(--ink-faint)' }}>›</span>
           </Link>
         ))}
       </div>
+      {/* Ausgetretene und gelöschte Konten bleiben im Hintergrund (Kapitel, Kommentare), stehen aber nicht mehr am Tisch */}
+      {former.length > 0 && (
+        <details className="card" style={{ gap: 2, padding: '8px 12px' }}>
+          <summary className="muted small" style={{ cursor: 'pointer', minHeight: 32, fontWeight: 700 }}>
+            {t('Ehemalige ({n})', { n: former.length })}
+          </summary>
+          {former.map((m) => (
+            <div key={m.id} className="row muted" style={{ minHeight: 48, gap: 10, opacity: 0.7 }}>
+              <Avatar campaignId={campaign.id} member={m} size={32} />
+              <span style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <span>{m.characterName ?? t('Gelöschtes Konto')}</span>
+                <span className="small">{m.leftAt ? t('Nicht mehr dabei') : t('Gelöschtes Konto')}</span>
+              </span>
+            </div>
+          ))}
+        </details>
+      )}
       {me && (
         <Link className="btn ghost small" style={{ alignSelf: 'flex-start' }} to={p(`/k/${campaign.id}/charakter/${me.id}`)}>
           {me.role === 'gm' ? t('Mein Bild') : t('Meinen Charakter ansehen')}

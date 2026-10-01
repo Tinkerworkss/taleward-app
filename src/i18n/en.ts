@@ -857,4 +857,7 @@ export const en: Record<string, string> = {
   "In „{title}“ wartet ein Kapitel auf dich.": "A chapter is waiting for you in “{title}”.",
   "Mitgebrachte Welt in „{title}“": "Brought-along world in “{title}”",
   "Die Charaktere bringen Einträge für die Bibel mit.": "The characters bring entries for the bible.",
+  "Offener Platz": "Open seat",
+  "noch frei": "still free",
+  "Ehemalige ({n})": "Former members ({n})",
 };
