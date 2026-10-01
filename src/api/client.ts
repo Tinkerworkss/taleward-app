@@ -4,6 +4,8 @@ import type {
   ApiError,
   Campaign,
   CampaignSummary,
+  CampaignExport,
+  ImportStatus,
   Character,
   Chronicle,
   WorldEntryIn,
@@ -251,6 +253,25 @@ function makeApi(conn: () => Connection) {
     request<Member>('PUT', `/campaigns/${campaignId}/recording-consent`, { body: { granted } }),
   createInvite: (campaignId: string) =>
     request<{ code: string; expiresAt: string }>('POST', `/campaigns/${campaignId}/invites`),
+
+  // Kampagnen-Umzug (ab 0.4.8)
+  setMoveConsent: (campaignId: string, granted: boolean) =>
+    request<Member>('PUT', `/campaigns/${campaignId}/members/me/move-consent`, { body: { granted } }),
+  startExport: (campaignId: string) => request<CampaignExport>('POST', `/campaigns/${campaignId}/exports`),
+  exportStatus: (campaignId: string, exportId: string) =>
+    request<CampaignExport>('GET', `/campaigns/${campaignId}/exports/${exportId}`),
+  startImport: (fileName: string, sizeBytes: number) =>
+    request<{ importId: string; chunkSizeBytes: number; chunkCount: number }>('POST', '/imports', { body: { fileName, sizeBytes } }),
+  putImportChunk: (importId: string, index: number, data: Blob, sha256?: string) =>
+    request<void>('PUT', `/imports/${importId}/chunks/${index}`, { raw: data, headers: sha256 ? { 'X-Chunk-SHA256': sha256 } : undefined }),
+  importStatus: (importId: string) => request<ImportStatus>('GET', `/imports/${importId}`),
+  completeImport: (importId: string) => request<ImportStatus>('POST', `/imports/${importId}/complete`),
+  seatInvite: (campaignId: string, memberId: string) =>
+    request<{ code: string; expiresAt: string; memberId: string }>('POST', `/campaigns/${campaignId}/members/${memberId}/invite`),
+  takeSeat: (campaignId: string, memberId: string) =>
+    request<Campaign>('POST', `/campaigns/${campaignId}/members/${memberId}/take`),
+  releaseSeat: (campaignId: string, memberId: string) =>
+    request<Member>('POST', `/campaigns/${campaignId}/members/${memberId}/release`),
 
   sessions: (campaignId: string) => request<SessionSummary[]>('GET', `/campaigns/${campaignId}/sessions`),
   session: (id: string) => request<Session>('GET', `/sessions/${id}`),

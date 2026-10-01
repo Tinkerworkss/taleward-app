@@ -74,6 +74,10 @@ export interface Member {
   characterVersion?: number | null;
   characterStatus?: CharacterStatus | null;
   characterNickname?: string | null;
+  /** „Meine Charakterdaten dürfen bei einem Umzug mit“ (ab 0.4.8); für alle sichtbar, null = nein */
+  moveConsentAt?: string | null;
+  /** Platz aus einem Umzug, noch nicht besetzt (ab 0.4.8); userId ist dann "" */
+  openSeat?: boolean;
 }
 
 export type CharacterStatus = 'active' | 'retired' | 'deceased';
@@ -131,7 +135,8 @@ export interface Chronicle {
 /** Hinweis an die SL (ab 0.4.7) */
 export interface GmNotice {
   id: string;
-  code: 'hidden_entries_for_newcomer' | string;
+  /** seat_claimed (ab 0.4.8): jemand hat per Beitritt mit Charakter einen offenen Platz eingenommen */
+  code: 'hidden_entries_for_newcomer' | 'seat_claimed' | string;
   memberId: string | null;
   entryIds: string[];
   createdAt: string;
@@ -521,7 +526,33 @@ export interface Usage {
 /** Spielsystem der Kampagne (ab 0.3.3). Für die großen Systeme hat der Server eine Begriffsliste als Schreibhilfe. */
 export type GameSystem = 'dsa' | 'dnd' | 'pathfinder' | 'cthulhu' | 'shadowrun' | 'splittermond' | 'other';
 
+/** Export einer Kampagne als Datei taleward-kampagne/1 (ab 0.4.8) */
+export interface CampaignExport {
+  id: string;
+  state: 'queued' | 'processing' | 'ready' | 'failed';
+  progress?: number | null;
+  sizeBytes?: number | null;
+  expiresAt?: string | null;
+  /** Bei ready: Adresse mit Download-Schlüssel, relativ zur API-Basis, ohne Token nutzbar */
+  downloadUrl?: string | null;
+  consentedMemberIds: string[];
+  message?: string | null;
+  createdAt: string;
+}
+
+/** Import einer Datei taleward-kampagne/1 (ab 0.4.8) */
+export interface ImportStatus {
+  id: string;
+  state: 'uploading' | 'processing' | 'done' | 'failed';
+  progress?: number | null;
+  missingChunks?: number[];
+  campaignId?: string | null;
+  openSeats?: number | null;
+  /** Bei failed: import_format, import_too_large, import_unsafe, import_version – oder Klartext */
+  message?: string | null;
+}
+
 /** Gelöschtes Konto: nicht mehr als Person anbieten (Anwesende, Empfänger, Auswahl) */
 export function isDeletedMember(m: Member): boolean {
-  return !!m.deletedAt || m.userId === '' || !!m.leftAt;
+  return !!m.deletedAt || m.userId === '' || !!m.leftAt || !!m.openSeat;
 }
