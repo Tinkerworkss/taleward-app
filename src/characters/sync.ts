@@ -7,7 +7,7 @@ import { apiFor, isApiError } from '../api/client';
 import { getConnection, versionLess, type Connection } from '../api/connections';
 import type { Member } from '../api/types';
 import {
-  getCharacter, portraitToBlob, removeLink, saveChronicle, saveLink, setVersion, toServerCharacter,
+  accountKey, addOwners, allStoredCharacters, getCharacter, myAccountKeys, portraitToBlob, removeLink, saveChronicle, saveLink, setVersion, toServerCharacter,
   type CharacterLink, type StoredCharacter
 } from './store';
 
@@ -68,6 +68,8 @@ export async function pushToCampaign(characterId: string, target: { connId: stri
     world = (await api.myWorld(target.campaignId)).entries;
   }
 
+  const key = accountKey(conn);
+  if (key) addOwners(characterId, [key]);
   return saveLink(characterId, {
     connId: conn.id, serverName: conn.name, campaignId: target.campaignId, campaignTitle: target.campaignTitle,
     memberId: member.id, linkedAt: old?.linkedAt ?? new Date().toISOString(), syncedVersion: c.version,
@@ -96,4 +98,33 @@ export async function releaseFromCampaign(characterId: string, l: CharacterLink)
     if (!isApiError(e, 'no_character') && !(isApiError(e) && e.status === 404)) throw e;
   }
   return removeLink(characterId, l.connId, l.campaignId);
+}
+
+/**
+ * Charaktere aus 0.11 (ohne Besitzer) zuordnen: Bei Verknüpfungen fragt die App den Server, welchem Konto das
+ * Mitglied gehört; ohne Verknüpfung gehört der Charakter den gerade angemeldeten Konten. Charaktere anderer Konten
+ * bleiben so unsichtbar.
+ */
+export async function claimLegacyCharacters(): Promise<void> {
+  const mine = myAccountKeys();
+  if (mine.length === 0) return;
+  for (const c of allStoredCharacters().filter((x) => !x.owners)) {
+    if (c.links.length === 0) {
+      addOwners(c.id, mine);
+      continue;
+    }
+    const owners: string[] = [];
+    for (const l of c.links) {
+      const conn = getConnection(l.connId);
+      if (!conn) continue;
+      try {
+        const campaign = await apiFor(conn).campaign(l.campaignId);
+        const m = campaign.members.find((x) => x.id === l.memberId);
+        if (m?.userId) owners.push(`${conn.baseUrl}|${m.userId}`);
+      } catch {
+        /* Kampagne für dieses Konto nicht sichtbar – dann gehört der Charakter nicht ihm */
+      }
+    }
+    if (owners.length) addOwners(c.id, owners);
+  }
 }

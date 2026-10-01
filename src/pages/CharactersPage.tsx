@@ -18,7 +18,12 @@ export function CharactersPage() {
   const [list, setList] = useState(listCharacters);
   const [filter, setFilter] = useState<CharacterStatus | 'all'>('active');
   const [creating, setCreating] = useState(false);
-  useEffect(() => onCharactersChanged(() => setList(listCharacters())), []);
+  useEffect(() => {
+    const refresh = () => setList(listCharacters());
+    window.addEventListener('session-chronik:connections', refresh);
+    const off = onCharactersChanged(refresh);
+    return () => { off(); window.removeEventListener('session-chronik:connections', refresh); };
+  }, []);
 
   const counts = Object.fromEntries(STATUS_ORDER.map((s) => [s, list.filter((c) => c.status === s).length])) as Record<CharacterStatus, number>;
   const showFilter = counts.retired + counts.deceased > 0;

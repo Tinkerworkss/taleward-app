@@ -6,6 +6,7 @@
  */
 import { t } from '../i18n';
 import type { Character, CharacterStatus, Chronicle, WorldEntryIn, WorldEntryStatus } from '../api/types';
+import { activeConnections, type Connection } from '../api/connections';
 
 /** Mitgebrachter Welt-Eintrag in der Sammlung */
 export type WorldItem = WorldEntryIn;
@@ -43,6 +44,31 @@ export interface StoredCharacter extends Character {
   chronicles: Record<string, Chronicle>;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Konten, denen der Charakter gehört (`<baseUrl>|<userId>`). Die Sammlung liegt im Gerät; meldet sich auf demselben
+   * Gerät ein anderes Konto an (geteiltes Tablet, Testkonten), sieht es fremde Charaktere nicht. Fehlt das Feld
+   * (angelegt vor 0.12), ordnet claimLegacyCharacters() den Charakter zu; bis dahin ist er unsichtbar.
+   */
+  owners?: string[];
+}
+
+/** Schlüssel eines Kontos auf einem Server */
+export function accountKey(c: Pick<Connection, 'baseUrl' | 'user'>): string | null {
+  return c.user?.id ? `${c.baseUrl}|${c.user.id}` : null;
+}
+
+/** Konten, die gerade in der App angemeldet sind */
+export function myAccountKeys(): string[] {
+  return activeConnections().map(accountKey).filter((k): k is string => !!k);
+}
+
+function visible(c: StoredCharacter, mine: string[]): boolean {
+  return !!c.owners && c.owners.some((o) => mine.includes(o));
+}
+
+/** Alle Charaktere im Gerät, auch fremde – nur für die Zuordnung alter Charaktere */
+export function allStoredCharacters(): StoredCharacter[] {
+  return load();
 }
 
 export interface PortraitMeta {
@@ -77,12 +103,26 @@ export function onCharactersChanged(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
+/** Charaktere der angemeldeten Konten */
 export function listCharacters(): StoredCharacter[] {
-  return load().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const mine = myAccountKeys();
+  return load().filter((c) => visible(c, mine)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 export function getCharacter(id: string): StoredCharacter | undefined {
-  return load().find((c) => c.id === id);
+  const mine = myAccountKeys();
+  return load().find((c) => c.id === id && visible(c, mine));
+}
+
+/** Konten als Besitzer eintragen */
+export function addOwners(id: string, keys: string[]): void {
+  const list = load();
+  const i = list.findIndex((c) => c.id === id);
+  if (i < 0 || keys.length === 0) return;
+  const owners = [...new Set([...(list[i].owners ?? []), ...keys])];
+  if (owners.length === (list[i].owners ?? []).length && list[i].owners) return;
+  list[i] = { ...list[i], owners };
+  persist(list);
 }
 
 export function newId(): string {
@@ -94,7 +134,7 @@ export function createCharacter(data: { name: string; nickname?: string | null; 
   const c: StoredCharacter = {
     id: newId(), version: 1, name: data.name.trim(), nickname: data.nickname ?? null, summary: data.summary ?? null,
     backstory: data.backstory ?? null, system: data.system ?? null, status: 'active', statusChangedAt: null,
-    notes: '', portrait: data.portrait ?? null, portraitMeta: data.portraitMeta ?? null, portraitChangedAt: data.portrait ? now : null, world: [], links: [], chronicles: {}, createdAt: now, updatedAt: now
+    owners: myAccountKeys(), notes: '', portrait: data.portrait ?? null, portraitMeta: data.portraitMeta ?? null, portraitChangedAt: data.portrait ? now : null, world: [], links: [], chronicles: {}, createdAt: now, updatedAt: now
   };
   persist([...load(), c]);
   return c;
@@ -169,7 +209,7 @@ export function saveChronicle(characterId: string, connId: string, chronicle: Ch
 
 /** Charakter, der in dieser Kampagne verknüpft ist */
 export function characterForCampaign(connId: string, campaignId: string): StoredCharacter | undefined {
-  return load().find((c) => c.links.some((l) => l.connId === connId && l.campaignId === campaignId));
+  return listCharacters().find((c) => c.links.some((l) => l.connId === connId && l.campaignId === campaignId));
 }
 
 /** Stammdaten für den Server (ohne Notizen, Bild, Welt, Abschriften) */

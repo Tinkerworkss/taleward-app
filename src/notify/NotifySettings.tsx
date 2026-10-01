@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { t, tk } from '../i18n';
+import { claimLegacyCharacters } from '../characters/sync';
 import {
   checkNotificationsNow, enableNotifications, notificationsAllowed, notifySettings, notifySupported,
   openNotificationSettings, saveNotifySettings, syncNotifier, type NotifyKinds
@@ -8,11 +9,18 @@ import {
 /** Hält den nativen Teil aktuell: beim Start und nach jeder An- oder Abmeldung */
 export function NotifierSync() {
   useEffect(() => {
-    if (!notifySupported()) return;
+    // Charaktere aus 0.11 einem Konto zuordnen (auch im Browser)
+    void claimLegacyCharacters();
+    const own = () => void claimLegacyCharacters();
+    window.addEventListener('session-chronik:connections', own);
+    if (!notifySupported()) return () => window.removeEventListener('session-chronik:connections', own);
     void syncNotifier();
     const h = () => void syncNotifier();
     window.addEventListener('session-chronik:connections', h);
-    return () => window.removeEventListener('session-chronik:connections', h);
+    return () => {
+      window.removeEventListener('session-chronik:connections', h);
+      window.removeEventListener('session-chronik:connections', own);
+    };
   }, []);
   return null;
 }
