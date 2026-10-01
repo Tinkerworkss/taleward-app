@@ -29,11 +29,17 @@ selbst. Die App fragt nie GitHub, sondern nur ihre Server. Zwei Abläufe hängen
 
 ## Jede neue Fassung
 
-1. `package.json` → `version` erhöhen (z. B. 0.10.0 → 0.10.1), per Patch oder direkt.
-2. GitHub → Releases → „Draft a new release“: Tag `v0.10.1` (muss zur Version passen), Titel „Taleward 0.10.1“,
-   im Text kurz „Was ist neu“ (landet als `releaseNotes` in der App) → „Publish release“.
-3. Die beiden Abläufe bauen Web-Fassung und signierte APK und hängen sie an (Actions zeigt den Fortschritt).
-4. Die Server holen beides innerhalb eines Tages – automatisch oder nach Freigabe in der Verwaltung → Updates.
+1. `package.json` → `version` erhöhen (z. B. 0.10.0 → 0.11.0; in `package-lock.json` an beiden Stellen mit), per
+   Patch oder direkt.
+2. Eine Datei `release.md` ins Hauptverzeichnis legen – nur der Text „Was ist neu“, kurz (landet als `releaseNotes`
+   in der App). Der Ablauf `fassung-veroeffentlichen.yml` legt daraus das Release an (Tag `v<version>`, Titel
+   „Taleward <version>“), entfernt `release.md` wieder, baut Web-Fassung und signierte APK und hängt sie an.
+   Gibt es das Release schon, bricht er ab – dann zuerst die Version erhöhen.
+3. Die Server holen beides innerhalb eines Tages – automatisch oder nach Freigabe in der Verwaltung → Updates.
+
+Von Hand geht es weiterhin: GitHub → Releases → „Draft a new release“, Tag `v<version>` (muss zur Version passen),
+Titel „Taleward <version>“, Text „Was ist neu“ → „Publish release“. Dann bauen `web-release.yml` und
+`android-release.yml` die Dateien.
 
 Ohne Release geht es auch: Unter Actions → „Android-APK“ → „Run workflow“ entsteht eine signierte APK als Artefakt
 zum Herunterladen (zum Testen, wird nicht verteilt).
