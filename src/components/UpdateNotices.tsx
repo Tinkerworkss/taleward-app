@@ -86,7 +86,12 @@ export function UpdateAction({ offer, className = 'btn small' }: { offer: { url:
     );
   }
   if (state === 'installing') {
-    return <span className="small">{t('Im Installationsdialog auf „Installieren“ tippen. Danach startet Taleward neu.')}</span>;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <span className="small">{t('Im Installationsdialog auf „Installieren“ tippen. Danach startet Taleward neu.')}</span>
+        <span className="muted small">{t('Sperrt das Telefon die Installation (bei Samsung „Automatische Sperre“ unter Sicherheit und Datenschutz), diese kurz ausschalten und danach wieder einschalten.')}</span>
+      </div>
+    );
   }
   return (
     <>

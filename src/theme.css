@@ -804,6 +804,29 @@ textarea {
   max-width: 68ch;
 }
 
+/* Einklappbare Abschnitte (z. B. „Die Welt“): Überschrift als Schalter, Tippfläche ≥ 48 px */
+.fold-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.fold-chevron { display: inline-block; width: 1em; text-align: center; color: var(--ink-faint); transition: transform 150ms ease; }
+.fold-toggle[aria-expanded="true"] .fold-chevron { transform: rotate(90deg); }
+.clamp-4 {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* Gegenprüfung des Recaps (nur SL, ab Schnittstelle 0.4.6): Randmarke je Absatz, immer Symbol plus Wort */
 .review {
   display: flex;

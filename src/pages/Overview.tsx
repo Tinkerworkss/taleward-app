@@ -273,6 +273,18 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved: 
 
   const [showAll, setShowAll] = useState(false);
   const paragraphs = (campaign.worldInfo ?? '').split(/\n\s*\n/).filter((p) => p.trim());
+  // Einklappen merkt sich die App je Kampagne (nur auf diesem Gerät)
+  const closedKey = `session-chronik.worldClosed.${campaign.id}`;
+  const [closed, setClosed] = useState(() => {
+    try { return localStorage.getItem(closedKey) === '1'; } catch { return false; }
+  });
+  const toggleClosed = () => {
+    const next = !closed;
+    setClosed(next);
+    setShowAll(false);
+    try { if (next) localStorage.setItem(closedKey, '1'); else localStorage.removeItem(closedKey); } catch { /* egal */ }
+  };
+  const long = paragraphs.length > 1 || (paragraphs[0]?.length ?? 0) > 280;
 
   const save = async () => {
     setBusy(true);
@@ -377,20 +389,27 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved: 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div className="row between">
-        <h2>{t('Die Welt')}</h2>
+        <h2 style={{ margin: 0 }}>
+          <button type="button" className="fold-toggle" aria-expanded={!closed} aria-controls="world-text" onClick={toggleClosed}>
+            <span aria-hidden="true" className="fold-chevron">›</span>
+            {t('Die Welt')}
+          </button>
+        </h2>
         {gm && <button type="button" className="btn ghost small" onClick={() => setEditing(true)}>{t('Bearbeiten')}</button>}
       </div>
-      {paragraphs.length > 0 ? (
-        <div className="card recap" style={{ gap: 12 }}>
-          {(showAll ? paragraphs : paragraphs.slice(0, 1)).map((p, i) => <p key={i}>{p}</p>)}
-          {paragraphs.length > 1 && (
+      {closed ? null : paragraphs.length > 0 ? (
+        <div id="world-text" className="card recap" style={{ gap: 12 }}>
+          {showAll
+            ? paragraphs.map((p, i) => <p key={i}>{p}</p>)
+            : <p className={long ? 'clamp-4' : undefined}>{paragraphs[0]}</p>}
+          {long && (
             <button type="button" className="btn small quiet" style={{ alignSelf: 'flex-start' }} onClick={() => setShowAll(!showAll)}>
               {showAll ? t('Weniger anzeigen') : t('Weiterlesen')}
             </button>
           )}
         </div>
       ) : (
-        <div className="muted small">
+        <div id="world-text" className="muted small">
           {gm ? t('Noch leer. Trag hier ein, was alle über die Welt wissen sollen.') : t('Die Spielleitung hat noch keinen Hintergrund eingetragen.')}
         </div>
       )}

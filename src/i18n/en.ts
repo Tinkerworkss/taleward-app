@@ -609,6 +609,7 @@ export const en: Record<string, string> = {
   "Erlauben": "Allow",
   "Installieren": "Install",
   "Im Installationsdialog auf „Installieren“ tippen. Danach startet Taleward neu.": "Tap \"Install\" in the installation dialog. Taleward then restarts.",
+  "Sperrt das Telefon die Installation (bei Samsung „Automatische Sperre“ unter Sicherheit und Datenschutz), diese kurz ausschalten und danach wieder einschalten.": "If your phone blocks the installation (on Samsung: \"Auto Blocker\" under Security and privacy), switch it off briefly and back on afterwards.",
   "Noch einmal versuchen": "Try again",
   "Jetzt aktualisieren": "Update now",
   "„{name}“ ist veraltet": "\"{name}\" is outdated",
