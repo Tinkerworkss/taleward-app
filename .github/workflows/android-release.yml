@@ -1,0 +1,84 @@
+name: Android-APK
+# Test-APK zum Ausprobieren, ohne Release: Actions → „Android-APK“ → „Run workflow“ (nur von main).
+# Ergebnis unter „Artifacts“ als taleward-test-apk. Releases baut „Fassung veröffentlichen“.
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  bauen:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci --ignore-scripts
+      - run: npm run i18n:check
+      - name: Web-Teil bauen und Android-Projekt anlegen
+        run: |
+          npm run build
+          npx cap add android
+          node scripts/setup-android.mjs
+          npx cap sync android
+      - name: APK bauen (ohne Signatur)
+        run: |
+          cd android && ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release-unsigned.apk "$GITHUB_WORKSPACE/unsigned.apk"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: apk-unsigned
+          path: unsigned.apk
+          retention-days: 1
+
+  signieren:
+    needs: bauen
+    runs-on: ubuntu-24.04
+    permissions: {}
+    env:
+      CERT_SHA256: 6a3e3ef2210c19d74ea39e372a03061f5096ede1b37a943aaa0121438e2bf573
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: apk-unsigned
+          path: dl
+      - name: APK signieren
+        env:
+          KEYSTORE_B64: ${{ secrets.TALEWARD_KEYSTORE_BASE64 }}
+          TALEWARD_KEYSTORE_PASSWORD: ${{ secrets.TALEWARD_KEYSTORE_PASSWORD }}
+          TALEWARD_KEY_ALIAS: ${{ secrets.TALEWARD_KEY_ALIAS }}
+          TALEWARD_KEY_PASSWORD: ${{ secrets.TALEWARD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -n "$KEYSTORE_B64" ] || { echo "Secret TALEWARD_KEYSTORE_BASE64 fehlt"; exit 1; }
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          KS="$RUNNER_TEMP/taleward.jks"
+          trap 'rm -f "$KS"' EXIT
+          echo "$KEYSTORE_B64" | base64 -d > "$KS"
+          # Gradle liefert die APK schon ausgerichtet; nur falls nicht, ausrichten
+          if "$BT/zipalign" -c 4 dl/unsigned.apk >/dev/null 2>&1; then
+            cp dl/unsigned.apk "$RUNNER_TEMP/aligned.apk"
+          else
+            "$BT/zipalign" -p -f 4 dl/unsigned.apk "$RUNNER_TEMP/aligned.apk"
+          fi
+          "$BT/apksigner" sign --ks "$KS" --ks-key-alias "$TALEWARD_KEY_ALIAS" \
+            --ks-pass env:TALEWARD_KEYSTORE_PASSWORD --key-pass env:TALEWARD_KEY_PASSWORD \
+            --out taleward-test.apk "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" verify --print-certs taleward-test.apk | tee "$RUNNER_TEMP/certs.txt"
+          grep -qi "SHA-256 digest: $CERT_SHA256" "$RUNNER_TEMP/certs.txt" || { echo "Falsches Zertifikat – Abbruch"; exit 1; }
+          sha256sum taleward-test.apk > taleward-test.apk.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: taleward-test-apk
+          path: taleward-test.apk*
+          retention-days: 14
