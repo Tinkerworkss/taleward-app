@@ -1,0 +1,223 @@
+From 97ffca4d154beb771c3c094c27efa336d15b0f17 Mon Sep 17 00:00:00 2001
+From: "Tinkerworks (Benjamin)" <twartanddesign@gmail.com>
+Date: Fri, 2 Oct 2026 12:56:26 +0200
+Subject: [PATCH] =?UTF-8?q?Einladungen=20nur=20nach=20R=C3=BCckfrage,=20Se?=
+ =?UTF-8?q?rver-Links=20gepr=C3=BCft,=20keine=20Sicherung?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Einladungs-Link (taleward://einladung) tritt nicht mehr ungefragt bei:
+  Rückfrage mit Server, Code und eigenem Namen.
+- Adressen vom Server (Datenschutz, App-Download) nur mit http(s) als Link.
+- Android: App-Daten nicht in Geräte- oder Cloud-Sicherungen
+  (allowBackup=false, dataExtractionRules).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ .../res/xml/taleward_data_rules.xml           | 18 +++++++++++++
+ scripts/setup-android.mjs                     | 11 ++++++++
+ src/api/client.ts                             |  5 ++--
+ src/api/safeUrl.ts                            | 22 ++++++++++++++++
+ src/components/DeepLinks.tsx                  | 25 +++++++++++++++++--
+ src/components/UpdateNotices.tsx              | 12 ++++++---
+ src/i18n/en.ts                                |  2 ++
+ 7 files changed, 87 insertions(+), 8 deletions(-)
+ create mode 100644 native-android/res/xml/taleward_data_rules.xml
+ create mode 100644 src/api/safeUrl.ts
+
+diff --git a/native-android/res/xml/taleward_data_rules.xml b/native-android/res/xml/taleward_data_rules.xml
+new file mode 100644
+index 0000000..d0af493
+--- /dev/null
++++ b/native-android/res/xml/taleward_data_rules.xml
+@@ -0,0 +1,18 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Keine App-Daten in Geräte- oder Cloud-Sicherungen: Anmeldungen bleiben auf diesem Gerät (Android 12+) -->
++<data-extraction-rules>
++    <cloud-backup>
++        <exclude domain="root" />
++        <exclude domain="file" />
++        <exclude domain="database" />
++        <exclude domain="sharedpref" />
++        <exclude domain="external" />
++    </cloud-backup>
++    <device-transfer>
++        <exclude domain="root" />
++        <exclude domain="file" />
++        <exclude domain="database" />
++        <exclude domain="sharedpref" />
++        <exclude domain="external" />
++    </device-transfer>
++</data-extraction-rules>
+diff --git a/scripts/setup-android.mjs b/scripts/setup-android.mjs
+index 62ff180..03f6226 100644
+--- a/scripts/setup-android.mjs
++++ b/scripts/setup-android.mjs
+@@ -135,6 +135,17 @@ if (!manifest.includes('android:scheme="taleward"')) {
+   console.log('App-Adresse taleward:// eingetragen');
+ }
+ 
++// Keine Sicherung der App-Daten: Anmeldungen (Tokens) sollen nicht in Geräte- oder Cloud-Sicherungen landen
++if (/android:allowBackup="true"/.test(manifest)) {
++  manifest = manifest.replace('android:allowBackup="true"', 'android:allowBackup="false"');
++} else if (!manifest.includes('android:allowBackup=')) {
++  manifest = manifest.replace('<application', '<application\n        android:allowBackup="false"');
++}
++if (!manifest.includes('android:dataExtractionRules=')) {
++  manifest = manifest.replace('<application', '<application\n        android:dataExtractionRules="@xml/taleward_data_rules"');
++}
++console.log('Sicherung der App-Daten ausgeschaltet');
++
+ if (!manifest.includes('.RecorderService')) {
+   manifest = manifest.replace(
+     '</application>',
+diff --git a/src/api/client.ts b/src/api/client.ts
+index e796869..53defed 100644
+--- a/src/api/client.ts
++++ b/src/api/client.ts
+@@ -1,3 +1,4 @@
++import { withSafeLinks } from './safeUrl';
+ import { getLang, t } from '../i18n';
+ import { APP_VERSION, currentConnection, hasValidToken, serverKnowsAppVersion, updateConnection, type Connection } from './connections';
+ import type {
+@@ -138,7 +139,7 @@ function makeApi(conn: () => Connection) {
+   login: (username: string, password: string) =>
+     request<{ accessToken: string; expiresAt: string; user: User }>('POST', '/auth/login', { body: { username, password } }),
+   me: () => request<User>('GET', '/me'),
+-  info: () => request<ServerInfo>('GET', '/info'),
++  info: () => request<ServerInfo>('GET', '/info').then(withSafeLinks),
+   register: (data:
+     | { inviteCode: string; username: string; displayName: string; password: string; acceptPrivacy: true; ageConfirmed: true }
+     | { inviteCode: string; registrationToken: string; displayName: string; acceptPrivacy: true; ageConfirmed: true }) =>
+@@ -389,5 +390,5 @@ export function apiFor(conn: Connection) {
+ 
+ /** Öffentliche Info eines Servers, ohne Verbindung (vor dem Anmelden) */
+ export function fetchServerInfo(baseUrl: string): Promise<ServerInfo> {
+-  return requestOn<ServerInfo>({ id: '_probe', baseUrl, name: '', operator: null, apiVersion: null, token: null, expiresAt: null, user: null }, 'GET', '/info');
++  return requestOn<ServerInfo>({ id: '_probe', baseUrl, name: '', operator: null, apiVersion: null, token: null, expiresAt: null, user: null }, 'GET', '/info').then(withSafeLinks);
+ }
+diff --git a/src/api/safeUrl.ts b/src/api/safeUrl.ts
+new file mode 100644
+index 0000000..49e1187
+--- /dev/null
++++ b/src/api/safeUrl.ts
+@@ -0,0 +1,22 @@
++/**
++ * Adressen, die ein Server mitschickt (Datenschutzerklärung, App-Download), nur als Link verwenden, wenn sie mit
++ * https:// beginnen – im Heimnetz auch http://. Alles andere (javascript:, data: …) wird verworfen.
++ */
++export function safeLink(url: string | null | undefined): string | null {
++  if (!url) return null;
++  try {
++    const u = new URL(url);
++    return u.protocol === 'https:' || u.protocol === 'http:' ? url : null;
++  } catch {
++    return null;
++  }
++}
++
++/** Server-Info mit geprüften Adressen */
++export function withSafeLinks<T extends { privacyPolicyUrl?: string | null; appDownloadUrl?: string | null }>(info: T): T {
++  return {
++    ...info,
++    privacyPolicyUrl: safeLink(info.privacyPolicyUrl),
++    ...('appDownloadUrl' in info ? { appDownloadUrl: safeLink(info.appDownloadUrl) } : {})
++  };
++}
+diff --git a/src/components/DeepLinks.tsx b/src/components/DeepLinks.tsx
+index fd5a2b1..0e0fbd0 100644
+--- a/src/components/DeepLinks.tsx
++++ b/src/components/DeepLinks.tsx
+@@ -5,10 +5,20 @@ import { Capacitor } from '@capacitor/core';
+ import { apiFor } from '../api/client';
+ import { activeConnections, parseInvite } from '../api/connections';
+ import { inviteFromAppUrl } from '../invite';
++import { t } from '../i18n';
++import { confirmDialog } from './confirm';
++
++function hostOf(baseUrl: string): string {
++  try {
++    return new URL(baseUrl, window.location.href).host;
++  } catch {
++    return baseUrl;
++  }
++}
+ 
+ /**
+- * Öffnet die App über taleward://einladung?url=…, geht sie direkt in den Beitritt:
+- * bekannter Server mit Anmeldung → gleich beitreten; sonst über „Mit Server verbinden“ (Konto anlegen).
++ * Öffnet die App über taleward://einladung?url=…, geht sie in den Beitritt:
++ * bekannter Server mit Anmeldung → nach Rückfrage beitreten; sonst über „Mit Server verbinden“ (Konto anlegen).
+  */
+ export function DeepLinks() {
+   const navigate = useNavigate();
+@@ -41,6 +51,17 @@ export function DeepLinks() {
+       const invite = parseInvite(link);
+       const conn = invite?.baseUrl ? activeConnections().find((c) => c.baseUrl === invite.baseUrl) : undefined;
+       if (invite && conn) {
++        // Nie ungefragt beitreten: Ein Link von irgendeiner Webseite könnte sonst in eine fremde Kampagne führen
++        const ok = await confirmDialog(
++          t('Einladung annehmen? Du trittst auf „{server}“ ({host}) einer Kampagne bei, Code {code}. Die anderen dort sehen dann deinen Namen „{name}“. Nimm nur Einladungen an, die du von deiner Spielleitung oder Gruppe bekommen hast.', {
++            server: conn.name, host: hostOf(conn.baseUrl), code: invite.code, name: conn.user?.displayName ?? ''
++          }),
++          { confirmLabel: t('Beitreten'), cancelLabel: t('Nicht beitreten') }
++        );
++        if (!ok) {
++          navigate('/');
++          return;
++        }
+         try {
+           const c = await apiFor(conn).joinCampaign(invite.code);
+           navigate(`/v/${conn.id}/k/${c.id}/willkommen`);
+diff --git a/src/components/UpdateNotices.tsx b/src/components/UpdateNotices.tsx
+index bc39dce..bdf4aff 100644
+--- a/src/components/UpdateNotices.tsx
++++ b/src/components/UpdateNotices.tsx
+@@ -1,3 +1,4 @@
++import { safeLink } from '../api/safeUrl';
+ import { useState } from 'react';
+ import { APP_VERSION, appTooOld, serverTooOld, versionLess, type Connection } from '../api/connections';
+ import { t } from '../i18n';
+@@ -30,7 +31,9 @@ function newestOffer(conns: Connection[]): Offer | null {
+ 
+ /** Download-Knopf als echter Link – öffnet im Browser des Handys */
+ export function DownloadButton({ url, className = 'btn small' }: { url: string; className?: string }) {
+-  return <a className={className} href={url} target="_blank" rel="noopener noreferrer">{t('Herunterladen')}</a>;
++  const href = safeLink(url);
++  if (!href) return null;
++  return <a className={className} href={href} target="_blank" rel="noopener noreferrer">{t('Herunterladen')}</a>;
+ }
+ 
+ /**
+@@ -45,14 +48,15 @@ export function UpdateAction({ offer, className = 'btn small' }: { offer: { url:
+   if (DIST === 'store') {
+     return <a className={className} href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer">{t('Update im Play Store')}</a>;
+   }
+-  if (!offer.url) return null;
+-  if (!canSelfUpdate()) return <DownloadButton url={offer.url} className={className} />;
++  const url = safeLink(offer.url);
++  if (!url) return null;
++  if (!canSelfUpdate()) return <DownloadButton url={url} className={className} />;
+ 
+   const start = async () => {
+     setState('loading');
+     setError(null);
+     try {
+-      const r = await downloadAndInstall({ url: offer.url!, sha256: offer.sha256, sizeBytes: offer.size }, setProgress);
++      const r = await downloadAndInstall({ url, sha256: offer.sha256, sizeBytes: offer.size }, setProgress);
+       setState(r === 'needs_permission' ? 'permission' : 'installing');
+     } catch (e) {
+       setError(e instanceof Error ? e.message : String(e));
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index a959a18..8a012ff 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -860,4 +860,6 @@ export const en: Record<string, string> = {
+   "Offener Platz": "Open seat",
+   "noch frei": "still free",
+   "Ehemalige ({n})": "Former members ({n})",
++  "Einladung annehmen? Du trittst auf „{server}“ ({host}) einer Kampagne bei, Code {code}. Die anderen dort sehen dann deinen Namen „{name}“. Nimm nur Einladungen an, die du von deiner Spielleitung oder Gruppe bekommen hast.": "Accept this invitation? You will join a campaign on “{server}” ({host}), code {code}. The others there will see your name “{name}”. Only accept invitations you got from your game master or group.",
++  "Nicht beitreten": "Don’t join",
+ };
