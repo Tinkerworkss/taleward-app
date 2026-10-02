@@ -26,6 +26,8 @@ import { VoiceProfile } from './pages/VoiceProfile';
 import { WelcomePage } from './pages/WelcomePage';
 import { SetupPage } from './pages/SetupPage';
 import { BroughtPage } from './pages/BroughtPage';
+import { HandoverPage } from './pages/HandoverPage';
+import { MovePage } from './pages/MovePage';
 import { CharactersPage } from './pages/CharactersPage';
 import { MyCharacterPage } from './pages/MyCharacterPage';
 import { CharacterPage } from './pages/CharacterPage';
@@ -75,6 +77,8 @@ function Routed() {
       <Route path="/v/:conn/k/:campaignId/einrichten" element={scoped(<SetupPage />)} />
       <Route path="/v/:conn/k/:campaignId/charakter/:memberId" element={scoped(<CharacterPage />)} />
       <Route path="/v/:conn/k/:campaignId/mitgebracht" element={scoped(<BroughtPage />)} />
+      <Route path="/v/:conn/k/:campaignId/umziehen" element={scoped(<MovePage />)} />
+      <Route path="/v/:conn/k/:campaignId/spielleitung" element={scoped(<HandoverPage />)} />
       <Route path="/v/:conn/k/:campaignId/unterlagen" element={scoped(<DocumentsPage />)} />
       <Route path="/v/:conn/k/:campaignId/unterlagen/:documentId" element={scoped(<DocumentReview />)} />
       <Route path="/v/:conn/s/:sessionId" element={scoped(<Processing />)} />

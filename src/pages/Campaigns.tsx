@@ -1,6 +1,7 @@
 import { listCharacters } from '../characters/store';
 import { serverHasCharacters } from '../characters/sync';
 import { LinkInput } from '../components/LinkInput';
+import { ImportCampaign } from '../components/ImportCampaign';
 import { NotifyPrompt } from '../notify/NotifySettings';
 import { UpdateNotices } from '../components/UpdateNotices';
 import type { GameSystem } from '../api/types';
@@ -12,7 +13,7 @@ import { getLang, t, tn } from '../i18n';
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { apiFor, fetchServerInfo } from '../api/client';
-import { APP_VERSION, MIN_API_VERSION, hasValidToken, parseInvite, updateConnection, versionLess, type Connection } from '../api/connections';
+import { APP_VERSION, MIN_API_VERSION, apiAtLeast, hasValidToken, parseInvite, updateConnection, versionLess, type Connection } from '../api/connections';
 import { IconInfo } from '../components/Icons';
 import { useAuth } from '../auth/AuthContext';
 import { Divider, ErrorBox, Screen } from '../components/Screen';
@@ -40,7 +41,7 @@ export function Campaigns() {
   const navigate = useNavigate();
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [failed, setFailed] = useState<Connection[]>([]);
-  const [mode, setMode] = useState<'none' | 'new' | 'join'>('none');
+  const [mode, setMode] = useState<'none' | 'new' | 'join' | 'import'>('none');
   const [value, setValue] = useState('');
   const [serverId, setServerId] = useState<string>('');
   const [language, setLanguage] = useState<'de' | 'en'>(getLang());
@@ -222,7 +223,14 @@ export function Campaigns() {
           <button className="btn outline" type="button" onClick={() => { setMode('join'); setValue(''); }}>
             {t('Einladung annehmen')}
           </button>
+          {active.some((c) => apiAtLeast('0.4.8', c)) && (
+            <button className="btn ghost small" type="button" style={{ alignSelf: 'center' }} onClick={() => setMode('import')}>
+              {t('Kampagne aus Datei übernehmen')}
+            </button>
+          )}
         </>
+      ) : mode === 'import' ? (
+        <ImportCampaign servers={active.filter((c) => apiAtLeast('0.4.8', c))} onCancel={() => setMode('none')} />
       ) : (
         <div className="card">
           <div className="field">

@@ -4,7 +4,8 @@ import { InviteBox } from '../components/InviteBox';
 import { confirmDialog } from '../components/confirm';
 import { PENDING_LABEL } from './Chronicle';
 import { GameSystemFields, systemLabel } from '../components/GameSystemFields';
-import { p } from '../api/connections';
+import { apiAtLeast, p } from '../api/connections';
+import { OpenSeatDialog, OrphanNoticeCard, SeatClaimedCard } from '../components/Seats';
 import { characterIncomplete } from '../components/CharacterForm';
 import { Avatar } from '../components/Avatar';
 import { hasCover } from '../covers/CampaignCover';
@@ -397,9 +398,11 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved: 
   );
 }
 
-function Members({ campaign }: { campaign: Campaign; onChanged: () => void }) {
+function Members({ campaign, onChanged }: { campaign: Campaign; onChanged: () => void }) {
   const { user } = useAuth();
   const me = campaign.members.find((m) => m.userId === user?.id);
+  const gm = me?.role === 'gm';
+  const [seat, setSeat] = useState<Member | null>(null);
   const label = (m: Member) => (m.role === 'gm' ? t('Spielleitung') : m.characterName ?? t('noch ohne Charakter'));
   const active = campaign.members.filter((m) => m.openSeat || !isDeletedMember(m));
   const former = campaign.members.filter((m) => !m.openSeat && isDeletedMember(m));
@@ -409,13 +412,26 @@ function Members({ campaign }: { campaign: Campaign; onChanged: () => void }) {
       <h2>{t('Am Tisch')}</h2>
       <div className="card" style={{ gap: 2, padding: '8px 12px' }}>
         {active.map((m) => m.openSeat ? (
-          <div key={m.id} className="row muted" style={{ minHeight: 52, gap: 10 }}>
-            <Avatar campaignId={campaign.id} member={m} size={40} />
-            <span style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <span>{m.characterName ?? t('Offener Platz')}</span>
-              <span className="small">{t('noch frei')}</span>
-            </span>
-          </div>
+          // Offener Platz nach einem Umzug: Die SL kann gezielt einladen oder sich selbst daraufsetzen
+          gm ? (
+            <button key={m.id} type="button" className="row" onClick={() => setSeat(m)}
+              style={{ minHeight: 52, gap: 10, background: 'none', border: 0, padding: 0, textAlign: 'left', color: 'var(--ink)', font: 'inherit', cursor: 'pointer' }}>
+              <Avatar campaignId={campaign.id} member={m} size={40} />
+              <span style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <span>{m.characterName ?? (m.role === 'gm' ? t('Spielleitung') : t('Offener Platz'))}</span>
+                <span className="muted small">{t('noch frei · tippen zum Einladen')}</span>
+              </span>
+              <span aria-hidden style={{ color: 'var(--ink-faint)' }}>›</span>
+            </button>
+          ) : (
+            <div key={m.id} className="row muted" style={{ minHeight: 52, gap: 10 }}>
+              <Avatar campaignId={campaign.id} member={m} size={40} />
+              <span style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <span>{m.characterName ?? t('Offener Platz')}</span>
+                <span className="small">{t('noch frei')}</span>
+              </span>
+            </div>
+          )
         ) : (
           <Link key={m.id} to={p(`/k/${campaign.id}/charakter/${m.id}`)} className="row"
             style={{ minHeight: 52, gap: 10, color: 'var(--ink)', textDecoration: 'none' }}>
@@ -450,7 +466,42 @@ function Members({ campaign }: { campaign: Campaign; onChanged: () => void }) {
           {me.role === 'gm' ? t('Mein Bild') : t('Meinen Charakter ansehen')}
         </Link>
       )}
+      {me && me.role === 'player' && apiAtLeast('0.4.8') && <MoveConsent campaign={campaign} me={me} onChanged={onChanged} />}
+      {seat && <OpenSeatDialog campaign={campaign} seat={seat} onClose={() => setSeat(null)} onDone={() => { setSeat(null); onChanged(); }} />}
     </section>
+  );
+}
+
+/**
+ * „Meine Charakterdaten dürfen bei einem Umzug mit“ (0.4.8). Standard aus; ohne Zustimmung geht bei einem Umzug nur
+ * der Platz mit (Figurenname), nicht Beschreibung, Hintergrund, Bild und Kommentare.
+ */
+function MoveConsent({ campaign, me, onChanged }: { campaign: Campaign; me: Member; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const toggle = async (granted: boolean) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.setMoveConsent(campaign.id, granted);
+      onChanged();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <label className="check">
+        <input type="checkbox" checked={!!me.moveConsentAt} disabled={busy} onChange={(e) => toggle(e.target.checked)} />
+        <span>{t('Meine Charakterdaten dürfen bei einem Umzug mit')}</span>
+      </label>
+      <span className="muted small" style={{ marginLeft: 28 }}>
+        {t('Zieht die Spielleitung mit der Kampagne auf einen anderen Server, gehen dann Beschreibung, Hintergrund, Bild und deine öffentlichen Kommentare mit. Ohne Haken nur der Name deiner Figur.')}
+      </span>
+      <ErrorBox error={error} />
+    </div>
   );
 }
 
@@ -520,6 +571,12 @@ function CampaignManage({ campaign, me, onChanged }: { campaign: Campaign; me: M
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
       <ErrorBox error={error} />
       {gm && (
+        <Link className="btn outline" to={p(`/k/${campaign.id}/spielleitung`)}>{t('Spielleitung übergeben')}</Link>
+      )}
+      {gm && apiAtLeast('0.4.8') && (
+        <Link className="btn outline" to={p(`/k/${campaign.id}/umziehen`)}>{t('Kampagne umziehen')}</Link>
+      )}
+      {gm && (
         <button type="button" className="btn outline" disabled={busy} onClick={() => archive(!campaign.archivedAt)}>
           {campaign.archivedAt ? t('Wieder aufnehmen') : t('Kampagne abschließen')}
         </button>
@@ -527,7 +584,7 @@ function CampaignManage({ campaign, me, onChanged }: { campaign: Campaign; me: M
       {(!gm || otherGms > 0) && (
         <button type="button" className="btn danger outline" disabled={busy} onClick={leave}>{t('Kampagne verlassen')}</button>
       )}
-      {gm && otherGms === 0 && <span className="muted small">{t('Verlassen kannst du erst, wenn es eine zweite Spielleitung gibt (unter „Am Tisch“ ernennen).')}</span>}
+      {gm && otherGms === 0 && <span className="muted small">{t('Verlassen kannst du erst, wenn jemand anderes die Spielleitung hat („Spielleitung übergeben“).')}</span>}
       {gm && (deleting ? (
         <div className="card warn" style={{ gap: 8 }}>
           <strong>{t('Kampagne endgültig löschen')}</strong>
@@ -554,6 +611,12 @@ function CampaignManage({ campaign, me, onChanged }: { campaign: Campaign; me: M
 
 /** Hinweis an die SL (ab 0.4.7), z. B. ein Neuzugang ist vor teilweise verborgenen Einträgen verborgen */
 function GmNoticeCard({ campaign, notice, onDone }: { campaign: Campaign; notice: GmNotice; onDone: () => void }) {
+  if (notice.code === 'seat_claimed') return <SeatClaimedCard campaign={campaign} notice={notice} onDone={onDone} />;
+  if (notice.code === 'character_orphaned') return <OrphanNoticeCard campaign={campaign} notice={notice} onDone={onDone} />;
+  return <NewcomerNoticeCard campaign={campaign} notice={notice} onDone={onDone} />;
+}
+
+function NewcomerNoticeCard({ campaign, notice, onDone }: { campaign: Campaign; notice: GmNotice; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const m = campaign.members.find((x) => x.id === notice.memberId);
   const name = m ? m.characterName ?? m.displayName : t('Ein neues Mitglied');

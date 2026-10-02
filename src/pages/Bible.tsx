@@ -10,6 +10,7 @@ import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import type { Campaign, Entry, EntryType, Member } from '../api/types';
 import { Dialog } from '../components/Dialog';
+import { AssignFigureDialog } from '../components/Seats';
 import { IconEye } from '../components/Icons';
 import { IconLock } from '../components/Icons';
 import { ErrorBox, Screen, clearStoredUnread, rememberCampaign, sessionStorageSet } from '../components/Screen';
@@ -88,7 +89,7 @@ export function Bible() {
 
       <div className="grid-cards">
       {entries?.map((e) => (
-        <EntryCard key={e.id} entry={e} gm={campaign?.myRole === 'gm'} holder={holder(e.holderMemberId)}
+        <EntryCard key={e.id} entry={e} gm={campaign?.myRole === 'gm'} holder={holder(e.holderMemberId)} campaign={campaign}
           players={campaign?.members.filter((m) => m.role === 'player' && !isDeletedMember(m)) ?? []}
           onChanged={(u) => setEntries((list) => (u ? list?.map((x) => (x.id === u.id ? u : x)) : list?.filter((x) => x.id !== e.id)) ?? null)} />
       ))}
@@ -165,15 +166,19 @@ function AddEntry({ campaignId, type, onDone }: { campaignId: string; type: Entr
 }
 
 /** Ein Bibeleintrag; die SL kann bearbeiten, Sätze zwischen öffentlich und geheim verschieben, freigeben, löschen */
-function EntryCard({ entry: e, gm, holder, players, onChanged }: {
+function EntryCard({ entry: e, gm, holder, campaign, players, onChanged }: {
   entry: Entry;
   gm: boolean;
   holder: string | null;
+  campaign: Campaign | null;
   players: Member[];
   onChanged: (updated: Entry | null) => void;
 }) {
   const [hiding, setHiding] = useState(false);
+  const [assigning, setAssigning] = useState(false);
   const [editing, setEditing] = useState(false);
+  // NSC, der aus der Figur eines ausgetretenen Spielers entstanden ist (0.4.9, nur SL)
+  const former = e.formerHolderMemberId ? campaign?.members.find((m) => m.id === e.formerHolderMemberId) : undefined;
   const [name, setName] = useState(e.name);
   const [summary, setSummary] = useState(e.summary);
   const [gmNotes, setGmNotes] = useState(e.gmNotes ?? '');
@@ -264,6 +269,7 @@ function EntryCard({ entry: e, gm, holder, players, onChanged }: {
           {e.lastSessionNumber && e.lastSessionNumber !== e.firstSessionNumber ? ', ' + t('zuletzt in Kapitel {n}', { n: e.lastSessionNumber }) : ''}
         </div>
       ) : null}
+      {gm && former && <div className="muted small">{t('Früher gespielt von {name}', { name: former.displayName || t('einem gelöschten Konto') })}</div>}
       <ErrorBox error={error} />
       {gm && hiddenNames.length > 0 && (
         <div className="small" style={{ color: 'var(--siegel-text)' }}>
@@ -283,7 +289,14 @@ function EntryCard({ entry: e, gm, holder, players, onChanged }: {
             </button>
           )}
           <button type="button" className="btn small outline" onClick={() => setEditing(true)}>{t('Bearbeiten')}</button>
+          {e.formerHolderMemberId && campaign && (
+            <button type="button" className="btn small ghost" onClick={() => setAssigning(true)}>{t('Einem Spieler geben')}</button>
+          )}
         </div>
+      )}
+      {assigning && campaign && (
+        <AssignFigureDialog campaign={campaign} entryId={e.id} figureName={e.name} onClose={() => setAssigning(false)}
+          onDone={() => { setAssigning(false); onChanged(null); }} />
       )}
       {hiding && (
         <HideDialog players={players} onClose={() => setHiding(false)}

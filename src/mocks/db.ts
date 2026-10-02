@@ -177,6 +177,7 @@ const entry = (
 });
 
 export const entries: Entry[] = [
+  entry('pc-brakk', 'c-grau', 'pc', 'Brakk', 'Halbork und Söldner, schwört auf seine rostige Axt.', { holderMemberId: 'm-del', firstSessionNumber: 10, lastSessionNumber: 12 }),
   entry('e1', 'c-grau', 'npc', 'Meister Orrin Kalk', 'Glockengießer aus Grauwacht, seit Kapitel 10 verschwunden.', { firstSessionNumber: 10, lastSessionNumber: 10 }),
   entry('e2', 'c-grau', 'npc', 'Hedda', 'Wirtin im Weidenkrug, schuldet Thorwald einen Gefallen.', { firstSessionNumber: 11, lastSessionNumber: 11, gmNotes: 'Spioniert für den Rabenzirkel und meldet jeden Fremden.', hiddenFromMemberIds: ['m-kemal'] }),
   entry('e3', 'c-grau', 'npc', 'Der Rabe', 'Anführer des Rabenzirkels, zeigt sich nie selbst.', { visibility: 'gm_only', gmNotes: 'Ist Veyras Bruder.' }),
@@ -285,7 +286,10 @@ export const seen = {
 export type WorldRecord = { id: string; version: number; proposalId: string | null; entryId: string | null; serverVersion: number | null };
 /** memberId → (Eintrag der App → Stand auf dem Server) */
 export const world: Record<string, Record<string, WorldRecord>> = {};
-export const gmNotices: Record<string, GmNotice[]> = {};
+export const gmNotices: Record<string, GmNotice[]> = {
+  // Testmodus (0.4.9): Brakk gehörte einem inzwischen gelöschten Konto – die SL entscheidet, was aus der Figur wird
+  'c-grau': [{ id: 'gn-brakk', code: 'character_orphaned', memberId: 'm-del', entryIds: ['pc-brakk'], createdAt: '2026-09-20T10:00:00Z' }]
+};
 
 /** Charakterbilder im Speicher: Mitglieds-ID → Bild */
 export const portraits: Record<string, { data: ArrayBuffer; type: string; updatedAt: string; thumb?: ArrayBuffer }> = {};

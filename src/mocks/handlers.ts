@@ -3,7 +3,7 @@ import { DEMO_HOST, DEMO_USERS, demoSpeakers } from './demo';
 
 /** Alle Titelbild-IDs (Schnittstelle 0.4.3) – wie der Server: neue Kampagnen bekommen eines zufällig */
 const COVER_IDS = ['meadow', 'forest', 'desert', 'city', 'cyber', 'mountains', 'coast', 'swamp', 'dungeon', 'space', 'castle', 'dark-fantasy', 'moonwood', 'ancient-ruins', 'tavern', 'battlefield', 'frozen-north', 'arcane-ruins', 'fairy-wilds', 'underworld', 'storm-coast', 'steampunk', 'post-apocalypse', 'western', 'noir', 'space-opera', 'orient', 'necropolis', 'manor', 'riverside-mystery'];
-import type { CampaignDocument, CampaignSummary, Character, Chronicle, Comment, Correction, WorldEntryIn, WorldEntryStatus, Entry, DatePoll, EntryInput, ProcessingStatus, Proposal, Recap, Session, UncertainTerm, VoteAnswer, VoiceProfile, Member } from '../api/types';
+import type { CampaignDocument, CampaignExport, CampaignSummary, Character, ImportStatus, Chronicle, Comment, Correction, WorldEntryIn, WorldEntryStatus, Entry, DatePoll, EntryInput, ProcessingStatus, Proposal, Recap, Session, UncertainTerm, VoteAnswer, VoiceProfile, Member } from '../api/types';
 import {
   ME, NACHBAR_HOST, account, gmNotices, world, type WorldRecord, campaigns, comments, coverImages, datePolls, documents, portraits, proposalsForDocument, seen, entries, gmNotes, proposals, proposalsFor, recaps, sessions, speakersFor, uploads,
   type MockCampaign, type MockSession
@@ -286,6 +286,42 @@ function advanceDoc(d: (typeof documents)[number]): CampaignDocument {
 }
 
 /** Spoilerschutz: den geheimen Hintergrund sehen nur die Person selbst und die SL */
+// ---- Umzug (0.4.8) im Testmodus: Exporte laufen ein paar Sekunden, Importe legen eine Kampagne mit offenen Plätzen an
+const exportsMock: Record<string, CampaignExport & { campaignId: string; readyAt: number }> = {};
+const importsMock: Record<string, { id: string; fileName: string; chunkCount: number; got: Set<number>; doneAt: number | null; campaignId: string | null; host: string }> = {};
+/** Einladungen für genau einen offenen Platz: Code → [Kampagne, Platz] */
+const seatCodes: Record<string, [string, string]> = {};
+
+function exportView(x: CampaignExport & { campaignId: string; readyAt: number }): CampaignExport {
+  const left = x.readyAt - Date.now();
+  const { campaignId: _c, readyAt: _r, ...rest } = x;
+  if (left > 0) return { ...rest, state: 'processing', progress: Math.min(0.95, 1 - left / 4000) };
+  return { ...rest, state: 'ready', progress: 1, sizeBytes: 48_300_000, expiresAt: new Date(x.readyAt + 7 * 864e5).toISOString(),
+    downloadUrl: `/campaigns/${x.campaignId}/exports/${x.id}/file?t=testmodus` };
+}
+
+function importView(i: (typeof importsMock)[string]): ImportStatus {
+  if (i.doneAt === null) return { id: i.id, state: 'uploading', progress: i.got.size / i.chunkCount, missingChunks: [...Array(i.chunkCount).keys()].filter((n) => !i.got.has(n)) };
+  if (Date.now() < i.doneAt) return { id: i.id, state: 'processing', progress: 0.5 };
+  if (!i.campaignId) {
+    // Wie der Server: neue Kampagne, die importierende Person ist einzige SL, alle Plätze der Datei sind offen
+    const id = 'c-' + crypto.randomUUID().slice(0, 8);
+    const title = i.fileName.replace(/^taleward-kampagne-/, '').replace(/-\d{4}-\d{2}-\d{2}\.zip$|\.zip$/, '').replace(/-/g, ' ') || 'Übernommene Kampagne';
+    campaigns.push({
+      id, title: title.charAt(0).toUpperCase() + title.slice(1), description: 'Aus einer Datei übernommen.', worldInfo: '', language: 'de',
+      host: i.host === 'local' ? undefined : i.host, coverPreset: 'moonwood', nextSessionAt: null, inviteCode: 'MOND-' + Math.floor(10000000 + Math.random() * 89999999),
+      members: [
+        { id: 'm-' + crypto.randomUUID().slice(0, 8), userId: ME.id, displayName: ME.displayName, characterName: null, role: 'gm', recordingConsentAt: null },
+        { id: 'seat-sl', userId: '', displayName: '', characterName: null, role: 'gm', openSeat: true, recordingConsentAt: null },
+        { id: 'seat-1', userId: '', displayName: '', characterName: 'Wendel Krähenfuß', role: 'player', openSeat: true, recordingConsentAt: null },
+        { id: 'seat-2', userId: '', displayName: '', characterName: 'Maren vom Steg', role: 'player', openSeat: true, recordingConsentAt: null }
+      ]
+    });
+    i.campaignId = id;
+  }
+  return { id: i.id, state: 'done', progress: 1, campaignId: i.campaignId, openSeats: campaigns.find((c) => c.id === i.campaignId)?.members.filter((m) => m.openSeat).length ?? 0 };
+}
+
 function membersFor(c: MockCampaign) {
   const gm = isGm(c.id);
   return c.members.map((m) => (gm || m.userId === ME.id ? m : { ...m, characterBackstory: undefined }));
@@ -362,7 +398,7 @@ export const handlers = [
     const nachbar = new URL(request.url).hostname === NACHBAR_HOST;
     if (hostKey(request) === DEMO_HOST) {
       return HttpResponse.json({
-        name: 'Taleward', operator: 'Euer Verein e. V.', contact: null, apiVersion: '0.4.7', registration: 'invite_only',
+        name: 'Taleward', operator: 'Euer Verein e. V.', contact: null, apiVersion: '0.4.9', registration: 'invite_only',
         authMethods: ['password'], privacyPolicyUrl: null, minAge: 16, externalTranscription: null,
         minAppVersion: null, latestAppVersion: null, appDownloadUrl: null, releaseNotes: null
       });
@@ -372,7 +408,7 @@ export const handlers = [
       operator: nachbar ? 'Spielgemeinschaft Nachbarort e. V.' : 'Rollenspielverein (Testmodus)',
       contact: nachbar ? 'vorstand@nachbarverein.test' : null,
       // Eingebauter Testserver kann alles bis 0.4.7; der Nachbarverein bleibt alt (zeigt das Ausblenden neuer Funktionen)
-      apiVersion: nachbar ? '0.3.9' : '0.4.7',
+      apiVersion: nachbar ? '0.3.9' : '0.4.9',
       registration: 'invite_only',
       authMethods: ['password'],
       privacyPolicyUrl: null,
@@ -581,6 +617,18 @@ export const handlers = [
   http.post(`${B}/campaigns/join`, async ({ request }) => {
     const body = (await request.json()) as { code: string; characterName?: string; character?: Character | null };
     const host = hostKey(request);
+    const seat = seatCodes[body.code.trim().toUpperCase()];
+    if (seat) {
+      // Einladung für genau einen Platz (0.4.8): wer damit beitritt, sitzt auf diesem Platz
+      const c = campaigns.find((x) => x.id === seat[0]);
+      const m = c?.members.find((x) => x.id === seat[1] && x.openSeat);
+      if (!c || !m) return err(404, 'invite_invalid', 'Dieser Einladungscode ist ungültig oder abgelaufen. Frag deine Spielleitung nach einem neuen.');
+      delete seatCodes[body.code.trim().toUpperCase()];
+      Object.assign(m, { userId: ME.id, displayName: ME.displayName, openSeat: false, role: 'player' });
+      if (body.character) applyCharacter(c, m, body.character);
+      (gmNotices[c.id] ??= []).push({ id: 'gn-' + crypto.randomUUID().slice(0, 8), code: 'seat_claimed', memberId: m.id, entryIds: [], createdAt: new Date().toISOString() });
+      return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: false, allowCloudSummary: false, members: membersFor(c) });
+    }
     const c = campaigns.find((x) => (x.host ?? 'local') === host && x.inviteCode.toUpperCase() === body.code.trim().toUpperCase());
     if (!c) return err(404, 'invite_invalid', 'Dieser Einladungscode ist ungültig oder abgelaufen. Frag deine Spielleitung nach einem neuen.');
     if (!myMember(c)) {
@@ -771,6 +819,98 @@ export const handlers = [
     if (body.characterSummary !== undefined) m.characterSummary = body.characterSummary || null;
     if (body.characterBackstory !== undefined) m.characterBackstory = body.characterBackstory || null;
     if (body.role) m.role = body.role;
+    return HttpResponse.json(m);
+  }),
+
+  // ---------------- Umzug (0.4.8)
+
+  http.put(`${B}/campaigns/:id/members/me/move-consent`, async ({ params, request }) => {
+    const c = campaigns.find((x) => x.id === params.id);
+    const m = c && myMember(c);
+    if (!c || !m) return err(404, 'not_found', 'Kampagne nicht gefunden.');
+    const { granted } = (await request.json()) as { granted: boolean };
+    m.moveConsentAt = granted ? new Date().toISOString() : null;
+    return HttpResponse.json(m);
+  }),
+
+  http.post(`${B}/campaigns/:id/exports`, ({ params }) => {
+    const c = campaigns.find((x) => x.id === params.id);
+    if (!c || !isGm(c.id)) return err(404, 'not_found', 'Kampagne nicht gefunden.');
+    const x = { id: 'x-' + crypto.randomUUID().slice(0, 8), campaignId: c.id, readyAt: Date.now() + 4000, state: 'queued' as const, consentedMemberIds: c.members.filter((m) => m.moveConsentAt).map((m) => m.id), createdAt: new Date().toISOString() };
+    exportsMock[x.id] = x;
+    return HttpResponse.json(exportView(x), { status: 202 });
+  }),
+
+  http.get(`${B}/campaigns/:id/exports/:xid`, ({ params }) => {
+    const x = exportsMock[params.xid as string];
+    if (!x || x.campaignId !== params.id || !isGm(x.campaignId)) return err(404, 'not_found', 'Export nicht gefunden.');
+    return HttpResponse.json(exportView(x));
+  }),
+
+  http.post(`${B}/imports`, async ({ request }) => {
+    const { fileName, sizeBytes } = (await request.json()) as { fileName: string; sizeBytes: number };
+    if (!fileName?.toLowerCase().endsWith('.zip')) return err(400, 'invalid_input', 'Bitte eine Datei taleward-kampagne-….zip wählen.');
+    if (sizeBytes > 1024 ** 3) return HttpResponse.json({ code: 'import_too_large', message: 'Die Datei ist zu groß.', details: { maxBytes: 1024 ** 3 } }, { status: 413 });
+    const id = 'i-' + crypto.randomUUID().slice(0, 8);
+    const chunkCount = Math.max(1, Math.ceil(sizeBytes / CHUNK));
+    importsMock[id] = { id, fileName, chunkCount, got: new Set(), doneAt: null, campaignId: null, host: hostKey(request) };
+    return HttpResponse.json({ importId: id, chunkSizeBytes: CHUNK, chunkCount }, { status: 201 });
+  }),
+
+  http.put(`${B}/imports/:iid/chunks/:n`, async ({ params }) => {
+    const i = importsMock[params.iid as string];
+    if (!i) return err(404, 'not_found', 'Import nicht gefunden.');
+    await delay(150);
+    i.got.add(Number(params.n));
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.get(`${B}/imports/:iid`, ({ params }) => {
+    const i = importsMock[params.iid as string];
+    return i ? HttpResponse.json(importView(i)) : err(404, 'not_found', 'Import nicht gefunden.');
+  }),
+
+  http.post(`${B}/imports/:iid/complete`, ({ params }) => {
+    const i = importsMock[params.iid as string];
+    if (!i) return err(404, 'not_found', 'Import nicht gefunden.');
+    const missing = [...Array(i.chunkCount).keys()].filter((n) => !i.got.has(n));
+    if (missing.length) return HttpResponse.json({ code: 'upload_incomplete', message: 'Es fehlen noch Teile.', details: { missingChunks: missing } }, { status: 409 });
+    i.doneAt ??= Date.now() + 2500;
+    return HttpResponse.json(importView(i), { status: 202 });
+  }),
+
+  http.post(`${B}/campaigns/:id/members/:mid/invite`, ({ params }) => {
+    const c = campaigns.find((x) => x.id === params.id);
+    if (!c || !isGm(c.id)) return err(404, 'not_found', 'Kampagne nicht gefunden.');
+    const m = c.members.find((x) => x.id === params.mid);
+    if (!m?.openSeat) return err(409, 'seat_not_open', 'Dieser Platz ist schon besetzt.');
+    const code = 'PLATZ-' + Math.floor(10000000 + Math.random() * 89999999);
+    seatCodes[code] = [c.id, m.id];
+    return HttpResponse.json({ code, expiresAt: new Date(Date.now() + 7 * 864e5).toISOString(), memberId: m.id }, { status: 201 });
+  }),
+
+  http.post(`${B}/campaigns/:id/members/:mid/take`, ({ params }) => {
+    const c = campaigns.find((x) => x.id === params.id);
+    const me = c && myMember(c);
+    if (!c || !me) return err(404, 'not_found', 'Kampagne nicht gefunden.');
+    if (me.role !== 'gm') return err(403, 'not_importer', 'Das kann nur die Person, die die Kampagne übernommen hat.');
+    const seat = c.members.find((x) => x.id === params.mid);
+    if (!seat?.openSeat) return err(409, 'seat_not_open', 'Dieser Platz ist schon besetzt.');
+    Object.assign(seat, { userId: ME.id, displayName: ME.displayName, openSeat: false, role: 'gm', recordingConsentAt: me.recordingConsentAt ?? null });
+    c.members = c.members.filter((x) => x !== me);
+    return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: false, allowCloudSummary: false, gmNotices: gmNotices[c.id] ?? [], members: membersFor(c) });
+  }),
+
+  http.post(`${B}/campaigns/:id/members/:mid/release`, ({ params }) => {
+    const c = campaigns.find((x) => x.id === params.id);
+    if (!c || !isGm(c.id)) return err(404, 'not_found', 'Kampagne nicht gefunden.');
+    const m = c.members.find((x) => x.id === params.mid && !x.leftAt && !x.deletedAt);
+    if (!m) return err(404, 'not_found', 'Mitglied nicht gefunden.');
+    if (m.role === 'gm' && c.members.filter((x) => x.role === 'gm' && !x.leftAt && !x.deletedAt && !x.openSeat).length === 1) {
+      return err(409, 'last_gm', 'Die Kampagne braucht mindestens eine Spielleitung.');
+    }
+    Object.assign(m, { userId: '', displayName: '', openSeat: true, recordingConsentAt: null });
+    gmNotices[c.id] = (gmNotices[c.id] ?? []).filter((n) => !(n.code === 'seat_claimed' && n.memberId === m.id));
     return HttpResponse.json(m);
   }),
 
