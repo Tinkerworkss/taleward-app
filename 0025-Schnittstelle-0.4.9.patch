@@ -1,0 +1,356 @@
+From 9f992451b364d86463672f937d3f5cb448de890d Mon Sep 17 00:00:00 2001
+From: "Tinkerworks (Benjamin)"
+ <121437138+Tinkerworkss@users.noreply.github.com>
+Date: Fri, 2 Oct 2026 17:31:29 +0200
+Subject: [PATCH] Schnittstelle 0.4.9: Figuren ausgetretener Spieler,
+ Begrenzung von Fehlversuchen
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- YAML 0.4.9: POST /entries/{id}/to-npc und /entries/{id}/assign,
+  Entry.formerHolderMemberId (nur SL), gmNotices character_orphaned,
+  429 too_many_requests bei Anmelden und Beitreten, längere Einladungscodes.
+- Typen, Aufrufe und Testserver dazu.
+- Beitritt über einen Link scheitert (Code abgelaufen, zu viele Versuche):
+  Meldung auf der Kampagnenliste statt Kontoanlage.
+- Automatischer Test für geprüfte Server-Adressen (npm test, läuft mit build:mock).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ docs/session-chronik-api.yaml    | 96 +++++++++++++++++++++++++++++++-
+ package.json                     |  3 +-
+ scripts/tests/safe-link.test.mjs | 20 +++++++
+ src/api/client.ts                |  4 ++
+ src/api/types.ts                 |  9 ++-
+ src/components/DeepLinks.tsx     |  8 ++-
+ src/i18n/en.ts                   |  2 +
+ src/mocks/handlers.ts            | 52 ++++++++++++++++-
+ src/pages/Campaigns.tsx          | 15 ++++-
+ 9 files changed, 198 insertions(+), 11 deletions(-)
+ create mode 100644 scripts/tests/safe-link.test.mjs
+
+diff --git a/docs/session-chronik-api.yaml b/docs/session-chronik-api.yaml
+index e8dc989..d7c579e 100644
+--- a/docs/session-chronik-api.yaml
++++ b/docs/session-chronik-api.yaml
+@@ -3,3 +3,3 @@ info:
+   title: Taleward API
+-  version: 0.4.8
++  version: 0.4.9
+   description: |
+@@ -147,2 +147,8 @@ info:
+     Hörproben, Stimmprofile, Einwilligungen, Vorschläge und der Prüfteil des Recaps verlassen den Server nie.
++    Änderungen in 0.4.9 (Figuren ausgetretener Spieler, Begrenzung von Fehlversuchen): Die Figur einer Person, die
++    die Kampagne verlassen hat (oder deren Konto gelöscht ist), bleibt als Geschichte in der Kampagne. Die SL macht
++    daraus einen NSC (POST /entries/{id}/to-npc) oder gibt sie einem anderen Spieler (POST /entries/{id}/assign);
++    Hinweis an die SL beim Austritt: gmNotices `character_orphaned`; Entry.formerHolderMemberId (nur SL). Die Person
++    selbst (Hintergrund, Kommentare, Zustimmungen, characterId, Porträt) geht nicht mit. 429 `too_many_requests` auch
++    bei POST /auth/login und POST /campaigns/join. Einladungscodes ab Server 0.4.37 länger (WORT-12345678).
+ 
+@@ -178,2 +184,6 @@ paths:
+       summary: Anmelden
++      description: |
++        Ab 0.4.9: Fehlversuche sind begrenzt (10 je Benutzername und 30 je Adresse in 15 Minuten) → 429
++        `too_many_requests` mit lesbarer message. Server 0.4.37 vor YAML 0.4.9 antwortet dafür noch mit 401 und
++        code `too_many_requests`; die App richtet sich nach dem code, nicht nach dem Status.
+       security: []
+@@ -202,2 +212,3 @@ paths:
+         "400": { $ref: "#/components/responses/BadRequest" }
++        "429": { $ref: "#/components/responses/TooManyRequests" }
+ 
+@@ -629,2 +640,5 @@ paths:
+       summary: Mit Einladungscode beitreten (Rolle player)
++      description: |
++        Ab 0.4.9: falsche Codes sind begrenzt (10 je Konto und 30 je Adresse in 15 Minuten) → 429 `too_many_requests`.
++        Server 0.4.37 vor YAML 0.4.9 antwortet dafür noch mit 409 und code `too_many_requests`.
+       requestBody:
+@@ -637,3 +651,6 @@ paths:
+               properties:
+-                code: { type: string, example: "RABE-4821" }
++                code:
++                  type: string
++                  example: "RABE-48213759"
++                  description: "Wort, Bindestrich, Ziffern. Ab Server 0.4.37 acht Ziffern, ältere Codes (vier Ziffern) gelten bis zum Ablauf."
+                 characterName: { type: string, description: "Freier Name ohne Sammlung (Gäste, ältere Apps)" }
+@@ -661,2 +678,3 @@ paths:
+         "409": { $ref: "#/components/responses/Conflict" }
++        "429": { $ref: "#/components/responses/TooManyRequests" }
+ 
+@@ -2472,2 +2490,62 @@ paths:
+ 
++  /entries/{entryId}/to-npc:
++    parameters:
++      - { name: entryId, in: path, required: true, schema: { type: string } }
++    post:
++      tags: [Bibel, Charaktere]
++      summary: Figur eines ausgetretenen Spielers als NSC weiterführen (nur SL, ab 0.4.9)
++      description: |
++        Erlaubt für Einträge type pc, deren Halter die Kampagne verlassen hat (leftAt), dessen Konto gelöscht ist
++        (deletedAt) oder ohne Halter (holderMemberId null). Wirkung: type npc, holderMemberId null,
++        formerHolderMemberId = bisheriger Halter. Name, Kurzbeschreibung, Status, Sichtbarkeit, Erwähnungen und
++        Kapitel bleiben; danach ein normaler NSC (PATCH, DELETE wie immer). Das Porträt bleibt am ausgetretenen
++        Mitglied (Einträge haben keine Bilder). Halter noch aktiv → 409 `holder_active`; kein pc-Eintrag → 409
++        `not_a_character`. Spieler → 403, fremde Einträge → 404.
++      responses:
++        "200":
++          description: Jetzt ein NSC
++          content:
++            application/json:
++              schema: { $ref: "#/components/schemas/Entry" }
++        "401": { $ref: "#/components/responses/Unauthorized" }
++        "403": { $ref: "#/components/responses/Forbidden" }
++        "404": { $ref: "#/components/responses/NotFound" }
++        "409": { $ref: "#/components/responses/Conflict" }
++
++  /entries/{entryId}/assign:
++    parameters:
++      - { name: entryId, in: path, required: true, schema: { type: string } }
++    post:
++      tags: [Bibel, Charaktere]
++      summary: Figur einem anderen Spieler geben (nur SL, ab 0.4.9)
++      description: |
++        Erlaubt für npc-Einträge mit formerHolderMemberId (aus einer Spielerfigur entstanden) und für pc-Einträge ohne
++        aktiven Halter. Ziel: aktives Mitglied mit Rolle player ohne eigenen pc-Eintrag. Wirkung: type pc,
++        holderMemberId = Ziel; Member.characterName und characterSummary des Ziels werden aus dem Eintrag gesetzt.
++        characterId bleibt null, bis die Person die Figur in ihre Sammlung übernimmt (PUT …/members/me/character mit
++        neuer id, version 1); der Server verknüpft dann den vorhandenen pc-Eintrag, statt einen neuen anzulegen.
++        Alte Recaps bleiben unverändert, Erwähnungen wandern mit dem Eintrag. Fehler: Ziel hat schon einen pc-Eintrag →
++        409 `member_has_character`; Ziel kein aktiver Spieler → 409 `not_a_player`; Eintrag passt nicht → 409
++        `not_a_character`.
++      requestBody:
++        required: true
++        content:
++          application/json:
++            schema:
++              type: object
++              required: [memberId]
++              properties:
++                memberId: { type: string }
++      responses:
++        "200":
++          description: Figur übergeben
++          content:
++            application/json:
++              schema: { $ref: "#/components/schemas/Entry" }
++        "400": { $ref: "#/components/responses/BadRequest" }
++        "401": { $ref: "#/components/responses/Unauthorized" }
++        "403": { $ref: "#/components/responses/Forbidden" }
++        "404": { $ref: "#/components/responses/NotFound" }
++        "409": { $ref: "#/components/responses/Conflict" }
++
+ components:
+@@ -2505,2 +2583,5 @@ components:
+       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
++    TooManyRequests:
++      description: Zu viele Versuche (`too_many_requests`); message sagt, wie lange zu warten ist
++      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+ 
+@@ -3156,2 +3237,7 @@ components:
+             originVersion: { type: [integer, "null"] }
++            formerHolderMemberId:
++              type: [string, "null"]
++              description: |
++                Ab 0.4.9: NSC, der aus der Figur dieses (ausgetretenen) Mitglieds entstanden ist (POST …/to-npc). Nur für
++                die SL, für Spieler weggelassen. Name über die Mitgliederliste (auch Ehemalige).
+ 
+@@ -3326,3 +3412,3 @@ components:
+           type: string
+-          enum: [hidden_entries_for_newcomer, seat_claimed]
++          enum: [hidden_entries_for_newcomer, seat_claimed, character_orphaned]
+           description: |
+@@ -3331,2 +3417,6 @@ components:
+             erledigen per DELETE …/gm-notices/{id} oder Platz wieder freigeben (POST …/members/{id}/release).
++            character_orphaned (ab 0.4.9): Ein Spieler hat die Kampagne verlassen oder sein Konto gelöscht; entryIds =
++            seine pc-Einträge. Die App bietet an: als NSC weiterführen (…/to-npc), später einem anderen Spieler geben
++            (…/assign), verabschieden (Status) oder später. Erledigen per DELETE …/gm-notices/{id}; der Server löscht
++            den Hinweis selbst, wenn alle entryIds nicht mehr pc ohne Halter sind.
+         memberId: { type: [string, "null"], description: "Betroffenes Mitglied" }
+diff --git a/package.json b/package.json
+index 70d64d9..bead70d 100644
+--- a/package.json
++++ b/package.json
+@@ -9,3 +9,4 @@
+     "build": "tsc -b && vite build",
+-    "build:mock": "tsc -b && vite build --mode mock",
++    "build:mock": "npm test && tsc -b && vite build --mode mock",
++    "test": "node --experimental-strip-types --no-warnings --test scripts/tests/*.test.mjs",
+     "preview": "vite preview",
+diff --git a/scripts/tests/safe-link.test.mjs b/scripts/tests/safe-link.test.mjs
+new file mode 100644
+index 0000000..45961d6
+--- /dev/null
++++ b/scripts/tests/safe-link.test.mjs
+@@ -0,0 +1,20 @@
++// Prüft, dass Adressen vom Server nur als http(s)-Link durchkommen (Sicherheitspunkt A6).
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { safeLink, withSafeLinks } from '../../src/api/safeUrl.ts';
++
++test('nur https und http werden zu Links', () => {
++  assert.equal(safeLink('https://verein.de/datenschutz'), 'https://verein.de/datenschutz');
++  assert.equal(safeLink('http://192.168.1.5:8000/app.apk'), 'http://192.168.1.5:8000/app.apk');
++});
++
++test('javascript:, data: und Unsinn werden verworfen', () => {
++  for (const bad of ['javascript:alert(1)', 'JaVaScRiPt:alert(1)', ' javascript:alert(1)', 'data:text/html,<b>x</b>', 'file:///etc/passwd', 'kein link', '', null, undefined]) {
++    assert.equal(safeLink(bad), null, String(bad));
++  }
++});
++
++test('Server-Info wird bereinigt, andere Felder bleiben', () => {
++  const info = withSafeLinks({ name: 'Verein', privacyPolicyUrl: 'javascript:alert(1)', appDownloadUrl: 'https://verein.de/taleward.apk' });
++  assert.deepEqual(info, { name: 'Verein', privacyPolicyUrl: null, appDownloadUrl: 'https://verein.de/taleward.apk' });
++});
+diff --git a/src/api/client.ts b/src/api/client.ts
+index 53defed..744861a 100644
+--- a/src/api/client.ts
++++ b/src/api/client.ts
+@@ -65,2 +65,3 @@ function fallbackMessage(status: number): string {
+   if (status === 413) return t('Die Datei ist zu groß.');
++  if (status === 429) return t('Zu viele Versuche. Bitte warte ein paar Minuten.');
+   if (status >= 500) return t('Der Server hat einen Fehler gemeldet. Versuch es gleich noch einmal.');
+@@ -377,2 +378,5 @@ function makeApi(conn: () => Connection) {
+   deleteEntry: (entryId: string) => request<void>('DELETE', `/entries/${entryId}`),
++  // Figuren ausgetretener Spieler (ab 0.4.9, nur SL)
++  entryToNpc: (entryId: string) => request<Entry>('POST', `/entries/${entryId}/to-npc`),
++  assignEntry: (entryId: string, memberId: string) => request<Entry>('POST', `/entries/${entryId}/assign`, { body: { memberId } }),
+   createEntry: (campaignId: string, input: EntryInput) =>
+diff --git a/src/api/types.ts b/src/api/types.ts
+index 5c2c98c..9be94ff 100644
+--- a/src/api/types.ts
++++ b/src/api/types.ts
+@@ -137,4 +137,7 @@ export interface GmNotice {
+   id: string;
+-  /** seat_claimed (ab 0.4.8): jemand hat per Beitritt mit Charakter einen offenen Platz eingenommen */
+-  code: 'hidden_entries_for_newcomer' | 'seat_claimed' | string;
++  /**
++   * seat_claimed (ab 0.4.8): jemand hat per Beitritt mit Charakter einen offenen Platz eingenommen.
++   * character_orphaned (ab 0.4.9): ein Spieler ist ausgetreten; entryIds = seine Figuren (pc ohne Halter).
++   */
++  code: 'hidden_entries_for_newcomer' | 'seat_claimed' | 'character_orphaned' | string;
+   memberId: string | null;
+@@ -392,2 +395,4 @@ export interface Entry extends EntryInput {
+   updatedAt: string;
++  /** Ab 0.4.9, nur für die SL: NSC, der aus der Figur dieses ausgetretenen Mitglieds entstanden ist */
++  formerHolderMemberId?: string | null;
+ }
+diff --git a/src/components/DeepLinks.tsx b/src/components/DeepLinks.tsx
+index 0e0fbd0..d214820 100644
+--- a/src/components/DeepLinks.tsx
++++ b/src/components/DeepLinks.tsx
+@@ -67,6 +67,8 @@ export function DeepLinks() {
+           navigate(`/v/${conn.id}/k/${c.id}/willkommen`);
+-          return;
+-        } catch {
+-          /* z. B. Code abgelaufen – dann zeigt die Verbinden-Seite die Meldung */
++        } catch (e) {
++          // Schon angemeldet: kein neues Konto anlegen lassen, sondern die Meldung auf der Kampagnenliste zeigen
++          // (Code abgelaufen, zu viele Versuche …)
++          navigate('/', { state: { joinError: e instanceof Error ? e.message : t('Beitreten hat nicht geklappt.'), invite: link } });
+         }
++        return;
+       }
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 8a012ff..547bf60 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -864,2 +864,4 @@ export const en: Record<string, string> = {
+   "Nicht beitreten": "Don’t join",
++  "Zu viele Versuche. Bitte warte ein paar Minuten.": "Too many attempts. Please wait a few minutes.",
++  "Beitreten hat nicht geklappt.": "Joining didn’t work.",
+ };
+diff --git a/src/mocks/handlers.ts b/src/mocks/handlers.ts
+index e911199..b5b3c10 100644
+--- a/src/mocks/handlers.ts
++++ b/src/mocks/handlers.ts
+@@ -217,2 +217,15 @@ function applyCharacter(c: MockCampaign, m: Member, ch: Character) {
+ 
++/** Hinweise character_orphaned verschwinden, wenn keine ihrer Figuren mehr ohne Halter ist (wie der Server) */
++function settleOrphanNotices(campaignId: string) {
++  const c = campaigns.find((x) => x.id === campaignId);
++  if (!c || !gmNotices[campaignId]) return;
++  const orphan = (id: string) => {
++    const e = entries.find((x) => x.id === id);
++    if (!e || e.type !== 'pc') return false;
++    const h = c.members.find((m) => m.id === e.holderMemberId);
++    return !h || !!h.leftAt || !!h.deletedAt;
++  };
++  gmNotices[campaignId] = gmNotices[campaignId].filter((n) => n.code !== 'character_orphaned' || n.entryIds.some(orphan));
++}
++
+ function applyCharacterProposal(p: Proposal) {
+@@ -785,2 +798,7 @@ export const handlers = [
+     m.leftAt = new Date().toISOString();
++    // Ab 0.4.9: Hinweis an die SL, was mit der Figur passieren soll
++    const pcs = entries.filter((e) => e.campaignId === c.id && e.type === 'pc' && e.holderMemberId === m.id);
++    if (pcs.length && m.role === 'player') {
++      (gmNotices[c.id] ??= []).push({ id: 'gn-' + crypto.randomUUID().slice(0, 8), code: 'character_orphaned', memberId: m.id, entryIds: pcs.map((e) => e.id), createdAt: new Date().toISOString() });
++    }
+     return new HttpResponse(null, { status: 204 });
+@@ -1436,3 +1454,3 @@ export const handlers = [
+         .filter((e) => gm || (e.visibility === 'public' && !(e.hiddenFromMemberIds ?? []).includes(meId)))
+-        .map((e) => (gm ? e : { ...e, gmNotes: undefined, hiddenFromMemberIds: undefined }))
++        .map((e) => (gm ? e : { ...e, gmNotes: undefined, hiddenFromMemberIds: undefined, formerHolderMemberId: undefined }))
+         .filter((e) => !type || e.type === type)
+@@ -1455,2 +1473,34 @@ export const handlers = [
+ 
++  // Figuren ausgetretener Spieler (0.4.9)
++  http.post(`${B}/entries/:eid/to-npc`, ({ params }) => {
++    const e = entries.find((x) => x.id === params.eid);
++    if (!e || !isGm(e.campaignId)) return err(404, 'not_found', 'Eintrag nicht gefunden.');
++    if (e.type !== 'pc') return err(409, 'not_a_character', 'Das ist keine Spielerfigur.');
++    const c = campaigns.find((x) => x.id === e.campaignId)!;
++    const holder = c.members.find((m) => m.id === e.holderMemberId);
++    if (holder && !holder.leftAt && !holder.deletedAt) return err(409, 'holder_active', 'Die Figur gehört noch einem aktiven Mitglied.');
++    Object.assign(e, { type: 'npc', formerHolderMemberId: e.holderMemberId ?? null, holderMemberId: null, updatedAt: new Date().toISOString() });
++    settleOrphanNotices(c.id);
++    return HttpResponse.json(e);
++  }),
++
++  http.post(`${B}/entries/:eid/assign`, async ({ params, request }) => {
++    const e = entries.find((x) => x.id === params.eid);
++    if (!e || !isGm(e.campaignId)) return err(404, 'not_found', 'Eintrag nicht gefunden.');
++    const c = campaigns.find((x) => x.id === e.campaignId)!;
++    const holder = c.members.find((m) => m.id === e.holderMemberId);
++    const free = (e.type === 'pc' && (!holder || holder.leftAt || holder.deletedAt)) || (e.type === 'npc' && !!e.formerHolderMemberId);
++    if (!free) return err(409, 'not_a_character', 'Diese Figur lässt sich nicht übergeben.');
++    const { memberId } = (await request.json().catch(() => ({}))) as { memberId?: string };
++    const target = c.members.find((m) => m.id === memberId && !m.leftAt && !m.deletedAt && !m.openSeat);
++    if (!target || target.role !== 'player') return err(409, 'not_a_player', 'Nur aktive Spieler können eine Figur übernehmen.');
++    if (entries.some((x) => x.campaignId === c.id && x.type === 'pc' && x.holderMemberId === target.id)) {
++      return err(409, 'member_has_character', 'Diese Person spielt schon eine Figur.');
++    }
++    Object.assign(e, { type: 'pc', holderMemberId: target.id, updatedAt: new Date().toISOString() });
++    Object.assign(target, { characterName: e.name, characterSummary: e.summary || null, characterId: null, characterVersion: null });
++    settleOrphanNotices(c.id);
++    return HttpResponse.json(e);
++  }),
++
+   http.delete(`${B}/entries/:eid`, ({ params }) => {
+diff --git a/src/pages/Campaigns.tsx b/src/pages/Campaigns.tsx
+index 8da04ef..0091ece 100644
+--- a/src/pages/Campaigns.tsx
++++ b/src/pages/Campaigns.tsx
+@@ -12,3 +12,3 @@ import { getLang, t, tn } from '../i18n';
+ import { useEffect, useState } from 'react';
+-import { Link, useNavigate } from 'react-router-dom';
++import { Link, useLocation, useNavigate } from 'react-router-dom';
+ import { apiFor, fetchServerInfo } from '../api/client';
+@@ -49,2 +49,15 @@ export function Campaigns() {
+   const [actionError, setActionError] = useState<unknown>(null);
++  const location = useLocation();
++  // Beitritt über einen Einladungslink ist gescheitert (z. B. Code abgelaufen, zu viele Versuche): Feld mit dem Link
++  // öffnen und die Meldung des Servers zeigen, damit man es gleich oder später noch einmal versuchen kann
++  useEffect(() => {
++    const st = location.state as { joinError?: string; invite?: string } | null;
++    if (!st?.joinError) return;
++    setMode('join');
++    setValue(st.invite ?? '');
++    setActionError(new Error(st.joinError));
++    navigate('.', { replace: true, state: null });
++    // Feld steht unten auf der Seite: dorthin scrollen, damit die Meldung nicht übersehen wird
++    window.setTimeout(() => document.getElementById('cval')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
++  }, [location.state, navigate]);
+   const multi = connections.length > 1;
