@@ -202,6 +202,11 @@ export function versionLess(a: string, b: string): boolean {
   return false;
 }
 
+/** Kann der Server (Standard: der aktuelle) mindestens diese Schnittstellenversion? */
+export function apiAtLeast(min: string, conn: Connection | null | undefined = currentConnection()): boolean {
+  return !!conn?.apiVersion && !versionLess(conn.apiVersion, min);
+}
+
 export function isOutdated(apiVersion: string | null): boolean {
   if (!apiVersion) return false;
   const a = apiVersion.split('.').map(Number);

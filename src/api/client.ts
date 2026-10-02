@@ -1,5 +1,5 @@
 import { withSafeLinks } from './safeUrl';
-import { getLang, t } from '../i18n';
+import { getLang, t, tk } from '../i18n';
 import { APP_VERSION, currentConnection, hasValidToken, serverKnowsAppVersion, updateConnection, type Connection } from './connections';
 import type {
   ApiError,
@@ -55,6 +55,14 @@ export class ApiRequestError extends Error {
     this.details = err.details;
   }
 }
+
+/**
+ * Fehler, für die die App eigene Sätze hat: immer in der Sprache der App, egal welche Sprache der Server spricht
+ * (ältere Server, Proxys, Testserver).
+ */
+const OWN_MESSAGES: Record<string, string> = {
+  too_many_requests: tk('Zu viele Versuche. Bitte warte ein paar Minuten.')
+};
 
 /** Meldung, falls der Server (z. B. ein Proxy davor) keinen {code, message}-Körper liefert. */
 function fallbackMessage(status: number): string {
@@ -114,6 +122,7 @@ async function requestOn<T>(conn: Connection, method: string, path: string, opts
     } catch {
       /* kein JSON-Fehlerkörper */
     }
+    if (OWN_MESSAGES[err.code]) err = { ...err, message: t(OWN_MESSAGES[err.code]) };
     // 401 = Anmeldung ungültig oder abgelaufen (not_authenticated, token_invalid):
     // Token verwerfen und zum Login. Beim Login selbst heißt 401 nur "falsches Passwort".
     // 426: Diese App ist für den Server zu alt – Kampagnen dieses Servers sperren, bis aktualisiert wird
