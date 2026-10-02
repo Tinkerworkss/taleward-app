@@ -1,0 +1,45 @@
+From 57972019f498864a69ec6557f4dfe17bf96bdaf9 Mon Sep 17 00:00:00 2001
+From: "Tinkerworks (Benjamin)"
+ <121437138+Tinkerworkss@users.noreply.github.com>
+Date: Fri, 2 Oct 2026 19:34:59 +0200
+Subject: [PATCH] Version 0.13.0
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ package-lock.json | 4 ++--
+ package.json      | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/package-lock.json b/package-lock.json
+index 8346510..a5e4018 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "taleward-app",
+-  "version": "0.12.0",
++  "version": "0.13.0",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "taleward-app",
+-      "version": "0.12.0",
++      "version": "0.13.0",
+       "dependencies": {
+         "@capacitor/android": "^8.5.2",
+         "@capacitor/app": "^8.1.1",
+diff --git a/package.json b/package.json
+index bead70d..969b866 100644
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "taleward-app",
+   "private": true,
+-  "version": "0.12.0",
++  "version": "0.13.0",
+   "type": "module",
+   "scripts": {
+     "dev": "vite",
