@@ -860,4 +860,6 @@ export const en: Record<string, string> = {
   "Offener Platz": "Open seat",
   "noch frei": "still free",
   "Ehemalige ({n})": "Former members ({n})",
+  "Einladung annehmen? Du trittst auf „{server}“ ({host}) einer Kampagne bei, Code {code}. Die anderen dort sehen dann deinen Namen „{name}“. Nimm nur Einladungen an, die du von deiner Spielleitung oder Gruppe bekommen hast.": "Accept this invitation? You will join a campaign on “{server}” ({host}), code {code}. The others there will see your name “{name}”. Only accept invitations you got from your game master or group.",
+  "Nicht beitreten": "Don’t join",
 };

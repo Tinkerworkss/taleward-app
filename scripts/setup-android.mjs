@@ -135,6 +135,17 @@ if (!manifest.includes('android:scheme="taleward"')) {
   console.log('App-Adresse taleward:// eingetragen');
 }
 
+// Keine Sicherung der App-Daten: Anmeldungen (Tokens) sollen nicht in Geräte- oder Cloud-Sicherungen landen
+if (/android:allowBackup="true"/.test(manifest)) {
+  manifest = manifest.replace('android:allowBackup="true"', 'android:allowBackup="false"');
+} else if (!manifest.includes('android:allowBackup=')) {
+  manifest = manifest.replace('<application', '<application\n        android:allowBackup="false"');
+}
+if (!manifest.includes('android:dataExtractionRules=')) {
+  manifest = manifest.replace('<application', '<application\n        android:dataExtractionRules="@xml/taleward_data_rules"');
+}
+console.log('Sicherung der App-Daten ausgeschaltet');
+
 if (!manifest.includes('.RecorderService')) {
   manifest = manifest.replace(
     '</application>',

@@ -1,3 +1,4 @@
+import { safeLink } from '../api/safeUrl';
 import { useState } from 'react';
 import { APP_VERSION, appTooOld, serverTooOld, versionLess, type Connection } from '../api/connections';
 import { t } from '../i18n';
@@ -30,7 +31,9 @@ function newestOffer(conns: Connection[]): Offer | null {
 
 /** Download-Knopf als echter Link – öffnet im Browser des Handys */
 export function DownloadButton({ url, className = 'btn small' }: { url: string; className?: string }) {
-  return <a className={className} href={url} target="_blank" rel="noopener noreferrer">{t('Herunterladen')}</a>;
+  const href = safeLink(url);
+  if (!href) return null;
+  return <a className={className} href={href} target="_blank" rel="noopener noreferrer">{t('Herunterladen')}</a>;
 }
 
 /**
@@ -45,14 +48,15 @@ export function UpdateAction({ offer, className = 'btn small' }: { offer: { url:
   if (DIST === 'store') {
     return <a className={className} href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer">{t('Update im Play Store')}</a>;
   }
-  if (!offer.url) return null;
-  if (!canSelfUpdate()) return <DownloadButton url={offer.url} className={className} />;
+  const url = safeLink(offer.url);
+  if (!url) return null;
+  if (!canSelfUpdate()) return <DownloadButton url={url} className={className} />;
 
   const start = async () => {
     setState('loading');
     setError(null);
     try {
-      const r = await downloadAndInstall({ url: offer.url!, sha256: offer.sha256, sizeBytes: offer.size }, setProgress);
+      const r = await downloadAndInstall({ url, sha256: offer.sha256, sizeBytes: offer.size }, setProgress);
       setState(r === 'needs_permission' ? 'permission' : 'installing');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

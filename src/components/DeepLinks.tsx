@@ -5,10 +5,20 @@ import { Capacitor } from '@capacitor/core';
 import { apiFor } from '../api/client';
 import { activeConnections, parseInvite } from '../api/connections';
 import { inviteFromAppUrl } from '../invite';
+import { t } from '../i18n';
+import { confirmDialog } from './confirm';
+
+function hostOf(baseUrl: string): string {
+  try {
+    return new URL(baseUrl, window.location.href).host;
+  } catch {
+    return baseUrl;
+  }
+}
 
 /**
- * Öffnet die App über taleward://einladung?url=…, geht sie direkt in den Beitritt:
- * bekannter Server mit Anmeldung → gleich beitreten; sonst über „Mit Server verbinden“ (Konto anlegen).
+ * Öffnet die App über taleward://einladung?url=…, geht sie in den Beitritt:
+ * bekannter Server mit Anmeldung → nach Rückfrage beitreten; sonst über „Mit Server verbinden“ (Konto anlegen).
  */
 export function DeepLinks() {
   const navigate = useNavigate();
@@ -41,6 +51,17 @@ export function DeepLinks() {
       const invite = parseInvite(link);
       const conn = invite?.baseUrl ? activeConnections().find((c) => c.baseUrl === invite.baseUrl) : undefined;
       if (invite && conn) {
+        // Nie ungefragt beitreten: Ein Link von irgendeiner Webseite könnte sonst in eine fremde Kampagne führen
+        const ok = await confirmDialog(
+          t('Einladung annehmen? Du trittst auf „{server}“ ({host}) einer Kampagne bei, Code {code}. Die anderen dort sehen dann deinen Namen „{name}“. Nimm nur Einladungen an, die du von deiner Spielleitung oder Gruppe bekommen hast.', {
+            server: conn.name, host: hostOf(conn.baseUrl), code: invite.code, name: conn.user?.displayName ?? ''
+          }),
+          { confirmLabel: t('Beitreten'), cancelLabel: t('Nicht beitreten') }
+        );
+        if (!ok) {
+          navigate('/');
+          return;
+        }
         try {
           const c = await apiFor(conn).joinCampaign(invite.code);
           navigate(`/v/${conn.id}/k/${c.id}/willkommen`);

@@ -1,3 +1,4 @@
+import { withSafeLinks } from './safeUrl';
 import { getLang, t } from '../i18n';
 import { APP_VERSION, currentConnection, hasValidToken, serverKnowsAppVersion, updateConnection, type Connection } from './connections';
 import type {
@@ -138,7 +139,7 @@ function makeApi(conn: () => Connection) {
   login: (username: string, password: string) =>
     request<{ accessToken: string; expiresAt: string; user: User }>('POST', '/auth/login', { body: { username, password } }),
   me: () => request<User>('GET', '/me'),
-  info: () => request<ServerInfo>('GET', '/info'),
+  info: () => request<ServerInfo>('GET', '/info').then(withSafeLinks),
   register: (data:
     | { inviteCode: string; username: string; displayName: string; password: string; acceptPrivacy: true; ageConfirmed: true }
     | { inviteCode: string; registrationToken: string; displayName: string; acceptPrivacy: true; ageConfirmed: true }) =>
@@ -389,5 +390,5 @@ export function apiFor(conn: Connection) {
 
 /** Öffentliche Info eines Servers, ohne Verbindung (vor dem Anmelden) */
 export function fetchServerInfo(baseUrl: string): Promise<ServerInfo> {
-  return requestOn<ServerInfo>({ id: '_probe', baseUrl, name: '', operator: null, apiVersion: null, token: null, expiresAt: null, user: null }, 'GET', '/info');
+  return requestOn<ServerInfo>({ id: '_probe', baseUrl, name: '', operator: null, apiVersion: null, token: null, expiresAt: null, user: null }, 'GET', '/info').then(withSafeLinks);
 }
