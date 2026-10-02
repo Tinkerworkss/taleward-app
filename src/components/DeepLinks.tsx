@@ -65,10 +65,12 @@ export function DeepLinks() {
         try {
           const c = await apiFor(conn).joinCampaign(invite.code);
           navigate(`/v/${conn.id}/k/${c.id}/willkommen`);
-          return;
-        } catch {
-          /* z. B. Code abgelaufen – dann zeigt die Verbinden-Seite die Meldung */
+        } catch (e) {
+          // Schon angemeldet: kein neues Konto anlegen lassen, sondern die Meldung auf der Kampagnenliste zeigen
+          // (Code abgelaufen, zu viele Versuche …)
+          navigate('/', { state: { joinError: e instanceof Error ? e.message : t('Beitreten hat nicht geklappt.'), invite: link } });
         }
+        return;
       }
       navigate(`/verbinden?invite=${encodeURIComponent(link)}`);
     };

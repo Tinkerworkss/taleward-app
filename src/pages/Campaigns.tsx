@@ -10,7 +10,7 @@ import { NewDot } from '../components/Screen';
 import { CampaignCover, hasCover } from '../covers/CampaignCover';
 import { getLang, t, tn } from '../i18n';
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { apiFor, fetchServerInfo } from '../api/client';
 import { APP_VERSION, MIN_API_VERSION, hasValidToken, parseInvite, updateConnection, versionLess, type Connection } from '../api/connections';
 import { IconInfo } from '../components/Icons';
@@ -47,6 +47,19 @@ export function Campaigns() {
   const [system, setSystem] = useState<GameSystem | null>(null);
   const [systemName, setSystemName] = useState('');
   const [actionError, setActionError] = useState<unknown>(null);
+  const location = useLocation();
+  // Beitritt über einen Einladungslink ist gescheitert (z. B. Code abgelaufen, zu viele Versuche): Feld mit dem Link
+  // öffnen und die Meldung des Servers zeigen, damit man es gleich oder später noch einmal versuchen kann
+  useEffect(() => {
+    const st = location.state as { joinError?: string; invite?: string } | null;
+    if (!st?.joinError) return;
+    setMode('join');
+    setValue(st.invite ?? '');
+    setActionError(new Error(st.joinError));
+    navigate('.', { replace: true, state: null });
+    // Feld steht unten auf der Seite: dorthin scrollen, damit die Meldung nicht übersehen wird
+    window.setTimeout(() => document.getElementById('cval')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
+  }, [location.state, navigate]);
   const multi = connections.length > 1;
   const expired = connections.filter((c) => !hasValidToken(c));
 

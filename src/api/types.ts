@@ -135,8 +135,11 @@ export interface Chronicle {
 /** Hinweis an die SL (ab 0.4.7) */
 export interface GmNotice {
   id: string;
-  /** seat_claimed (ab 0.4.8): jemand hat per Beitritt mit Charakter einen offenen Platz eingenommen */
-  code: 'hidden_entries_for_newcomer' | 'seat_claimed' | string;
+  /**
+   * seat_claimed (ab 0.4.8): jemand hat per Beitritt mit Charakter einen offenen Platz eingenommen.
+   * character_orphaned (ab 0.4.9): ein Spieler ist ausgetreten; entryIds = seine Figuren (pc ohne Halter).
+   */
+  code: 'hidden_entries_for_newcomer' | 'seat_claimed' | 'character_orphaned' | string;
   memberId: string | null;
   entryIds: string[];
   createdAt: string;
@@ -390,6 +393,8 @@ export interface Entry extends EntryInput {
   lastSessionNumber: number | null;
   mentions: { sessionNumber: number; note: string }[];
   updatedAt: string;
+  /** Ab 0.4.9, nur für die SL: NSC, der aus der Figur dieses ausgetretenen Mitglieds entstanden ist */
+  formerHolderMemberId?: string | null;
 }
 
 export interface UploadCreated {

@@ -215,6 +215,19 @@ function applyCharacter(c: MockCampaign, m: Member, ch: Character) {
     status: null, holderMemberId: m.id, firstSessionNumber: null, lastSessionNumber: null, mentions: [], updatedAt: new Date().toISOString() });
 }
 
+/** Hinweise character_orphaned verschwinden, wenn keine ihrer Figuren mehr ohne Halter ist (wie der Server) */
+function settleOrphanNotices(campaignId: string) {
+  const c = campaigns.find((x) => x.id === campaignId);
+  if (!c || !gmNotices[campaignId]) return;
+  const orphan = (id: string) => {
+    const e = entries.find((x) => x.id === id);
+    if (!e || e.type !== 'pc') return false;
+    const h = c.members.find((m) => m.id === e.holderMemberId);
+    return !h || !!h.leftAt || !!h.deletedAt;
+  };
+  gmNotices[campaignId] = gmNotices[campaignId].filter((n) => n.code !== 'character_orphaned' || n.entryIds.some(orphan));
+}
+
 function applyCharacterProposal(p: Proposal) {
   const rec = p.submittedByMemberId && p.originEntryId ? world[p.submittedByMemberId]?.[p.originEntryId] : undefined;
   if (p.decision !== 'accepted') return;
@@ -783,6 +796,11 @@ export const handlers = [
       return err(409, 'last_gm', 'Die Kampagne braucht mindestens eine Spielleitung. Ernenne erst eine zweite oder lösche die Kampagne.');
     }
     m.leftAt = new Date().toISOString();
+    // Ab 0.4.9: Hinweis an die SL, was mit der Figur passieren soll
+    const pcs = entries.filter((e) => e.campaignId === c.id && e.type === 'pc' && e.holderMemberId === m.id);
+    if (pcs.length && m.role === 'player') {
+      (gmNotices[c.id] ??= []).push({ id: 'gn-' + crypto.randomUUID().slice(0, 8), code: 'character_orphaned', memberId: m.id, entryIds: pcs.map((e) => e.id), createdAt: new Date().toISOString() });
+    }
     return new HttpResponse(null, { status: 204 });
   }),
 
@@ -1434,7 +1452,7 @@ export const handlers = [
         .filter((e) => e.campaignId === params.id)
         // Spoilerschutz serverseitig: geheim oder vor mir verborgen = gar nicht ausliefern
         .filter((e) => gm || (e.visibility === 'public' && !(e.hiddenFromMemberIds ?? []).includes(meId)))
-        .map((e) => (gm ? e : { ...e, gmNotes: undefined, hiddenFromMemberIds: undefined }))
+        .map((e) => (gm ? e : { ...e, gmNotes: undefined, hiddenFromMemberIds: undefined, formerHolderMemberId: undefined }))
         .filter((e) => !type || e.type === type)
         .filter((e) => !q || (e.name + ' ' + e.summary + ' ' + (gm ? e.gmNotes ?? '' : '')).toLowerCase().includes(q))
         .sort((a, b) => a.name.localeCompare(b.name, 'de'))
@@ -1450,6 +1468,38 @@ export const handlers = [
     }
     Object.assign(e, Object.fromEntries(Object.entries(body).filter(([k]) => ['name', 'summary', 'gmNotes', 'visibility', 'status', 'holderMemberId', 'type', 'hiddenFromMemberIds'].includes(k))));
     e.updatedAt = new Date().toISOString();
+    return HttpResponse.json(e);
+  }),
+
+  // Figuren ausgetretener Spieler (0.4.9)
+  http.post(`${B}/entries/:eid/to-npc`, ({ params }) => {
+    const e = entries.find((x) => x.id === params.eid);
+    if (!e || !isGm(e.campaignId)) return err(404, 'not_found', 'Eintrag nicht gefunden.');
+    if (e.type !== 'pc') return err(409, 'not_a_character', 'Das ist keine Spielerfigur.');
+    const c = campaigns.find((x) => x.id === e.campaignId)!;
+    const holder = c.members.find((m) => m.id === e.holderMemberId);
+    if (holder && !holder.leftAt && !holder.deletedAt) return err(409, 'holder_active', 'Die Figur gehört noch einem aktiven Mitglied.');
+    Object.assign(e, { type: 'npc', formerHolderMemberId: e.holderMemberId ?? null, holderMemberId: null, updatedAt: new Date().toISOString() });
+    settleOrphanNotices(c.id);
+    return HttpResponse.json(e);
+  }),
+
+  http.post(`${B}/entries/:eid/assign`, async ({ params, request }) => {
+    const e = entries.find((x) => x.id === params.eid);
+    if (!e || !isGm(e.campaignId)) return err(404, 'not_found', 'Eintrag nicht gefunden.');
+    const c = campaigns.find((x) => x.id === e.campaignId)!;
+    const holder = c.members.find((m) => m.id === e.holderMemberId);
+    const free = (e.type === 'pc' && (!holder || holder.leftAt || holder.deletedAt)) || (e.type === 'npc' && !!e.formerHolderMemberId);
+    if (!free) return err(409, 'not_a_character', 'Diese Figur lässt sich nicht übergeben.');
+    const { memberId } = (await request.json().catch(() => ({}))) as { memberId?: string };
+    const target = c.members.find((m) => m.id === memberId && !m.leftAt && !m.deletedAt && !m.openSeat);
+    if (!target || target.role !== 'player') return err(409, 'not_a_player', 'Nur aktive Spieler können eine Figur übernehmen.');
+    if (entries.some((x) => x.campaignId === c.id && x.type === 'pc' && x.holderMemberId === target.id)) {
+      return err(409, 'member_has_character', 'Diese Person spielt schon eine Figur.');
+    }
+    Object.assign(e, { type: 'pc', holderMemberId: target.id, updatedAt: new Date().toISOString() });
+    Object.assign(target, { characterName: e.name, characterSummary: e.summary || null, characterId: null, characterVersion: null });
+    settleOrphanNotices(c.id);
     return HttpResponse.json(e);
   }),
 

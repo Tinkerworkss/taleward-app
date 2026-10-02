@@ -63,6 +63,7 @@ function fallbackMessage(status: number): string {
   if (status === 404) return t('Nicht gefunden.');
   if (status === 409) return t('Das ist gerade nicht möglich.');
   if (status === 413) return t('Die Datei ist zu groß.');
+  if (status === 429) return t('Zu viele Versuche. Bitte warte ein paar Minuten.');
   if (status >= 500) return t('Der Server hat einen Fehler gemeldet. Versuch es gleich noch einmal.');
   return t('Anfrage fehlgeschlagen ({status}).', { status });
 }
@@ -375,6 +376,9 @@ function makeApi(conn: () => Connection) {
   updateEntry: (entryId: string, change: Partial<EntryInput>) =>
     request<Entry>('PATCH', `/entries/${entryId}`, { body: change }),
   deleteEntry: (entryId: string) => request<void>('DELETE', `/entries/${entryId}`),
+  // Figuren ausgetretener Spieler (ab 0.4.9, nur SL)
+  entryToNpc: (entryId: string) => request<Entry>('POST', `/entries/${entryId}/to-npc`),
+  assignEntry: (entryId: string, memberId: string) => request<Entry>('POST', `/entries/${entryId}/assign`, { body: { memberId } }),
   createEntry: (campaignId: string, input: EntryInput) =>
     request<Entry>('POST', `/campaigns/${campaignId}/entries`, { body: input })
   };
