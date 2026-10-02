@@ -1,0 +1,88 @@
+From 52e669b8f4a5f811c64c90ebda7d6aa3dfc207da Mon Sep 17 00:00:00 2001
+From: "Tinkerworks (Benjamin)"
+ <121437138+Tinkerworkss@users.noreply.github.com>
+Date: Fri, 2 Oct 2026 23:27:37 +0200
+Subject: [PATCH] Einrichtung: Titelbildauswahl nach der Wahl einklappen
+
+- Ist ein Titelbild gewaehlt, zeigt die Einrichtung nur noch das Bild
+  und "Titelbild aendern"; die Auswahl klappt erst darauf wieder auf
+- Titelbild schrumpft in langen Spalten nicht mehr auf null Hoehe
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ src/covers/CampaignCover.tsx |  2 +-
+ src/pages/SetupPage.tsx      | 28 +++++++++++++++++++++++++---
+ 2 files changed, 26 insertions(+), 4 deletions(-)
+
+diff --git a/src/covers/CampaignCover.tsx b/src/covers/CampaignCover.tsx
+index d93a57a..29f2fd8 100644
+--- a/src/covers/CampaignCover.tsx
++++ b/src/covers/CampaignCover.tsx
+@@ -28,7 +28,7 @@ export function CampaignCover({ campaign, height, radius = 0, conn }: {
+   const { url, failed } = useBlobUrl(key, () => (conn ? apiFor(conn) : api).coverImage(campaign.id));
+ 
+   const preset = findPreset(campaign.coverPreset);
+-  const box = { height, borderRadius: radius, overflow: 'hidden', background: 'var(--parchment-deep)' } as const;
++  const box = { height, flexShrink: 0, borderRadius: radius, overflow: 'hidden', background: 'var(--parchment-deep)' } as const;
+ 
+   if (key && !failed) {
+     return (
+diff --git a/src/pages/SetupPage.tsx b/src/pages/SetupPage.tsx
+index d3e56ee..f335999 100644
+--- a/src/pages/SetupPage.tsx
++++ b/src/pages/SetupPage.tsx
+@@ -1,5 +1,5 @@
+ import { p } from '../api/connections';
+-import { useEffect, useState } from 'react';
++import { useEffect, useRef, useState } from 'react';
+ import { useNavigate, useParams } from 'react-router-dom';
+ import { api } from '../api/client';
+ import type { Campaign } from '../api/types';
+@@ -15,13 +15,25 @@ export function SetupPage() {
+   const navigate = useNavigate();
+   const [campaign, setCampaign] = useState<Campaign | null>(null);
+   const [error, setError] = useState<unknown>(null);
++  // Titelbildauswahl: offen, solange keins gewählt ist; danach eingeklappt mit „Titelbild ändern“
++  const [pickerOpen, setPickerOpen] = useState(true);
++  const firstLoad = useRef(true);
+ 
+   const load = () =>
+     api.campaign(campaignId).then((c) => {
+       rememberCampaign(c);
+       setCampaign(c);
++      if (firstLoad.current) {
++        firstLoad.current = false;
++        setPickerOpen(!hasCover(c));
++      }
+     }).catch(setError);
+ 
++  const coverChanged = (c: Campaign) => {
++    setCampaign(c);
++    if (hasCover(c)) setPickerOpen(false);
++  };
++
+   useEffect(() => {
+     load();
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+@@ -33,8 +45,18 @@ export function SetupPage() {
+       {campaign && (
+         <>
+           <p className="muted" style={{ margin: 0 }}>{t('Alles hier ist optional und lässt sich später auf der Übersicht ändern.')}</p>
+-          {hasCover(campaign) && <CampaignCover campaign={campaign} height={130} radius="var(--radius)" />}
+-          <CoverPicker campaign={campaign} onChanged={setCampaign} onClose={() => undefined} embedded />
++          {hasCover(campaign) && <CampaignCover campaign={campaign} height={pickerOpen ? 130 : 180} radius="var(--radius)" />}
++          {pickerOpen ? (
++            <div id="cover-picker">
++              <CoverPicker campaign={campaign} onChanged={coverChanged}
++                onClose={() => setPickerOpen(false)} embedded={!hasCover(campaign)} />
++            </div>
++          ) : (
++            <button type="button" className="btn outline small" style={{ alignSelf: 'flex-start' }}
++              aria-expanded={false} onClick={() => setPickerOpen(true)}>
++              {t('Titelbild ändern')}
++            </button>
++          )}
+           <Divider />
+           <WorldInfo campaign={campaign} onSaved={setCampaign} />
+           <Divider />
