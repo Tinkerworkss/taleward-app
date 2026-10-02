@@ -1,5 +1,5 @@
 import { p } from '../api/connections';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import type { Campaign } from '../api/types';
@@ -15,12 +15,24 @@ export function SetupPage() {
   const navigate = useNavigate();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [error, setError] = useState<unknown>(null);
+  // Titelbildauswahl: offen, solange keins gewählt ist; danach eingeklappt mit „Titelbild ändern“
+  const [pickerOpen, setPickerOpen] = useState(true);
+  const firstLoad = useRef(true);
 
   const load = () =>
     api.campaign(campaignId).then((c) => {
       rememberCampaign(c);
       setCampaign(c);
+      if (firstLoad.current) {
+        firstLoad.current = false;
+        setPickerOpen(!hasCover(c));
+      }
     }).catch(setError);
+
+  const coverChanged = (c: Campaign) => {
+    setCampaign(c);
+    if (hasCover(c)) setPickerOpen(false);
+  };
 
   useEffect(() => {
     load();
@@ -33,8 +45,18 @@ export function SetupPage() {
       {campaign && (
         <>
           <p className="muted" style={{ margin: 0 }}>{t('Alles hier ist optional und lässt sich später auf der Übersicht ändern.')}</p>
-          {hasCover(campaign) && <CampaignCover campaign={campaign} height={130} radius="var(--radius)" />}
-          <CoverPicker campaign={campaign} onChanged={setCampaign} onClose={() => undefined} embedded />
+          {hasCover(campaign) && <CampaignCover campaign={campaign} height={pickerOpen ? 130 : 180} radius="var(--radius)" />}
+          {pickerOpen ? (
+            <div id="cover-picker">
+              <CoverPicker campaign={campaign} onChanged={coverChanged}
+                onClose={() => setPickerOpen(false)} embedded={!hasCover(campaign)} />
+            </div>
+          ) : (
+            <button type="button" className="btn outline small" style={{ alignSelf: 'flex-start' }}
+              aria-expanded={false} onClick={() => setPickerOpen(true)}>
+              {t('Titelbild ändern')}
+            </button>
+          )}
           <Divider />
           <WorldInfo campaign={campaign} onSaved={setCampaign} />
           <Divider />

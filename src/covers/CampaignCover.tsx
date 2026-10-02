@@ -28,7 +28,7 @@ export function CampaignCover({ campaign, height, radius = 0, conn }: {
   const { url, failed } = useBlobUrl(key, () => (conn ? apiFor(conn) : api).coverImage(campaign.id));
 
   const preset = findPreset(campaign.coverPreset);
-  const box = { height, borderRadius: radius, overflow: 'hidden', background: 'var(--parchment-deep)' } as const;
+  const box = { height, flexShrink: 0, borderRadius: radius, overflow: 'hidden', background: 'var(--parchment-deep)' } as const;
 
   if (key && !failed) {
     return (
