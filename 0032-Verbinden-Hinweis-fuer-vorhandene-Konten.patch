@@ -1,0 +1,44 @@
+From bdd8196f5c3a8d362ebcdc2dc77e6d5a6bdb64de Mon Sep 17 00:00:00 2001
+From: "Tinkerworks (Benjamin)"
+ <121437138+Tinkerworkss@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 21:23:48 +0200
+Subject: [PATCH] Verbinden: Hinweis fuer vorhandene Konten
+
+Unter dem Adressfeld steht jetzt, dass mit einem Konto die Adresse des
+Servers reicht und die Anmeldung im naechsten Schritt folgt.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ src/i18n/en.ts            | 3 ++-
+ src/pages/ConnectPage.tsx | 3 ++-
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 6cc55b0..b110854 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -453,7 +453,8 @@ export const en: Record<string, string> = {
+   "Ohne Zustimmung wird nicht aufgenommen, solange du am Tisch sitzt.": "Without consent, nothing is recorded while you're at the table.",
+   "Der Server erkennt dich dann in Aufnahmen, auch ohne Vorstellungsrunde. Dafür liest du einmal einen kurzen Text vor.": "The server then recognises you in recordings, even without introductions. You read a short text aloud once.",
+   "Gespeichert wird nur ein Stimmabdruck, keine Aufnahme. Jederzeit löschbar.": "Only a voiceprint is stored, no recording. You can delete it any time.",
+-  "Den Link bekommst du von deiner SL.": "Your GM gives you the link.",
++  "Neu dabei: Den Link bekommst du von deiner SL.": "New here: your GM gives you the link.",
++  "Schon ein Konto: Die Adresse deines Servers reicht, z. B. taleward.mein-verein.de. Danach meldest du dich an.": "Already have an account: your server's address is enough, e.g. taleward.mein-verein.de. You sign in on the next step.",
+   "Aus Abenteuern und Notizen entstehen Vorschläge für die Bibel. Alles bleibt geheim, bis du es freigibst.": "Adventures and notes become bible suggestions. Everything stays secret until you release it.",
+   "Tipp: Geheime Abschnitte mit „[SL]“ markieren.": "Tip: mark secret sections with \"[GM]\".",
+   "Nur für dich sichtbar. Gescannte Seiten ohne Text gehen noch nicht.": "Only visible to you. Scanned pages without text aren't supported yet.",
+diff --git a/src/pages/ConnectPage.tsx b/src/pages/ConnectPage.tsx
+index a80c04e..2cb5c7e 100644
+--- a/src/pages/ConnectPage.tsx
++++ b/src/pages/ConnectPage.tsx
+@@ -124,7 +124,8 @@ export function ConnectPage() {
+             <div className="field">
+               <label htmlFor="address">{t('Einladungslink oder Serveradresse')}</label>
+               <LinkInput id="address" value={address} onChange={setAddress} placeholder="https://taleward.mein-verein.de/einladung/RABE-4821" />
+-              <span className="muted small">{t('Den Link bekommst du von deiner SL.')}</span>
++              <span className="muted small">{t('Neu dabei: Den Link bekommst du von deiner SL.')}</span>
++              <span className="muted small">{t('Schon ein Konto: Die Adresse deines Servers reicht, z. B. taleward.mein-verein.de. Danach meldest du dich an.')}</span>
+             </div>
+             <ErrorBox error={error} />
+             <button className="btn" type="submit" disabled={!address.trim() || busy}>{busy ? t('Prüfe Server …') : t('Weiter')}</button>
