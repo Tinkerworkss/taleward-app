@@ -124,7 +124,8 @@ export function ConnectPage() {
             <div className="field">
               <label htmlFor="address">{t('Einladungslink oder Serveradresse')}</label>
               <LinkInput id="address" value={address} onChange={setAddress} placeholder="https://taleward.mein-verein.de/einladung/RABE-4821" />
-              <span className="muted small">{t('Den Link bekommst du von deiner SL.')}</span>
+              <span className="muted small">{t('Neu dabei: Den Link bekommst du von deiner SL.')}</span>
+              <span className="muted small">{t('Schon ein Konto: Die Adresse deines Servers reicht, z. B. taleward.mein-verein.de. Danach meldest du dich an.')}</span>
             </div>
             <ErrorBox error={error} />
             <button className="btn" type="submit" disabled={!address.trim() || busy}>{busy ? t('Prüfe Server …') : t('Weiter')}</button>
