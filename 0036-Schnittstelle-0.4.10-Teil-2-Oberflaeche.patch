@@ -1,0 +1,473 @@
+From 75081116dfd62d51730a0c41acb0126e7548708f Mon Sep 17 00:00:00 2001
+From: "Tinkerworks (Benjamin)"
+ <121437138+Tinkerworkss@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 09:56:05 +0200
+Subject: [PATCH 36/36] Schnittstelle 0.4.10, Teil 2: Oberflaeche
+
+- Pruefen-Seite: "Stimmen pruefen" und "Kapitel neu schreiben" (mit
+  Rueckfrage)
+- Stimmen nach der Bestaetigung ansehen und aendern
+- Kampagnentitel in der Rueckfrage beim Einladungslink und auf der
+  Verbinden-Seite
+- Freiwilliger Hinweis auf das Stimmprofil (wegklickbar)
+- Hinweis bei Verbindungen im Heimnetz
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ src/components/DeepLinks.tsx        | 28 +++++++++++----
+ src/components/VoiceProfileHint.tsx | 53 +++++++++++++++++++++++++++++
+ src/i18n/en.ts                      | 16 +++++++++
+ src/pages/AccountPage.tsx           |  7 ++++
+ src/pages/ConnectPage.tsx           | 29 +++++++++++++---
+ src/pages/Overview.tsx              |  2 ++
+ src/pages/Review.tsx                | 31 ++++++++++++++++-
+ src/pages/Speakers.tsx              | 47 ++++++++++++++++++++-----
+ src/pages/WelcomePage.tsx           |  2 ++
+ 9 files changed, 196 insertions(+), 19 deletions(-)
+ create mode 100644 src/components/VoiceProfileHint.tsx
+
+diff --git a/src/components/DeepLinks.tsx b/src/components/DeepLinks.tsx
+index d214820..74fa942 100644
+--- a/src/components/DeepLinks.tsx
++++ b/src/components/DeepLinks.tsx
+@@ -2,8 +2,8 @@ import { handleAuthUrl } from '../auth/oidc';
+ import { useEffect } from 'react';
+ import { useNavigate } from 'react-router-dom';
+ import { Capacitor } from '@capacitor/core';
+-import { apiFor } from '../api/client';
+-import { activeConnections, parseInvite } from '../api/connections';
++import { apiFor, fetchInvitePreview } from '../api/client';
++import { activeConnections, apiAtLeast, parseInvite } from '../api/connections';
+ import { inviteFromAppUrl } from '../invite';
+ import { t } from '../i18n';
+ import { confirmDialog } from './confirm';
+@@ -51,11 +51,27 @@ export function DeepLinks() {
+       const invite = parseInvite(link);
+       const conn = invite?.baseUrl ? activeConnections().find((c) => c.baseUrl === invite.baseUrl) : undefined;
+       if (invite && conn) {
+-        // Nie ungefragt beitreten: Ein Link von irgendeiner Webseite könnte sonst in eine fremde Kampagne führen
++        // Nie ungefragt beitreten: Ein Link von irgendeiner Webseite könnte sonst in eine fremde Kampagne führen.
++        // Ab Schnittstelle 0.4.10 nennt die Rückfrage auch die Kampagne.
++        let title: string | null = null;
++        let seat: string | null = null;
++        if (apiAtLeast('0.4.10', conn)) {
++          try {
++            const preview = await fetchInvitePreview(conn.baseUrl, invite.code);
++            title = preview?.campaignTitle ?? null;
++            seat = preview?.seatCharacterName ?? null;
++          } catch (e) {
++            navigate('/', { state: { joinError: e instanceof Error ? e.message : t('Beitreten hat nicht geklappt.'), invite: link } });
++            return;
++          }
++        }
++        const vars = { server: conn.name, host: hostOf(conn.baseUrl), code: invite.code, name: conn.user?.displayName ?? '', title: title ?? '', seat: seat ?? '' };
+         const ok = await confirmDialog(
+-          t('Einladung annehmen? Du trittst auf „{server}“ ({host}) einer Kampagne bei, Code {code}. Die anderen dort sehen dann deinen Namen „{name}“. Nimm nur Einladungen an, die du von deiner Spielleitung oder Gruppe bekommen hast.', {
+-            server: conn.name, host: hostOf(conn.baseUrl), code: invite.code, name: conn.user?.displayName ?? ''
+-          }),
++          title && seat
++            ? t('Einladung annehmen? Du trittst auf „{server}“ ({host}) der Kampagne „{title}“ bei und übernimmst den Platz von „{seat}“, Code {code}. Die anderen dort sehen dann deinen Namen „{name}“. Nimm nur Einladungen an, die du von deiner Spielleitung oder Gruppe bekommen hast.', vars)
++            : title
++              ? t('Einladung annehmen? Du trittst auf „{server}“ ({host}) der Kampagne „{title}“ bei, Code {code}. Die anderen dort sehen dann deinen Namen „{name}“. Nimm nur Einladungen an, die du von deiner Spielleitung oder Gruppe bekommen hast.', vars)
++              : t('Einladung annehmen? Du trittst auf „{server}“ ({host}) einer Kampagne bei, Code {code}. Die anderen dort sehen dann deinen Namen „{name}“. Nimm nur Einladungen an, die du von deiner Spielleitung oder Gruppe bekommen hast.', vars),
+           { confirmLabel: t('Beitreten'), cancelLabel: t('Nicht beitreten') }
+         );
+         if (!ok) {
+diff --git a/src/components/VoiceProfileHint.tsx b/src/components/VoiceProfileHint.tsx
+new file mode 100644
+index 0000000..fbba5bd
+--- /dev/null
++++ b/src/components/VoiceProfileHint.tsx
+@@ -0,0 +1,53 @@
++import { useEffect, useState } from 'react';
++import { Link } from 'react-router-dom';
++import { api } from '../api/client';
++import { currentConnectionId } from '../api/connections';
++import { t } from '../i18n';
++
++const KEY = 'taleward.voiceHintDismissed';
++
++function dismissedFor(connId: string): boolean {
++  try {
++    return (JSON.parse(localStorage.getItem(KEY) ?? '[]') as string[]).includes(connId);
++  } catch {
++    return false;
++  }
++}
++
++/**
++ * Freiwilliger Hinweis auf das Stimmprofil: erscheint nur ohne Stimmprofil auf diesem Server und lässt sich je Server
++ * wegklicken. Kein Druck – Aufnahmen funktionieren auch ohne (Vorstellungsrunde oder Zuordnung durch die SL).
++ */
++export function VoiceProfileHint() {
++  const connId = currentConnectionId() ?? '-';
++  const [show, setShow] = useState(false);
++
++  useEffect(() => {
++    if (dismissedFor(connId)) return;
++    let alive = true;
++    api.voiceProfile().then((v) => { if (alive) setShow(v.status === 'none'); }).catch(() => undefined);
++    return () => { alive = false; };
++  }, [connId]);
++
++  if (!show) return null;
++
++  const dismiss = () => {
++    try {
++      const list = JSON.parse(localStorage.getItem(KEY) ?? '[]') as string[];
++      localStorage.setItem(KEY, JSON.stringify([...new Set([...list, connId])]));
++    } catch { /* egal */ }
++    setShow(false);
++  };
++
++  return (
++    <section className="card" aria-labelledby="voice-hint-title">
++      <strong id="voice-hint-title">{t('Stimmprofil, freiwillig')}</strong>
++      <span className="small">{t('Der Server erkennt dich dann in Aufnahmen, auch ohne Vorstellungsrunde. Dafür liest du einmal einen kurzen Text vor.')}</span>
++      <span className="muted small">{t('Gespeichert wird nur ein Stimmabdruck, keine Aufnahme. Jederzeit löschbar.')}</span>
++      <div className="row wrap" style={{ gap: 8 }}>
++        <Link className="btn small outline" to={`/v/${connId}/profil/stimme`}>{t('Stimmprofil anlegen')}</Link>
++        <button type="button" className="btn small ghost" onClick={dismiss}>{t('Nicht jetzt')}</button>
++      </div>
++    </section>
++  );
++}
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index b110854..ac1716f 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -410,6 +410,8 @@ export const en: Record<string, string> = {
+   "Einladungslink oder -code": "Invite link or code",
+   "Auf welchem Server?": "On which server?",
+   "Das ist keine gültige Adresse.": "That's not a valid address.",
++  "Dieser Server ist nicht verschlüsselt erreichbar. Außerhalb des Heimnetzes verbindet sich Taleward nur über https.": "This server cannot be reached securely. Outside your home network, Taleward only connects via https.",
++  "Unverschlüsselt – nur im Heimnetz verwenden.": "Unencrypted – use only on your home network.",
+   "Unter dieser Adresse antwortet kein Taleward-Server.": "No Taleward server responds at this address.",
+   "Mit einem Server verbinden": "Connect to a server",
+   "Einladungslink oder Serveradresse": "Invite link or server address",
+@@ -961,4 +963,18 @@ export const en: Record<string, string> = {
+   "Verlassen kannst du erst, wenn jemand anderes die Spielleitung hat („Spielleitung übergeben“).": "You can only leave once someone else is game master (“Hand over game master”).",
+   "Das Konto hinter {figure} wurde gelöscht": "The account behind {figure} was deleted",
+   "Kampagne übernehmen": "Take over campaign",
++  "Einladung annehmen? Du trittst auf „{server}“ ({host}) der Kampagne „{title}“ bei und übernimmst den Platz von „{seat}“, Code {code}. Die anderen dort sehen dann deinen Namen „{name}“. Nimm nur Einladungen an, die du von deiner Spielleitung oder Gruppe bekommen hast.": "Accept invitation? You are joining the campaign \"{title}\" on \"{server}\" ({host}) and taking over the seat of \"{seat}\", code {code}. The others there will then see your name \"{name}\". Only accept invitations you received from your game master or group.",
++  "Einladung annehmen? Du trittst auf „{server}“ ({host}) der Kampagne „{title}“ bei, Code {code}. Die anderen dort sehen dann deinen Namen „{name}“. Nimm nur Einladungen an, die du von deiner Spielleitung oder Gruppe bekommen hast.": "Accept invitation? You are joining the campaign \"{title}\" on \"{server}\" ({host}), code {code}. The others there will then see your name \"{name}\". Only accept invitations you received from your game master or group.",
++  "Stimmprofil, freiwillig": "Voice profile, optional",
++  "Stimmprofil anlegen": "Create voice profile",
++  "Einladung zu „{title}“, auf den Platz von „{seat}“": "Invitation to \"{title}\", for the seat of \"{seat}\"",
++  "Einladung zu „{title}“": "Invitation to \"{title}\"",
++  "Kapitel {n} neu schreiben? Taleward schreibt Recap und Vorschläge aus der vorhandenen Abschrift noch einmal. Deine Änderungen am Recap und deine Entscheidungen zu den Vorschlägen gehen dabei verloren. Die SL-Notiz bleibt.": "Rewrite chapter {n}? Taleward writes the recap and suggestions again from the existing transcript. Your edits to the recap and your decisions on the suggestions will be lost. The GM note stays.",
++  "Neu schreiben": "Rewrite",
++  "Stimmen prüfen": "Check voices",
++  "Kapitel neu schreiben": "Rewrite chapter",
++  "Zuordnung ändern und Kapitel neu schreiben? Taleward schreibt Recap und Vorschläge mit der neuen Zuordnung noch einmal. Deine Änderungen am Recap und deine Entscheidungen zu den Vorschlägen gehen dabei verloren.": "Change the assignment and rewrite the chapter? Taleward writes the recap and suggestions again with the new assignment. Your edits to the recap and your decisions on the suggestions will be lost.",
++  "So sind die Stimmen zugeordnet. Stimmt etwas nicht, ändere es hier – Taleward schreibt das Kapitel dann neu.": "This is how the voices are assigned. If something is wrong, change it here – Taleward will then rewrite the chapter.",
++  "So waren die Stimmen zugeordnet.": "This is how the voices were assigned.",
++  "Ändern und Kapitel neu schreiben": "Change and rewrite chapter",
+ };
+diff --git a/src/pages/AccountPage.tsx b/src/pages/AccountPage.tsx
+index 3413462..dda6bb8 100644
+--- a/src/pages/AccountPage.tsx
++++ b/src/pages/AccountPage.tsx
+@@ -1,3 +1,4 @@
++import { isUnencrypted } from '../api/addresses';
+ import { oidcErrorText } from './ConnectPage';
+ import { LoginSettings } from '../components/LoginSettings';
+ import { confirmDialog } from '../components/confirm';
+@@ -99,6 +100,12 @@ function ConnectionCard({ conn }: { conn: Connection }) {
+       <span className="overline">{conn.operator ?? t('Server')}</span>
+       <h2>{conn.name}</h2>
+       <div className="muted small" style={{ wordBreak: 'break-all' }}>{conn.baseUrl}</div>
++      {isUnencrypted(conn.baseUrl) && (
++        <div className="notice">
++          <span style={{ flexShrink: 0, color: 'var(--ink-faint)' }}><IconInfo /></span>
++          <span>{t('Unverschlüsselt – nur im Heimnetz verwenden.')}</span>
++        </div>
++      )}
+       {conn.user && <div className="small">{t('Angemeldet als {name}', { name: conn.user.displayName })} ({conn.user.username})</div>}
+       {valid && conn.expiresAt && <div className="muted small">{t('Anmeldung gültig bis {date}', { date: formatDateFull(conn.expiresAt) })}</div>}
+       {isOutdated(conn.apiVersion) && (
+diff --git a/src/pages/ConnectPage.tsx b/src/pages/ConnectPage.tsx
+index 2cb5c7e..22c7e89 100644
+--- a/src/pages/ConnectPage.tsx
++++ b/src/pages/ConnectPage.tsx
+@@ -5,11 +5,11 @@ import { DownloadButton } from '../components/UpdateNotices';
+ import { Wordmark } from '../components/Wordmark';
+ import { useEffect, useState, type FormEvent } from 'react';
+ import { useLocation, useNavigate } from 'react-router-dom';
+-import { apiFor, fetchServerInfo, isApiError } from '../api/client';
++import { apiFor, fetchInvitePreview, fetchServerInfo, isApiError } from '../api/client';
+ import {
+   APP_VERSION, isOutdated, normalizeBaseUrl, versionLess, parseInvite, REQUIRED_API_VERSION, saveConnection, type Connection
+ } from '../api/connections';
+-import type { ServerInfo } from '../api/types';
++import type { InvitePreview, ServerInfo } from '../api/types';
+ import { useAuth } from '../auth/AuthContext';
+ import { IconInfo } from '../components/Icons';
+ import { Divider, ErrorBox } from '../components/Screen';
+@@ -29,6 +29,8 @@ export function ConnectPage() {
+   const [address, setAddress] = useState(params.get('invite') ?? params.get('server') ?? (MOCK ? '/api/v1' : DEFAULT_SERVER));
+   const [baseUrl, setBaseUrl] = useState<string | null>(null);
+   const [info, setInfo] = useState<ServerInfo | null>(null);
++  // Wohin die Einladung führt (ab Schnittstelle 0.4.10)
++  const [preview, setPreview] = useState<InvitePreview | null>(null);
+   const [code, setCode] = useState('');
+   const [mode, setMode] = useState<'login' | 'register'>('login');
+   const [username, setUsername] = useState('');
+@@ -66,10 +68,22 @@ export function ConnectPage() {
+     setBusy(true);
+     try {
+       const i = await fetchServerInfo(url);
++      setPreview(null);
++      if (invite && i.apiVersion && !versionLess(i.apiVersion, '0.4.10')) {
++        // Ungültiger Code: gleich hier sagen, nicht erst nach dem Anlegen des Kontos
++        setPreview(await fetchInvitePreview(url, invite.code));
++      }
+       setInfo(i);
+       setBaseUrl(url);
+     } catch (err) {
+-      setError(isApiError(err) && err.status === 0 ? err : new Error(t('Unter dieser Adresse antwortet kein Taleward-Server.')));
++      if (isApiError(err, 'invite_invalid')) {
++        setError(err);
++        return;
++      }
++      // http:// mit öffentlicher Adresse versucht die App über https; antwortet dort niemand, sagt sie das deutlich
++      const upgraded = /^\s*http:\/\//i.test(address) && url.startsWith('https://');
++      if (upgraded) setError(new Error(t('Dieser Server ist nicht verschlüsselt erreichbar. Außerhalb des Heimnetzes verbindet sich Taleward nur über https.')));
++      else setError(isApiError(err) && err.status === 0 ? err : new Error(t('Unter dieser Adresse antwortet kein Taleward-Server.')));
+     } finally {
+       setBusy(false);
+     }
+@@ -141,6 +155,13 @@ export function ConnectPage() {
+               <h2>{info.name}</h2>
+               <div className="muted small">{t('Betrieben von {operator}', { operator: info.operator })}{info.contact ? ` · ${info.contact}` : ''}</div>
+               <div className="muted small" style={{ wordBreak: 'break-all' }}>{baseUrl}</div>
++              {preview && (
++                <div className="small" style={{ fontWeight: 600 }}>
++                  {preview.seatCharacterName
++                    ? t('Einladung zu „{title}“, auf den Platz von „{seat}“', { title: preview.campaignTitle, seat: preview.seatCharacterName })
++                    : t('Einladung zu „{title}“', { title: preview.campaignTitle })}
++                </div>
++              )}
+               {info.minAppVersion && versionLess(APP_VERSION, info.minAppVersion) && (
+                 <div className="notice" style={{ flexDirection: 'column', gap: 8 }}>
+                   <span>{t('Dieser Server verlangt mindestens Taleward {min}, du hast {v}. Bitte erst aktualisieren.', { min: info.minAppVersion, v: APP_VERSION })}</span>
+@@ -153,7 +174,7 @@ export function ConnectPage() {
+                   <span>{t('Dieser Server ist älter (Version {v}) als die App erwartet ({r}). Manche Funktionen fehlen dort noch.', { v: info.apiVersion, r: REQUIRED_API_VERSION })}</span>
+                 </div>
+               )}
+-              <button type="button" className="btn ghost small" style={{ alignSelf: 'flex-start' }} onClick={() => { setInfo(null); setBaseUrl(null); }}>{t('Anderer Server')}</button>
++              <button type="button" className="btn ghost small" style={{ alignSelf: 'flex-start' }} onClick={() => { setInfo(null); setBaseUrl(null); setPreview(null); }}>{t('Anderer Server')}</button>
+             </section>
+ 
+             {oidc === 'email_in_use' && (
+diff --git a/src/pages/Overview.tsx b/src/pages/Overview.tsx
+index 278d5bc..77b7994 100644
+--- a/src/pages/Overview.tsx
++++ b/src/pages/Overview.tsx
+@@ -1,3 +1,4 @@
++import { VoiceProfileHint } from '../components/VoiceProfileHint';
+ import { CloudNotice, cloudUse, providerName, useServerInfo } from '../components/CloudNotice';
+ import { isDeletedMember } from '../api/types';
+ import { InviteBox } from '../components/InviteBox';
+@@ -486,6 +487,7 @@ function Members({ campaign, onChanged }: { campaign: Campaign; onChanged: () =>
+         </Link>
+       )}
+       {me && me.role === 'player' && apiAtLeast('0.4.8') && <MoveConsent campaign={campaign} me={me} onChanged={onChanged} />}
++      {me && <VoiceProfileHint />}
+       {seat && <OpenSeatDialog campaign={campaign} seat={seat} onClose={() => setSeat(null)} onDone={() => { setSeat(null); onChanged(); }} />}
+     </section>
+   );
+diff --git a/src/pages/Review.tsx b/src/pages/Review.tsx
+index 79ef8dd..2ec3f1f 100644
+--- a/src/pages/Review.tsx
++++ b/src/pages/Review.tsx
+@@ -1,6 +1,6 @@
+ import { isDeletedMember } from '../api/types';
+ import { confirmDialog } from '../components/confirm';
+-import { p } from '../api/connections';
++import { apiAtLeast, p } from '../api/connections';
+ import { t, tn } from '../i18n';
+ import { useEffect, useState } from 'react';
+ import { useNavigate, useParams } from 'react-router-dom';
+@@ -70,6 +70,25 @@ export function Review() {
+       .then((updated) => setProposals((list) => list?.map((x) => updated.find((u) => u.id === x.id) ?? x) ?? null))
+       .catch(setError);
+ 
++  // Ab Schnittstelle 0.4.10: aus der vorhandenen Abschrift neu schreiben lassen (z. B. nach einem Server-Update)
++  const canRewrite = apiAtLeast('0.4.10');
++  const rewrite = async () => {
++    const ok = await confirmDialog(
++      t('Kapitel {n} neu schreiben? Taleward schreibt Recap und Vorschläge aus der vorhandenen Abschrift noch einmal. Deine Änderungen am Recap und deine Entscheidungen zu den Vorschlägen gehen dabei verloren. Die SL-Notiz bleibt.', { n: session?.number ?? '' }),
++      { confirmLabel: t('Neu schreiben'), danger: true }
++    );
++    if (!ok) return;
++    setBusy(true);
++    try {
++      await saveNote();
++      await api.resummarize(sessionId);
++      navigate(p(`/s/${sessionId}`), { replace: true });
++    } catch (e) {
++      setError(e);
++      setBusy(false);
++    }
++  };
++
+   const publish = async () => {
+     if (openCount > 0 && !(await confirmDialog(tn(openCount, '{n} Vorschlag ist noch offen und wird verworfen. Trotzdem veröffentlichen?', '{n} Vorschläge sind noch offen und werden verworfen. Trotzdem veröffentlichen?'), { confirmLabel: t('Veröffentlichen') }))) return;
+     setBusy(true);
+@@ -99,6 +118,11 @@ export function Review() {
+           {tn(termCount, '{n} unsicheren Namen prüfen', '{n} unsichere Namen prüfen')}
+         </button>
+       )}
++      {canRewrite && (
++        <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start' }} onClick={() => navigate(p(`/s/${sessionId}/stimmen`))}>
++          {t('Stimmen prüfen')}
++        </button>
++      )}
+       {recap && <RecapEditor sessionId={sessionId} recap={recap} members={members} onSaved={setRecap} onError={setError} />}
+       </div>
+ 
+@@ -153,6 +177,11 @@ export function Review() {
+           <button type="button" className="btn" disabled={busy} onClick={publish}>
+             {busy ? t('Wird veröffentlicht …') : t('Recap veröffentlichen')}
+           </button>
++          {canRewrite && (
++            <button type="button" className="btn small ghost" style={{ alignSelf: 'center' }} disabled={busy} onClick={rewrite}>
++              {t('Kapitel neu schreiben')}
++            </button>
++          )}
+         </>
+       )}
+       </div>
+diff --git a/src/pages/Speakers.tsx b/src/pages/Speakers.tsx
+index 9e975c8..b702860 100644
+--- a/src/pages/Speakers.tsx
++++ b/src/pages/Speakers.tsx
+@@ -1,10 +1,11 @@
+-import { currentConnection, p } from '../api/connections';
++import { apiAtLeast, currentConnection, p } from '../api/connections';
+ import { serverHasCharacters } from '../characters/sync';
+ import { t } from '../i18n';
+ import { useEffect, useRef, useState } from 'react';
+ import { useNavigate, useParams } from 'react-router-dom';
+ import { api, isApiError } from '../api/client';
+-import type { Campaign, Speaker } from '../api/types';
++import type { Campaign, Session, Speaker } from '../api/types';
++import { confirmDialog } from '../components/confirm';
+ import { IconPlay } from '../components/Icons';
+ import { ErrorBox, Screen } from '../components/Screen';
+ 
+@@ -19,6 +20,9 @@ export function Speakers() {
+   // Gäste der Runde (aus der Anwesenheit); benennbar ab Schnittstelle 0.4.7
+   const [guests, setGuests] = useState<string[]>([]);
+   const [mapping, setMapping] = useState<Record<string, string>>({});
++  // Ab Schnittstelle 0.4.10: Zuordnung nach der Bestätigung ansehen und – solange das Kapitel auf Prüfung wartet – ändern
++  const [session, setSession] = useState<Session | null>(null);
++  const [initial, setInitial] = useState<Record<string, string>>({});
+   const [error, setError] = useState<unknown>(null);
+   const [busy, setBusy] = useState(false);
+   const audio = useRef<HTMLAudioElement | null>(null);
+@@ -34,7 +38,13 @@ export function Speakers() {
+           ? [...new Set([...session.attendees.map((a) => a.guestName?.trim() ?? ''), ...sp.map((s) => s.assignedGuestName?.trim() ?? '')].filter(Boolean))]
+           : [];
+         setGuests(named);
+-        setMapping(Object.fromEntries(sp.map((s) => [s.id, s.assignedGuestName ? GUEST + s.assignedGuestName : s.suggestedMemberId ?? ''])));
++        setSession(session);
++        const start = Object.fromEntries(sp.map((s) => [s.id,
++          s.assignedGuestName ? GUEST + s.assignedGuestName
++            : s.assignedMemberId !== undefined ? (s.assignedMemberId ?? IGNORE)
++              : s.suggestedMemberId ?? '']));
++        setMapping(start);
++        setInitial(start);
+       } catch (e) {
+         setError(e);
+       }
+@@ -60,7 +70,15 @@ export function Speakers() {
+     }
+   };
+ 
++  const review = !!session && session.state !== 'awaiting_speakers' && apiAtLeast('0.4.10');
++  const editable = !review || session?.state === 'awaiting_review';
++  const changed = Object.keys(mapping).some((k) => mapping[k] !== initial[k]);
++
+   const confirm = async () => {
++    if (review && !(await confirmDialog(
++      t('Zuordnung ändern und Kapitel neu schreiben? Taleward schreibt Recap und Vorschläge mit der neuen Zuordnung noch einmal. Deine Änderungen am Recap und deine Entscheidungen zu den Vorschlägen gehen dabei verloren.'),
++      { confirmLabel: t('Neu schreiben'), danger: true }
++    ))) return;
+     setBusy(true);
+     try {
+       await api.assignSpeakers(
+@@ -80,9 +98,17 @@ export function Speakers() {
+   const autoCount = speakers?.filter((s) => s.source === 'intro_round' || s.source === 'voice_match').length ?? 0;
+ 
+   return (
+-    <Screen narrow back title={t('Stimmen zuordnen')} overline={t('Transkript fertig')}>
++    <Screen narrow back title={review ? t('Stimmen prüfen') : t('Stimmen zuordnen')}
++      overline={review && session ? t('Kapitel {n}', { n: session.number }) : t('Transkript fertig')}>
+       <ErrorBox error={error} />
+-      {speakers && (
++      {review && (
++        <p className="muted small" style={{ margin: 0 }}>
++          {editable
++            ? t('So sind die Stimmen zugeordnet. Stimmt etwas nicht, ändere es hier – Taleward schreibt das Kapitel dann neu.')
++            : t('So waren die Stimmen zugeordnet.')}
++        </p>
++      )}
++      {speakers && !review && (
+         <p className="muted small" style={{ margin: 0 }}>
+           {t('{n} Stimmen erkannt, {auto} davon automatisch zugeordnet.', { n: speakers.length, auto: autoCount })}
+         </p>
+@@ -101,14 +127,14 @@ export function Speakers() {
+                 <div className="quote">{s.sampleText}</div>
+                 {s.source === 'voice_match' && <div className="muted small">{t('Über Stimmprofil erkannt')}</div>}
+                 {s.source === 'intro_round' && <div className="muted small">{t('Aus der Vorstellungsrunde')}</div>}
+-                {s.suggestedMemberId && s.confidence < 0.8 && mapping[s.id] === s.suggestedMemberId && (
++                {!review && s.suggestedMemberId && s.confidence < 0.8 && mapping[s.id] === s.suggestedMemberId && (
+                   <div className="small" style={{ color: 'var(--siegel-text)', fontWeight: 500 }}>{t('Unsicher – bitte prüfen.')}</div>
+                 )}
+               </div>
+             </div>
+             <div className="field">
+               <label htmlFor={`sp-${s.id}`}>{t('Person')}</label>
+-              <select id={`sp-${s.id}`} value={mapping[s.id] ?? ''} onChange={(e) => setMapping({ ...mapping, [s.id]: e.target.value })}>
++              <select id={`sp-${s.id}`} disabled={!editable} value={mapping[s.id] ?? ''} onChange={(e) => setMapping({ ...mapping, [s.id]: e.target.value })}>
+                 <option value="">{t('Bitte wählen …')}</option>
+                 {campaign?.members.map((m) => (
+                   <option key={m.id} value={m.id}>
+@@ -128,11 +154,16 @@ export function Speakers() {
+         <div className="empty">{t('Noch keine Stimmen vom Server. Du kannst trotzdem weitermachen.')}</div>
+       )}
+ 
+-      {speakers && (
++      {speakers && !review && (
+         <button type="button" className="btn" disabled={!complete || busy} onClick={confirm}>
+           {busy ? t('Wird gesendet …') : t('Zusammenfassung erstellen')}
+         </button>
+       )}
++      {speakers && review && editable && (
++        <button type="button" className="btn" disabled={!complete || !changed || busy} onClick={confirm}>
++          {busy ? t('Wird gesendet …') : t('Ändern und Kapitel neu schreiben')}
++        </button>
++      )}
+     </Screen>
+   );
+ }
+diff --git a/src/pages/WelcomePage.tsx b/src/pages/WelcomePage.tsx
+index fbcb118..a35f11b 100644
+--- a/src/pages/WelcomePage.tsx
++++ b/src/pages/WelcomePage.tsx
+@@ -1,3 +1,4 @@
++import { VoiceProfileHint } from '../components/VoiceProfileHint';
+ import { currentConnection, currentConnectionId, p } from '../api/connections';
+ import { useEffect, useState } from 'react';
+ import { useNavigate, useParams } from 'react-router-dom';
+@@ -70,6 +71,7 @@ export function WelcomePage() {
+           {step === 2 && (
+             <>
+               <RecordingConsent campaign={campaign} onChanged={load} />
++              <VoiceProfileHint />
+               <Divider />
+               <button type="button" className="btn" onClick={done}>{t('Zur Kampagne')}</button>
+             </>
