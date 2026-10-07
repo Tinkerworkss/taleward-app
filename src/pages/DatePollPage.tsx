@@ -120,7 +120,7 @@ export function DatePollPage() {
             const pending = campaign!.members.filter((m) => !o.votes.some((v) => v.memberId === m.id)).map((m) => m.displayName);
             const canRemove = gm || o.proposedByMemberId === me?.id;
             return (
-              <div key={o.id} className={mine ? 'card' : 'card warn'}>
+              <div key={o.id} className={mine ? 'card' : 'card task'}>
                 <div className="row between" style={{ alignItems: 'flex-start' }}>
                   <div>
                     <div className="card-title" style={{ fontFamily: 'var(--display)', fontSize: 19 }}>{formatDateTime(o.startsAt)}</div>
@@ -145,24 +145,35 @@ export function DatePollPage() {
                   ))}
                 </div>
 
-                {(gm || canRemove) && (
-                  <div className="row wrap" style={{ gap: 8 }}>
-                    {gm && (
-                      <button type="button" className={best?.id === o.id ? 'btn small moss' : 'btn small moss outline'} disabled={busy} onClick={async () => {
-                        if (await confirmDialog(t('{date} als nächsten Termin festlegen? Die Abstimmung wird damit beendet.', { date: formatDateTime(o.startsAt) }), { confirmLabel: t('Festlegen') })) {
-                          run(() => api.closeDatePoll(open.id, o.id));
-                        }
-                      }}>
-                        {t('Diesen Termin festlegen')}
-                      </button>
-                    )}
-                    {canRemove && (
-                      <button type="button" className="btn small danger outline" disabled={busy} onClick={() => run(() => api.removeDateOption(open.id, o.id))}>
-                        {t('Entfernen')}
-                      </button>
-                    )}
-                  </div>
-                )}
+                {(gm || canRemove) && (() => {
+                  // Festlegen steht offen nur bei der besten Wahl; alles Seltene unter „Mehr“
+                  const isBest = best?.id === o.id && score(o) > 0;
+                  const fix = (cls: string) => (
+                    <button type="button" className={cls} disabled={busy} onClick={async () => {
+                      if (await confirmDialog(t('{date} als nächsten Termin festlegen? Die Abstimmung wird damit beendet.', { date: formatDateTime(o.startsAt) }), { confirmLabel: t('Festlegen') })) {
+                        run(() => api.closeDatePoll(open.id, o.id));
+                      }
+                    }}>
+                      {t('Diesen Termin festlegen')}
+                    </button>
+                  );
+                  return (
+                    <>
+                      {gm && isBest && fix('btn small moss')}
+                      <details className="more">
+                        <summary className="small">{t('Mehr')}</summary>
+                        <div className="row wrap" style={{ gap: 8, paddingBottom: 4 }}>
+                          {gm && !isBest && fix('btn small moss outline')}
+                          {canRemove && (
+                            <button type="button" className="btn small danger outline" disabled={busy} onClick={() => run(() => api.removeDateOption(open.id, o.id))}>
+                              {t('Entfernen')}
+                            </button>
+                          )}
+                        </div>
+                      </details>
+                    </>
+                  );
+                })()}
               </div>
             );
           })}

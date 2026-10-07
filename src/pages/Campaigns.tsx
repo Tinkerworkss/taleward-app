@@ -142,7 +142,7 @@ export function Campaigns() {
     const conn = targetServer();
     try {
       const c = await apiFor(conn).createCampaign(value.trim(), '', language, system, system === 'other' ? systemName.trim() || null : null);
-      navigate(`/v/${conn.id}/k/${c.id}/einrichten`);
+      navigate(`/v/${conn.id}/k/${c.id}`);
     } catch (e) {
       setActionError(e);
     }

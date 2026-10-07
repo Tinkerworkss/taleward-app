@@ -24,7 +24,6 @@ import { NamesPage } from './pages/NamesPage';
 import { Speakers } from './pages/Speakers';
 import { VoiceProfile } from './pages/VoiceProfile';
 import { WelcomePage } from './pages/WelcomePage';
-import { SetupPage } from './pages/SetupPage';
 import { BroughtPage } from './pages/BroughtPage';
 import { HandoverPage } from './pages/HandoverPage';
 import { MovePage } from './pages/MovePage';
@@ -74,7 +73,8 @@ function Routed() {
       <Route path="/v/:conn/k/:campaignId/bibel" element={scoped(<Bible />)} />
       <Route path="/v/:conn/k/:campaignId/termin" element={scoped(<DatePollPage />)} />
       <Route path="/v/:conn/k/:campaignId/willkommen" element={scoped(<WelcomePage />)} />
-      <Route path="/v/:conn/k/:campaignId/einrichten" element={scoped(<SetupPage />)} />
+      {/* Frühere Seite „Neue Kampagne einrichten“: jetzt „Erste Schritte“ auf der Übersicht */}
+      <Route path="/v/:conn/k/:campaignId/einrichten" element={<Navigate to=".." relative="path" replace />} />
       <Route path="/v/:conn/k/:campaignId/charakter/:memberId" element={scoped(<CharacterPage />)} />
       <Route path="/v/:conn/k/:campaignId/mitgebracht" element={scoped(<BroughtPage />)} />
       <Route path="/v/:conn/k/:campaignId/umziehen" element={scoped(<MovePage />)} />

@@ -18,7 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { Campaign, GameSystem, GmNotice, Member, SessionSummary, Usage } from '../api/types';
-import { IconInfo, IconLock } from '../components/Icons';
+import { IconCheck, IconInfo, IconLock } from '../components/Icons';
 import { Divider, ErrorBox, Screen, rememberCampaign } from '../components/Screen';
 import { formatDateFull, formatDateTime } from '../components/format';
 import { CONSENT_STANDING, CONSENT_SUMMARY } from '../consent';
@@ -86,6 +86,7 @@ export function Overview() {
           <div className="a">
           {/* Zuerst, was jetzt zu tun ist: Zustimmung (nur wenn sie fehlt), Charakter, offenes Kapitel, Termin, neuer Recap */}
           {me && !me.recordingConsentAt && <RecordingConsent campaign={campaign} onChanged={load} />}
+          {gm && sessions?.length === 0 && <FirstSteps campaign={campaign} onCover={() => { setPickingCover(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />}
           {characterIncomplete(me) && (
             <Link to={p(`/k/${campaignId}/charakter/${me!.id}`)} className="card task">
               <strong>{t('Dein Charakter ist noch unvollständig')}</strong>
@@ -157,7 +158,7 @@ export function Overview() {
 
           <CloudNotice info={serverInfo} campaign={campaign} />
           <Divider />
-          <WorldInfo campaign={campaign} onSaved={setCampaign} />
+          <div id="world"><WorldInfo campaign={campaign} onSaved={setCampaign} /></div>
           </div>
 
           <div className="b">
@@ -165,7 +166,7 @@ export function Overview() {
           <Members campaign={campaign} onChanged={load} />
           {me?.recordingConsentAt && <RecordingConsent campaign={campaign} onChanged={load} />}
 
-          {gm && <InviteBox campaignId={campaignId} campaignTitle={campaign.title} />}
+          {gm && <div id="invite"><InviteBox campaignId={campaignId} campaignTitle={campaign.title} /></div>}
           {gm && <UsageLine campaignId={campaignId} />}
           {me && <CampaignManage campaign={campaign} me={me} onChanged={load} />}
           </div>
@@ -173,6 +174,45 @@ export function Overview() {
         </>
       )}
     </Screen>
+  );
+}
+
+/**
+ * Erste Schritte einer neuen Kampagne (SL, solange es kein Kapitel gibt): Titelbild, Welt, Einladen. Jeder Punkt führt
+ * zur Stelle auf dieser Seite; erledigte Punkte bekommen einen Haken, die Karte verschwindet, wenn alles erledigt oder
+ * ausgeblendet ist. Ersetzt die frühere Seite „Neue Kampagne einrichten“.
+ */
+function FirstSteps({ campaign, onCover }: { campaign: Campaign; onCover: () => void }) {
+  const key = `taleward.firstSteps.hidden.${campaign.id}`;
+  const [hidden, setHidden] = useState(() => {
+    try { return localStorage.getItem(key) === '1'; } catch { return false; }
+  });
+  const players = campaign.members.filter((m) => m.role === 'player' && !isDeletedMember(m) && m.userId).length;
+  const steps = [
+    { label: t('Titelbild wählen'), done: hasCover(campaign), go: onCover },
+    { label: t('Die Welt beschreiben'), done: !!campaign.worldInfo?.trim(), go: () => document.getElementById('world')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
+    { label: t('Mitspielende einladen'), done: players > 0, go: () => document.getElementById('invite')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  ];
+  if (hidden || steps.every((s) => s.done)) return null;
+  const hide = () => {
+    try { localStorage.setItem(key, '1'); } catch { /* egal */ }
+    setHidden(true);
+  };
+  return (
+    <section className="card task" aria-labelledby="first-steps">
+      <strong id="first-steps">{t('Erste Schritte')}</strong>
+      <span className="muted small">{t('Alles optional. Erledigtes bekommt einen Haken.')}</span>
+      {steps.map((s) => (
+        <div key={s.label} className="row" style={{ minHeight: 48, gap: 10 }}>
+          <span aria-hidden style={{ width: 24, display: 'inline-flex', justifyContent: 'center', color: s.done ? 'var(--salbei)' : 'var(--ink-faint)' }}>
+            {s.done ? <IconCheck size={18} /> : '○'}
+          </span>
+          <span style={{ flex: 1 }}>{s.label}{s.done && <span className="visually-hidden"> – {t('erledigt')}</span>}</span>
+          {!s.done && <button type="button" className="btn small outline" onClick={s.go}>{t('Los')}</button>}
+        </div>
+      ))}
+      <button type="button" className="btn small ghost" style={{ alignSelf: 'flex-start' }} onClick={hide}>{t('Ausblenden')}</button>
+    </section>
   );
 }
 
@@ -482,12 +522,7 @@ function Members({ campaign, onChanged }: { campaign: Campaign; onChanged: () =>
           ))}
         </details>
       )}
-      {me && (
-        <Link className="btn ghost small" style={{ alignSelf: 'flex-start' }} to={p(`/k/${campaign.id}/charakter/${me.id}`)}>
-          {me.role === 'gm' ? t('Mein Bild') : t('Meinen Charakter ansehen')}
-        </Link>
-      )}
-      {me && me.role === 'player' && apiAtLeast('0.4.8') && <MoveConsent campaign={campaign} me={me} onChanged={onChanged} />}
+      {/* Eigener Charakter und Umzugs-Haken: über die eigene Zeile oben (Charakterseite) */}
       {me && <VoiceProfileHint />}
       {seat && <OpenSeatDialog campaign={campaign} seat={seat} onClose={() => setSeat(null)} onDone={() => { setSeat(null); onChanged(); }} />}
     </section>
@@ -498,7 +533,7 @@ function Members({ campaign, onChanged }: { campaign: Campaign; onChanged: () =>
  * „Meine Charakterdaten dürfen bei einem Umzug mit“ (0.4.8). Standard aus; ohne Zustimmung geht bei einem Umzug nur
  * der Platz mit (Figurenname), nicht Beschreibung, Hintergrund, Bild und Kommentare.
  */
-function MoveConsent({ campaign, me, onChanged }: { campaign: Campaign; me: Member; onChanged: () => void }) {
+export function MoveConsent({ campaign, me, onChanged }: { campaign: Campaign; me: Member; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const toggle = async (granted: boolean) => {

@@ -13,6 +13,8 @@ import { CharacterForm } from '../components/CharacterForm';
 import { IconLock } from '../components/Icons';
 import { Divider, ErrorBox, Screen, rememberCampaign } from '../components/Screen';
 import { t } from '../i18n';
+import { MoveConsent } from './Overview';
+import { apiAtLeast } from '../api/connections';
 
 /** Charakterseite: großes Bild, Name, Kurzbeschreibung; Hintergrund nur für die Person selbst und die SL. */
 export function CharacterPage() {
@@ -113,6 +115,7 @@ export function CharacterPage() {
                     {member.role === 'gm' ? t('Bild ändern') : t('Charakter bearbeiten')}
                   </button>
                 )}
+              {member.role === 'player' && apiAtLeast('0.4.8') && <MoveConsent campaign={campaign} me={member} onChanged={load} />}
             </>
           )}
           {/* Mitglieder verwalten (nur SL): Rolle ändern, entfernen */}

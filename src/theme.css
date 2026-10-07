@@ -159,6 +159,16 @@ textarea:focus-visible {
   outline-color: var(--ink);
 }
 
+/* Nur für Screenreader */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* Was vor dem Hauptknopf noch fehlt (components/Missing.tsx) */
 .missing {
   color: var(--ink);

@@ -6,7 +6,8 @@ import { STATUS_LABEL } from '../characters/labels';
 import { CharacterPortrait } from '../characters/Portrait';
 import { listCharacters, onCharactersChanged, STATUS_ORDER } from '../characters/store';
 import { linkOutdated } from '../characters/sync';
-import { Screen } from '../components/Screen';
+import { ErrorBox, Screen } from '../components/Screen';
+import { backupFile, restoreBackup, saveOrShare } from '../characters/backup';
 import { t, tn } from '../i18n';
 
 /**
@@ -18,6 +19,23 @@ export function CharactersPage() {
   const [list, setList] = useState(listCharacters);
   const [filter, setFilter] = useState<CharacterStatus | 'all'>('active');
   const [creating, setCreating] = useState(false);
+  const [backupError, setBackupError] = useState<unknown>(null);
+  const [restored, setRestored] = useState<string | null>(null);
+  const save = async () => {
+    setBackupError(null);
+    try { await saveOrShare(backupFile(), t('Meine Charaktere')); } catch (e) { setBackupError(e); }
+  };
+  const restore = async (file: File | undefined) => {
+    if (!file) return;
+    setBackupError(null);
+    setRestored(null);
+    try {
+      const r = restoreBackup(await file.text());
+      setRestored(t('Zurückgeholt: {a} neu, {u} aktualisiert, {s} schon aktuell.', { a: r.added, u: r.updated, s: r.unchanged }));
+    } catch (e) {
+      setBackupError(e);
+    }
+  };
   useEffect(() => {
     const refresh = () => setList(listCharacters());
     window.addEventListener('session-chronik:connections', refresh);
@@ -86,6 +104,21 @@ export function CharactersPage() {
           <p className="muted small" style={{ margin: 0, textAlign: 'center' }}>
             {t('Deine Sammlung liegt nur auf diesem Gerät. Kampagnen bekommen eine Kopie von Name, Bild, Beschreibung und Hintergrund – private Notizen nie.')}
           </p>
+          {/* Sicherung: Handy weg oder App gelöscht – dann ist die Datei der einzige Rückweg */}
+          <details className="card" open={list.length === 0 || undefined}>
+            <summary style={{ fontWeight: 700 }}>{t('Sammlung sichern')}</summary>
+            <span className="small">{t('Sichere deine Charaktere ab und zu als Datei. Auf einem neuen Gerät holst du sie damit zurück. Die Datei enthält auch deine privaten Notizen – gib sie nicht weiter.')}</span>
+            <ErrorBox error={backupError} />
+            {restored && <span className="small" role="status">{restored}</span>}
+            <div className="row wrap" style={{ gap: 8 }}>
+              {list.length > 0 && <button type="button" className="btn small outline" onClick={save}>{t('Als Datei sichern')}</button>}
+              <label className="btn small outline">
+                {t('Aus Datei zurückholen')}
+                <input type="file" accept=".json,application/json" onChange={(e) => { restore(e.target.files?.[0]); e.target.value = ''; }}
+                  style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden' }} />
+              </label>
+            </div>
+          </details>
         </>
       )}
     </Screen>
