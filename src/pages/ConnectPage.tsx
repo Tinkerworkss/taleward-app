@@ -13,6 +13,7 @@ import type { InvitePreview, ServerInfo } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { IconInfo } from '../components/Icons';
 import { Divider, ErrorBox } from '../components/Screen';
+import { MusterTry } from '../components/Muster';
 import { LanguageSwitch, t } from '../i18n';
 
 const DEFAULT_SERVER: string = import.meta.env.VITE_API_BASE ?? '';
@@ -146,6 +147,12 @@ export function ConnectPage() {
             {MOCK && <p className="muted small" style={{ margin: 0, textAlign: 'center' }}>{t('Testmodus: „/api/v1“ ist der eingebaute Testserver. Zum Ausprobieren eines zweiten Servers: https://nachbarverein.test/einladung/SALZ-2026')}</p>}
             {active.length > 0 && <button type="button" className="btn ghost small" onClick={() => navigate('/')}>{t('Abbrechen')}</button>}
           </form>
+        )}
+        {!info && !params.get('invite') && (
+          <>
+            <Divider />
+            <MusterTry />
+          </>
         )}
 
         {info && baseUrl && (

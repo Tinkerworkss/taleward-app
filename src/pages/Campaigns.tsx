@@ -3,6 +3,7 @@ import { serverHasCharacters } from '../characters/sync';
 import { LinkInput } from '../components/LinkInput';
 import { ImportCampaign } from '../components/ImportCampaign';
 import { NotifyPrompt } from '../notify/NotifySettings';
+import { MusterNotice } from '../components/Muster';
 import { UpdateNotices } from '../components/UpdateNotices';
 import type { GameSystem } from '../api/types';
 import { GameSystemFields } from '../components/GameSystemFields';
@@ -137,6 +138,7 @@ export function Campaigns() {
     <Screen overline={names ? t('Angemeldet als {name}', { name: names }) : ' '} title={t('Deine Kampagnen')} nav={false}>
       <UpdateNotices connections={connections} />
       <NotifyPrompt />
+      <MusterNotice />
       {expired.map((c) => (
         <Link key={c.id} to={`/verbinden?server=${encodeURIComponent(c.baseUrl)}`} className="card warn">
           <strong>{t('Anmeldung bei „{name}“ abgelaufen', { name: c.name })}</strong>

@@ -1,5 +1,6 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { APP_VERSION, activeConnections, serverKnowsAppVersion } from '../api/connections';
+import { isMusterUrl } from '../api/muster';
 import { getLang, t } from '../i18n';
 
 /*
@@ -89,7 +90,8 @@ export async function syncNotifier(): Promise<void> {
       lang: getLang(),
       appVersion: APP_VERSION,
       texts: texts(),
-      servers: activeConnections().map((c) => ({ id: c.id, baseUrl: c.baseUrl, token: c.token, sendAppVersion: serverKnowsAppVersion(c) }))
+      // Die Musterkampagne lebt nur in der App; ihr Server ist für Android nicht erreichbar
+      servers: activeConnections().filter((c) => !isMusterUrl(c.baseUrl)).map((c) => ({ id: c.id, baseUrl: c.baseUrl, token: c.token, sendAppVersion: serverKnowsAppVersion(c) }))
     });
   } catch {
     /* ältere App ohne nativen Teil */

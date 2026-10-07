@@ -254,3 +254,19 @@ export async function blobToPortrait(blob: Blob, crop: PortraitMeta['crop']): Pr
 export async function portraitToBlob(dataUrl: string): Promise<Blob> {
   return (await fetch(dataUrl)).blob();
 }
+
+/** Fertige Charaktere übernehmen (Musterkampagne); gleiche ID ersetzt den alten Stand */
+export function putCharacters(list: StoredCharacter[]): void {
+  const ids = new Set(list.map((c) => c.id));
+  persist([...load().filter((c) => !ids.has(c.id)), ...list]);
+}
+
+/**
+ * Ein Konto vergessen (Musterkampagne beenden): Charaktere, die nur diesem Konto gehören, verschwinden; bei allen
+ * anderen fallen die Verknüpfungen mit diesem Server weg.
+ */
+export function forgetAccount(owner: string, connId: string): void {
+  persist(load()
+    .filter((c) => !(c.owners?.length && c.owners.every((o) => o === owner)))
+    .map((c) => ({ ...c, owners: c.owners?.filter((o) => o !== owner), links: c.links.filter((l) => l.connId !== connId) })));
+}

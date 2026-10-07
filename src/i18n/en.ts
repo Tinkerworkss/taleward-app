@@ -977,4 +977,16 @@ export const en: Record<string, string> = {
   "So sind die Stimmen zugeordnet. Stimmt etwas nicht, ändere es hier – Taleward schreibt das Kapitel dann neu.": "This is how the voices are assigned. If something is wrong, change it here – Taleward will then rewrite the chapter.",
   "So waren die Stimmen zugeordnet.": "This is how the voices were assigned.",
   "Ändern und Kapitel neu schreiben": "Change and rewrite chapter",
+  // Musterkampagne (0.15.0)
+  "Musterkampagne": "Sample campaign",
+  "Ohne Server ausprobieren": "Try it without a server",
+  "Eine erfundene Kampagne mit acht Kapiteln, Bibel, Geheimnissen und Charakteren. Alles bleibt auf diesem Gerät, nichts geht ins Netz.": "A made-up campaign with eight chapters, a bible, secrets and characters. Everything stays on this device; nothing goes online.",
+  "Zur Musterkampagne": "Open the sample campaign",
+  "Als Spielleitung prüfst du Kapitel 8, Stimmen und Unterlagen. Als Spielerin liest du nach, kommentierst und siehst deinen Charakter.": "As game master you review chapter 8, voices and documents. As a player you read up, comment and see your character.",
+  "Als Spielleitung": "As game master",
+  "Als Spielerin": "As a player",
+  "Musterkampagne beenden? Sie verschwindet mit ihren Charakteren von diesem Gerät. Deine eigenen Kampagnen und Charaktere bleiben.": "End the sample campaign? It disappears from this device along with its characters. Your own campaigns and characters stay.",
+  "Beenden": "End",
+  "Alles darin ist erfunden und bleibt auf diesem Gerät. Was du änderst, ist nach einem Neustart der App wieder wie vorher.": "Everything in it is made up and stays on this device. Whatever you change is back to how it was after the app restarts.",
+  "Musterkampagne beenden": "End the sample campaign",
 };

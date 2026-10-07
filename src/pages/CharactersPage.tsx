@@ -64,7 +64,7 @@ export function CharactersPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                       <h2 style={{ fontSize: 19 }}>{c.name}</h2>
                       <span className="muted small">
-                        {[c.nickname && `„${c.nickname}“`, c.system, c.status !== 'active' && t(STATUS_LABEL[c.status])].filter(Boolean).join(' · ')}
+                        {[c.nickname && t('„{q}“', { q: c.nickname }), c.system, c.status !== 'active' && t(STATUS_LABEL[c.status])].filter(Boolean).join(' · ')}
                       </span>
                     </div>
                   </div>

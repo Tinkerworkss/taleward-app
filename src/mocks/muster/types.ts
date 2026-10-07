@@ -1,6 +1,6 @@
 /*
- * Musterkampagne „Die leisen Wasser“ – Aufbau der Inhalte. Die Texte stehen je Sprache in de.ts und en.ts, gleich
- * aufgebaut; seed.ts macht daraus die Daten des Musterservers. Alles ist erfunden.
+ * Musterkampagne „Die leisen Wasser“ – Aufbau der Inhalte. Die Texte stehen je Sprache in de-a/de-b bzw. en-a/en-b,
+ * gleich aufgebaut; seed.ts macht daraus die Daten des Musterservers. Alles ist erfunden.
  */
 import type { CharacterStatus, DocumentKind, EntryType, ProposalFlag, ReviewVerdict, Speaker, VoteAnswer } from '../../api/types';
 

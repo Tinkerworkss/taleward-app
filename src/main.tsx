@@ -25,6 +25,10 @@ async function start() {
   if (import.meta.env.VITE_API_MODE === 'mock') {
     const { installMockFetch } = await import('./mocks/installMockFetch');
     installMockFetch({ lang: getLang() });
+  } else {
+    // Musterkampagne „Ohne Server ausprobieren“: ihr Server lebt in der App und muss vor dem ersten Aufruf bereitstehen
+    const { restoreMuster } = await import('./api/musterRuntime');
+    await restoreMuster().catch(() => undefined);
   }
   // Web-Fassung: installierbar auf dem Startbildschirm (Service Worker nur für die eigenen Dateien)
   if (import.meta.env.VITE_DIST === 'web' && 'serviceWorker' in navigator) {
