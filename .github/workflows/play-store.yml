@@ -1,0 +1,109 @@
+name: Play-Store-Paket
+# App Bundle (.aab) der Play-Store-Fassung: Actions → „Play-Store-Paket“ → „Run workflow“ (nur von main).
+# Baut die Version aus package.json ohne Updater und signiert sie mit dem Upload-Schlüssel (dem bisherigen Schlüssel).
+# Ergebnis unter „Artifacts“ als taleward-play; die .aab-Datei darin in der Play Console hochladen.
+# Jede hochgeladene Datei braucht eine neue Version (Play lehnt dieselbe Versionsnummer ein zweites Mal ab).
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency: play-store
+
+jobs:
+  bauen:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci --ignore-scripts
+      - run: npm run i18n:check
+      - name: Version lesen
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Store-Fassung bauen und Android-Projekt anlegen
+        run: |
+          npm run build:store
+          npx cap add android
+          node scripts/setup-android.mjs --store
+          npx cap sync android
+      - name: Store-Regeln prüfen (kein Updater, Ziel-API 36)
+        run: |
+          set -euo pipefail
+          M=android/app/src/main/AndroidManifest.xml
+          if grep -qE "REQUEST_INSTALL_PACKAGES|REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" "$M"; then
+            echo "Store-Fassung enthält eine Berechtigung, die der Play Store nicht erlaubt"; exit 1
+          fi
+          if [ -e android/app/src/main/java/app/taleward/AppUpdaterPlugin.java ]; then
+            echo "Updater steckt in der Store-Fassung"; exit 1
+          fi
+          grep -qE "targetSdkVersion *= *36" android/variables.gradle || { echo "Ziel-API ist nicht 36"; exit 1; }
+      - name: App Bundle bauen (ohne Signatur – der Schlüssel kommt hier nie hin)
+        run: |
+          cd android && ./gradlew bundleRelease --no-daemon
+          cp app/build/outputs/bundle/release/app-release.aab "$GITHUB_WORKSPACE/unsigned.aab"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: aab-unsigned
+          path: unsigned.aab
+          retention-days: 1
+
+  signieren:
+    needs: bauen
+    runs-on: ubuntu-24.04
+    # Schlüssel nur in der geschützten Umgebung (A9); gibt es sie noch nicht, legt GitHub sie leer an
+    environment: apk-signatur
+    permissions: {}
+    env:
+      VERSION: ${{ needs.bauen.outputs.version }}
+      # Fingerabdruck des Taleward-Signierzertifikats – jede andere Signatur bricht ab
+      CERT_SHA256: 6a3e3ef2210c19d74ea39e372a03061f5096ede1b37a943aaa0121438e2bf573
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: aab-unsigned
+          path: dl
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: App Bundle signieren
+        env:
+          KEYSTORE_B64: ${{ secrets.TALEWARD_KEYSTORE_BASE64 }}
+          TALEWARD_KEYSTORE_PASSWORD: ${{ secrets.TALEWARD_KEYSTORE_PASSWORD }}
+          TALEWARD_KEY_ALIAS: ${{ secrets.TALEWARD_KEY_ALIAS }}
+          TALEWARD_KEY_PASSWORD: ${{ secrets.TALEWARD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -n "$KEYSTORE_B64" ] || { echo "Secret TALEWARD_KEYSTORE_BASE64 fehlt"; exit 1; }
+          KS="$RUNNER_TEMP/taleward.jks"
+          trap 'rm -f "$KS"' EXIT
+          echo "$KEYSTORE_B64" | base64 -d > "$KS"
+          AAB="taleward-$VERSION.aab"
+          cp dl/unsigned.aab "$AAB"
+          jarsigner -keystore "$KS" -storepass:env TALEWARD_KEYSTORE_PASSWORD -keypass:env TALEWARD_KEY_PASSWORD \
+            "$AAB" "$TALEWARD_KEY_ALIAS"
+          jarsigner -verify "$AAB" | tee "$RUNNER_TEMP/verify.txt"
+          grep -q "jar verified" "$RUNNER_TEMP/verify.txt" || { echo "Signatur ungültig – Abbruch"; exit 1; }
+          keytool -printcert -jarfile "$AAB" | tee "$RUNNER_TEMP/certs.txt"
+          FP=$(echo "$CERT_SHA256" | tr 'a-f' 'A-F' | sed 's/../&:/g; s/:$//')
+          grep -q "SHA256: $FP" "$RUNNER_TEMP/certs.txt" || { echo "Falsches Zertifikat – Abbruch"; exit 1; }
+          sha256sum "$AAB" > "$AAB.sha256"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: taleward-play
+          path: taleward-*.aab*
+          retention-days: 14
