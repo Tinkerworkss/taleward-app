@@ -1,6 +1,6 @@
 import { isDeletedMember } from '../api/types';
 import { confirmDialog } from '../components/confirm';
-import { p } from '../api/connections';
+import { apiAtLeast, p } from '../api/connections';
 import { t, tn } from '../i18n';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -70,6 +70,25 @@ export function Review() {
       .then((updated) => setProposals((list) => list?.map((x) => updated.find((u) => u.id === x.id) ?? x) ?? null))
       .catch(setError);
 
+  // Ab Schnittstelle 0.4.10: aus der vorhandenen Abschrift neu schreiben lassen (z. B. nach einem Server-Update)
+  const canRewrite = apiAtLeast('0.4.10');
+  const rewrite = async () => {
+    const ok = await confirmDialog(
+      t('Kapitel {n} neu schreiben? Taleward schreibt Recap und Vorschläge aus der vorhandenen Abschrift noch einmal. Deine Änderungen am Recap und deine Entscheidungen zu den Vorschlägen gehen dabei verloren. Die SL-Notiz bleibt.', { n: session?.number ?? '' }),
+      { confirmLabel: t('Neu schreiben'), danger: true }
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await saveNote();
+      await api.resummarize(sessionId);
+      navigate(p(`/s/${sessionId}`), { replace: true });
+    } catch (e) {
+      setError(e);
+      setBusy(false);
+    }
+  };
+
   const publish = async () => {
     if (openCount > 0 && !(await confirmDialog(tn(openCount, '{n} Vorschlag ist noch offen und wird verworfen. Trotzdem veröffentlichen?', '{n} Vorschläge sind noch offen und werden verworfen. Trotzdem veröffentlichen?'), { confirmLabel: t('Veröffentlichen') }))) return;
     setBusy(true);
@@ -97,6 +116,11 @@ export function Review() {
       {termCount > 0 && (
         <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start' }} onClick={() => navigate(p(`/s/${sessionId}/namen`))}>
           {tn(termCount, '{n} unsicheren Namen prüfen', '{n} unsichere Namen prüfen')}
+        </button>
+      )}
+      {canRewrite && (
+        <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start' }} onClick={() => navigate(p(`/s/${sessionId}/stimmen`))}>
+          {t('Stimmen prüfen')}
         </button>
       )}
       {recap && <RecapEditor sessionId={sessionId} recap={recap} members={members} onSaved={setRecap} onError={setError} />}
@@ -153,6 +177,11 @@ export function Review() {
           <button type="button" className="btn" disabled={busy} onClick={publish}>
             {busy ? t('Wird veröffentlicht …') : t('Recap veröffentlichen')}
           </button>
+          {canRewrite && (
+            <button type="button" className="btn small ghost" style={{ alignSelf: 'center' }} disabled={busy} onClick={rewrite}>
+              {t('Kapitel neu schreiben')}
+            </button>
+          )}
         </>
       )}
       </div>

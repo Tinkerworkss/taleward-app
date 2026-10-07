@@ -1,10 +1,11 @@
-import { currentConnection, p } from '../api/connections';
+import { apiAtLeast, currentConnection, p } from '../api/connections';
 import { serverHasCharacters } from '../characters/sync';
 import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, isApiError } from '../api/client';
-import type { Campaign, Speaker } from '../api/types';
+import type { Campaign, Session, Speaker } from '../api/types';
+import { confirmDialog } from '../components/confirm';
 import { IconPlay } from '../components/Icons';
 import { ErrorBox, Screen } from '../components/Screen';
 
@@ -19,6 +20,9 @@ export function Speakers() {
   // Gäste der Runde (aus der Anwesenheit); benennbar ab Schnittstelle 0.4.7
   const [guests, setGuests] = useState<string[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
+  // Ab Schnittstelle 0.4.10: Zuordnung nach der Bestätigung ansehen und – solange das Kapitel auf Prüfung wartet – ändern
+  const [session, setSession] = useState<Session | null>(null);
+  const [initial, setInitial] = useState<Record<string, string>>({});
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -34,7 +38,13 @@ export function Speakers() {
           ? [...new Set([...session.attendees.map((a) => a.guestName?.trim() ?? ''), ...sp.map((s) => s.assignedGuestName?.trim() ?? '')].filter(Boolean))]
           : [];
         setGuests(named);
-        setMapping(Object.fromEntries(sp.map((s) => [s.id, s.assignedGuestName ? GUEST + s.assignedGuestName : s.suggestedMemberId ?? ''])));
+        setSession(session);
+        const start = Object.fromEntries(sp.map((s) => [s.id,
+          s.assignedGuestName ? GUEST + s.assignedGuestName
+            : s.assignedMemberId !== undefined ? (s.assignedMemberId ?? IGNORE)
+              : s.suggestedMemberId ?? '']));
+        setMapping(start);
+        setInitial(start);
       } catch (e) {
         setError(e);
       }
@@ -60,7 +70,15 @@ export function Speakers() {
     }
   };
 
+  const review = !!session && session.state !== 'awaiting_speakers' && apiAtLeast('0.4.10');
+  const editable = !review || session?.state === 'awaiting_review';
+  const changed = Object.keys(mapping).some((k) => mapping[k] !== initial[k]);
+
   const confirm = async () => {
+    if (review && !(await confirmDialog(
+      t('Zuordnung ändern und Kapitel neu schreiben? Taleward schreibt Recap und Vorschläge mit der neuen Zuordnung noch einmal. Deine Änderungen am Recap und deine Entscheidungen zu den Vorschlägen gehen dabei verloren.'),
+      { confirmLabel: t('Neu schreiben'), danger: true }
+    ))) return;
     setBusy(true);
     try {
       await api.assignSpeakers(
@@ -80,9 +98,17 @@ export function Speakers() {
   const autoCount = speakers?.filter((s) => s.source === 'intro_round' || s.source === 'voice_match').length ?? 0;
 
   return (
-    <Screen narrow back title={t('Stimmen zuordnen')} overline={t('Transkript fertig')}>
+    <Screen narrow back title={review ? t('Stimmen prüfen') : t('Stimmen zuordnen')}
+      overline={review && session ? t('Kapitel {n}', { n: session.number }) : t('Transkript fertig')}>
       <ErrorBox error={error} />
-      {speakers && (
+      {review && (
+        <p className="muted small" style={{ margin: 0 }}>
+          {editable
+            ? t('So sind die Stimmen zugeordnet. Stimmt etwas nicht, ändere es hier – Taleward schreibt das Kapitel dann neu.')
+            : t('So waren die Stimmen zugeordnet.')}
+        </p>
+      )}
+      {speakers && !review && (
         <p className="muted small" style={{ margin: 0 }}>
           {t('{n} Stimmen erkannt, {auto} davon automatisch zugeordnet.', { n: speakers.length, auto: autoCount })}
         </p>
@@ -101,14 +127,14 @@ export function Speakers() {
                 <div className="quote">{s.sampleText}</div>
                 {s.source === 'voice_match' && <div className="muted small">{t('Über Stimmprofil erkannt')}</div>}
                 {s.source === 'intro_round' && <div className="muted small">{t('Aus der Vorstellungsrunde')}</div>}
-                {s.suggestedMemberId && s.confidence < 0.8 && mapping[s.id] === s.suggestedMemberId && (
+                {!review && s.suggestedMemberId && s.confidence < 0.8 && mapping[s.id] === s.suggestedMemberId && (
                   <div className="small" style={{ color: 'var(--siegel-text)', fontWeight: 500 }}>{t('Unsicher – bitte prüfen.')}</div>
                 )}
               </div>
             </div>
             <div className="field">
               <label htmlFor={`sp-${s.id}`}>{t('Person')}</label>
-              <select id={`sp-${s.id}`} value={mapping[s.id] ?? ''} onChange={(e) => setMapping({ ...mapping, [s.id]: e.target.value })}>
+              <select id={`sp-${s.id}`} disabled={!editable} value={mapping[s.id] ?? ''} onChange={(e) => setMapping({ ...mapping, [s.id]: e.target.value })}>
                 <option value="">{t('Bitte wählen …')}</option>
                 {campaign?.members.map((m) => (
                   <option key={m.id} value={m.id}>
@@ -128,9 +154,14 @@ export function Speakers() {
         <div className="empty">{t('Noch keine Stimmen vom Server. Du kannst trotzdem weitermachen.')}</div>
       )}
 
-      {speakers && (
+      {speakers && !review && (
         <button type="button" className="btn" disabled={!complete || busy} onClick={confirm}>
           {busy ? t('Wird gesendet …') : t('Zusammenfassung erstellen')}
+        </button>
+      )}
+      {speakers && review && editable && (
+        <button type="button" className="btn" disabled={!complete || !changed || busy} onClick={confirm}>
+          {busy ? t('Wird gesendet …') : t('Ändern und Kapitel neu schreiben')}
         </button>
       )}
     </Screen>

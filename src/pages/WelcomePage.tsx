@@ -1,3 +1,4 @@
+import { VoiceProfileHint } from '../components/VoiceProfileHint';
 import { currentConnection, currentConnectionId, p } from '../api/connections';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -70,6 +71,7 @@ export function WelcomePage() {
           {step === 2 && (
             <>
               <RecordingConsent campaign={campaign} onChanged={load} />
+              <VoiceProfileHint />
               <Divider />
               <button type="button" className="btn" onClick={done}>{t('Zur Kampagne')}</button>
             </>

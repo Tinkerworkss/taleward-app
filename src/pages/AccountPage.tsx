@@ -1,3 +1,4 @@
+import { isUnencrypted } from '../api/addresses';
 import { oidcErrorText } from './ConnectPage';
 import { LoginSettings } from '../components/LoginSettings';
 import { confirmDialog } from '../components/confirm';
@@ -99,6 +100,12 @@ function ConnectionCard({ conn }: { conn: Connection }) {
       <span className="overline">{conn.operator ?? t('Server')}</span>
       <h2>{conn.name}</h2>
       <div className="muted small" style={{ wordBreak: 'break-all' }}>{conn.baseUrl}</div>
+      {isUnencrypted(conn.baseUrl) && (
+        <div className="notice">
+          <span style={{ flexShrink: 0, color: 'var(--ink-faint)' }}><IconInfo /></span>
+          <span>{t('Unverschlüsselt – nur im Heimnetz verwenden.')}</span>
+        </div>
+      )}
       {conn.user && <div className="small">{t('Angemeldet als {name}', { name: conn.user.displayName })} ({conn.user.username})</div>}
       {valid && conn.expiresAt && <div className="muted small">{t('Anmeldung gültig bis {date}', { date: formatDateFull(conn.expiresAt) })}</div>}
       {isOutdated(conn.apiVersion) && (

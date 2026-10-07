@@ -5,11 +5,11 @@ import { DownloadButton } from '../components/UpdateNotices';
 import { Wordmark } from '../components/Wordmark';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { apiFor, fetchServerInfo, isApiError } from '../api/client';
+import { apiFor, fetchInvitePreview, fetchServerInfo, isApiError } from '../api/client';
 import {
   APP_VERSION, isOutdated, normalizeBaseUrl, versionLess, parseInvite, REQUIRED_API_VERSION, saveConnection, type Connection
 } from '../api/connections';
-import type { ServerInfo } from '../api/types';
+import type { InvitePreview, ServerInfo } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { IconInfo } from '../components/Icons';
 import { Divider, ErrorBox } from '../components/Screen';
@@ -29,6 +29,8 @@ export function ConnectPage() {
   const [address, setAddress] = useState(params.get('invite') ?? params.get('server') ?? (MOCK ? '/api/v1' : DEFAULT_SERVER));
   const [baseUrl, setBaseUrl] = useState<string | null>(null);
   const [info, setInfo] = useState<ServerInfo | null>(null);
+  // Wohin die Einladung führt (ab Schnittstelle 0.4.10)
+  const [preview, setPreview] = useState<InvitePreview | null>(null);
   const [code, setCode] = useState('');
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
@@ -66,10 +68,22 @@ export function ConnectPage() {
     setBusy(true);
     try {
       const i = await fetchServerInfo(url);
+      setPreview(null);
+      if (invite && i.apiVersion && !versionLess(i.apiVersion, '0.4.10')) {
+        // Ungültiger Code: gleich hier sagen, nicht erst nach dem Anlegen des Kontos
+        setPreview(await fetchInvitePreview(url, invite.code));
+      }
       setInfo(i);
       setBaseUrl(url);
     } catch (err) {
-      setError(isApiError(err) && err.status === 0 ? err : new Error(t('Unter dieser Adresse antwortet kein Taleward-Server.')));
+      if (isApiError(err, 'invite_invalid')) {
+        setError(err);
+        return;
+      }
+      // http:// mit öffentlicher Adresse versucht die App über https; antwortet dort niemand, sagt sie das deutlich
+      const upgraded = /^\s*http:\/\//i.test(address) && url.startsWith('https://');
+      if (upgraded) setError(new Error(t('Dieser Server ist nicht verschlüsselt erreichbar. Außerhalb des Heimnetzes verbindet sich Taleward nur über https.')));
+      else setError(isApiError(err) && err.status === 0 ? err : new Error(t('Unter dieser Adresse antwortet kein Taleward-Server.')));
     } finally {
       setBusy(false);
     }
@@ -141,6 +155,13 @@ export function ConnectPage() {
               <h2>{info.name}</h2>
               <div className="muted small">{t('Betrieben von {operator}', { operator: info.operator })}{info.contact ? ` · ${info.contact}` : ''}</div>
               <div className="muted small" style={{ wordBreak: 'break-all' }}>{baseUrl}</div>
+              {preview && (
+                <div className="small" style={{ fontWeight: 600 }}>
+                  {preview.seatCharacterName
+                    ? t('Einladung zu „{title}“, auf den Platz von „{seat}“', { title: preview.campaignTitle, seat: preview.seatCharacterName })
+                    : t('Einladung zu „{title}“', { title: preview.campaignTitle })}
+                </div>
+              )}
               {info.minAppVersion && versionLess(APP_VERSION, info.minAppVersion) && (
                 <div className="notice" style={{ flexDirection: 'column', gap: 8 }}>
                   <span>{t('Dieser Server verlangt mindestens Taleward {min}, du hast {v}. Bitte erst aktualisieren.', { min: info.minAppVersion, v: APP_VERSION })}</span>
@@ -153,7 +174,7 @@ export function ConnectPage() {
                   <span>{t('Dieser Server ist älter (Version {v}) als die App erwartet ({r}). Manche Funktionen fehlen dort noch.', { v: info.apiVersion, r: REQUIRED_API_VERSION })}</span>
                 </div>
               )}
-              <button type="button" className="btn ghost small" style={{ alignSelf: 'flex-start' }} onClick={() => { setInfo(null); setBaseUrl(null); }}>{t('Anderer Server')}</button>
+              <button type="button" className="btn ghost small" style={{ alignSelf: 'flex-start' }} onClick={() => { setInfo(null); setBaseUrl(null); setPreview(null); }}>{t('Anderer Server')}</button>
             </section>
 
             {oidc === 'email_in_use' && (

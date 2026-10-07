@@ -1,3 +1,4 @@
+import { VoiceProfileHint } from '../components/VoiceProfileHint';
 import { CloudNotice, cloudUse, providerName, useServerInfo } from '../components/CloudNotice';
 import { isDeletedMember } from '../api/types';
 import { InviteBox } from '../components/InviteBox';
@@ -486,6 +487,7 @@ function Members({ campaign, onChanged }: { campaign: Campaign; onChanged: () =>
         </Link>
       )}
       {me && me.role === 'player' && apiAtLeast('0.4.8') && <MoveConsent campaign={campaign} me={me} onChanged={onChanged} />}
+      {me && <VoiceProfileHint />}
       {seat && <OpenSeatDialog campaign={campaign} seat={seat} onClose={() => setSeat(null)} onDone={() => { setSeat(null); onChanged(); }} />}
     </section>
   );

@@ -2,8 +2,8 @@ import { handleAuthUrl } from '../auth/oidc';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
-import { apiFor } from '../api/client';
-import { activeConnections, parseInvite } from '../api/connections';
+import { apiFor, fetchInvitePreview } from '../api/client';
+import { activeConnections, apiAtLeast, parseInvite } from '../api/connections';
 import { inviteFromAppUrl } from '../invite';
 import { t } from '../i18n';
 import { confirmDialog } from './confirm';
@@ -51,11 +51,27 @@ export function DeepLinks() {
       const invite = parseInvite(link);
       const conn = invite?.baseUrl ? activeConnections().find((c) => c.baseUrl === invite.baseUrl) : undefined;
       if (invite && conn) {
-        // Nie ungefragt beitreten: Ein Link von irgendeiner Webseite könnte sonst in eine fremde Kampagne führen
+        // Nie ungefragt beitreten: Ein Link von irgendeiner Webseite könnte sonst in eine fremde Kampagne führen.
+        // Ab Schnittstelle 0.4.10 nennt die Rückfrage auch die Kampagne.
+        let title: string | null = null;
+        let seat: string | null = null;
+        if (apiAtLeast('0.4.10', conn)) {
+          try {
+            const preview = await fetchInvitePreview(conn.baseUrl, invite.code);
+            title = preview?.campaignTitle ?? null;
+            seat = preview?.seatCharacterName ?? null;
+          } catch (e) {
+            navigate('/', { state: { joinError: e instanceof Error ? e.message : t('Beitreten hat nicht geklappt.'), invite: link } });
+            return;
+          }
+        }
+        const vars = { server: conn.name, host: hostOf(conn.baseUrl), code: invite.code, name: conn.user?.displayName ?? '', title: title ?? '', seat: seat ?? '' };
         const ok = await confirmDialog(
-          t('Einladung annehmen? Du trittst auf „{server}“ ({host}) einer Kampagne bei, Code {code}. Die anderen dort sehen dann deinen Namen „{name}“. Nimm nur Einladungen an, die du von deiner Spielleitung oder Gruppe bekommen hast.', {
-            server: conn.name, host: hostOf(conn.baseUrl), code: invite.code, name: conn.user?.displayName ?? ''
-          }),
+          title && seat
+            ? t('Einladung annehmen? Du trittst auf „{server}“ ({host}) der Kampagne „{title}“ bei und übernimmst den Platz von „{seat}“, Code {code}. Die anderen dort sehen dann deinen Namen „{name}“. Nimm nur Einladungen an, die du von deiner Spielleitung oder Gruppe bekommen hast.', vars)
+            : title
+              ? t('Einladung annehmen? Du trittst auf „{server}“ ({host}) der Kampagne „{title}“ bei, Code {code}. Die anderen dort sehen dann deinen Namen „{name}“. Nimm nur Einladungen an, die du von deiner Spielleitung oder Gruppe bekommen hast.', vars)
+              : t('Einladung annehmen? Du trittst auf „{server}“ ({host}) einer Kampagne bei, Code {code}. Die anderen dort sehen dann deinen Namen „{name}“. Nimm nur Einladungen an, die du von deiner Spielleitung oder Gruppe bekommen hast.', vars),
           { confirmLabel: t('Beitreten'), cancelLabel: t('Nicht beitreten') }
         );
         if (!ok) {
