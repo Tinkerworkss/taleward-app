@@ -1,0 +1,322 @@
+From 009059cfd57faab5d9c582e768fe56a31136311e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 7 Oct 2026 18:27:42 +0200
+Subject: [PATCH] Schnittstelle 0.4.11: Wer schreibt die Kapitel (Anbieter mit
+ Land und EU)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ docs/session-chronik-api.yaml  | 33 ++++++++++++++++++++++++++++++++-
+ src/api/types.ts               | 15 +++++++++++++++
+ src/components/CloudNotice.tsx | 33 ++++++++++++++++++++++++++++-----
+ src/consent.ts                 | 12 ++++++++++--
+ src/i18n/en.ts                 |  5 ++++-
+ src/mocks/handlers.ts          |  5 ++++-
+ src/pages/Overview.tsx         | 19 ++++++++++---------
+ src/pages/Recording.tsx        |  2 +-
+ 8 files changed, 104 insertions(+), 20 deletions(-)
+
+diff --git a/docs/session-chronik-api.yaml b/docs/session-chronik-api.yaml
+index cfed26e..5665367 100644
+--- a/docs/session-chronik-api.yaml
++++ b/docs/session-chronik-api.yaml
+@@ -1,7 +1,7 @@
+ openapi: 3.1.0
+ info:
+   title: Taleward API
+-  version: 0.4.10
++  version: 0.4.11
+   description: |
+     Schnittstelle zwischen der Taleward-App (Android, Web) und dem Taleward-Server.
+ 
+@@ -157,6 +157,10 @@ info:
+     /sessions/{id}/resummarize). Speaker.assignedMemberId zeigt die bestätigte Zuordnung; GET …/speakers geht auch nach
+     der Bestätigung, PUT …/speakers in awaiting_review ändert die Zuordnung und schreibt das Kapitel neu. GET
+     /invites/{code} nennt vor dem Beitritt ohne Anmeldung den Kampagnentitel (begrenzt wie der Beitritt).
++    Änderungen in 0.4.11 (Wer schreibt die Kapitel): ServerInfo.cloudSummaryInfo und
++    ServerInfo.externalTranscriptionInfo (CloudProviderInfo: Name, EU oder nicht, Land). Die App zeigt allen Mitgliedern
++    einer Kampagne mit allowCloudSummary bzw. allowExternalTranscription, wer die Kapitel schreibt bzw. transkribiert,
++    und nennt es im Einwilligungstext. Fehlen die Felder (ältere Server), zeigt die App nur die Kennung.
+ 
+ servers:
+   - url: https://taleward.example.org/api/v1
+@@ -2718,6 +2722,33 @@ components:
+             null = dieser Server transkribiert nur selbst. Sonst Name des externen Anbieters (z. B. "mistral"),
+             den der Betreiber als Ersatz freigegeben hat. Nur dann zeigt die App der SL den Schalter
+             allowExternalTranscription und nennt den Anbieter im Hinweis.
++        cloudSummaryInfo:
++          description: |
++            Ab 0.4.11. Angaben zum Anbieter aus cloudSummary für die Anzeige am Tisch und im Einwilligungstext;
++            null, wenn cloudSummary null ist.
++          oneOf:
++            - $ref: "#/components/schemas/CloudProviderInfo"
++            - type: "null"
++        externalTranscriptionInfo:
++          description: Ab 0.4.11. Wie cloudSummaryInfo, für externalTranscription; null, wenn externalTranscription null ist.
++          oneOf:
++            - $ref: "#/components/schemas/CloudProviderInfo"
++            - type: "null"
++
++    CloudProviderInfo:
++      type: object
++      description: |
++        Ab 0.4.11. Wer Text (Zusammenfassung) bzw. Aufnahmen (Transkription) verarbeitet. Ohne sprachabhängige Wörter,
++        damit die App sie in jeder Sprache gleich zeigen kann; Land und „EU“ übersetzt die App.
++      required: [id, name, region]
++      properties:
++        id: { type: string, description: 'Kennung wie in cloudSummary bzw. externalTranscription', example: mistral }
++        name: { type: string, description: Anzeigename des Anbieters, example: Mistral AI }
++        region: { type: string, enum: [eu, non_eu], description: 'Verarbeitung in der EU (eu) oder außerhalb (non_eu)' }
++        country:
++          type: [string, "null"]
++          description: Land der Verarbeitung als ISO-3166-1-alpha-2-Code; null = unbekannt
++          example: FR
+ 
+     Organization:
+       type: object
+diff --git a/src/api/types.ts b/src/api/types.ts
+index 9476740..3f4f266 100644
+--- a/src/api/types.ts
++++ b/src/api/types.ts
+@@ -477,6 +477,18 @@ export interface CampaignDocument {
+   createdAt: string;
+ }
+ 
++/** Angaben zu einem Cloud-Anbieter, für alle am Tisch sichtbar (ab 0.4.11) */
++export interface CloudProviderInfo {
++  /** Kennung wie in cloudSummary bzw. externalTranscription, z. B. "mistral" */
++  id: string;
++  /** Anzeigename ohne Sprachbezug, z. B. "Mistral AI" */
++  name: string;
++  /** Verarbeitung in der EU oder außerhalb */
++  region: 'eu' | 'non_eu';
++  /** Land der Verarbeitung als ISO-3166-Code, z. B. "FR"; null = unbekannt */
++  country?: string | null;
++}
++
+ /** Öffentliche Angaben eines Servers, abrufbar ohne Anmeldung (ab 0.3.2) */
+ export interface ServerInfo {
+   name: string;
+@@ -505,6 +517,9 @@ export interface ServerInfo {
+   externalTranscriptionMode?: 'fallback' | 'primary' | null;
+   /** Anbieter der Cloud-Zusammenfassung (z. B. "mistral"); null = nur lokales Modell (ab 0.3.10) */
+   cloudSummary?: string | null;
++  /** Wer die Kapitel schreibt bzw. transkribiert: Name, EU oder nicht, Land (ab 0.4.11) */
++  cloudSummaryInfo?: CloudProviderInfo | null;
++  externalTranscriptionInfo?: CloudProviderInfo | null;
+   /** Ältere Apps werden abgewiesen (426 app_outdated) (ab 0.3.9) */
+   minAppVersion?: string | null;
+   /** Neueste verfügbare App-Version – die App zeigt dann „Neue Version“ (ab 0.3.9) */
+diff --git a/src/components/CloudNotice.tsx b/src/components/CloudNotice.tsx
+index f93e656..16524c4 100644
+--- a/src/components/CloudNotice.tsx
++++ b/src/components/CloudNotice.tsx
+@@ -1,11 +1,32 @@
+ import { useEffect, useState } from 'react';
+ import { api } from '../api/client';
+-import type { Campaign, ServerInfo } from '../api/types';
+-import { t } from '../i18n';
++import type { Campaign, CloudProviderInfo, ServerInfo } from '../api/types';
++import { locale, t } from '../i18n';
+ 
+ /** „mistral“ → „Mistral“ */
+ export const providerName = (p: string) => p.charAt(0).toUpperCase() + p.slice(1);
+ 
++function countryName(code: string | null | undefined): string | null {
++  if (!code) return null;
++  try {
++    return new Intl.DisplayNames([locale()], { type: 'region' }).of(code.toUpperCase()) ?? code;
++  } catch {
++    return code;
++  }
++}
++
++/**
++ * Anbieter so, wie ihn alle am Tisch sehen: mit Land und ob die Daten in der EU bleiben (ab Schnittstelle 0.4.11),
++ * bei älteren Servern nur der Name, z. B. „Mistral AI (Frankreich, EU)“ bzw. „Mistral“.
++ */
++export function providerLabel(id: string | null | undefined, info?: CloudProviderInfo | null): string | null {
++  if (info) {
++    const where = [countryName(info.country), info.region === 'eu' ? t('EU') : t('außerhalb der EU')].filter(Boolean).join(', ');
++    return `${info.name} (${where})`;
++  }
++  return id ? providerName(id) : null;
++}
++
+ /** Server-Info einmal pro Seite holen (Cloud-Dienste, Betriebsart) */
+ export function useServerInfo(): ServerInfo | null {
+   const [info, setInfo] = useState<ServerInfo | null>(null);
+@@ -18,9 +39,11 @@ export function useServerInfo(): ServerInfo | null {
+ /** Welche Cloud-Dienste diese Kampagne gerade nutzt – für alle am Tisch sichtbar */
+ export function cloudUse(info: ServerInfo | null, campaign: Campaign) {
+   const transcription = info?.externalTranscription && campaign.allowExternalTranscription
+-    ? { provider: providerName(info.externalTranscription), primary: info.externalTranscriptionMode === 'primary' }
++    ? { provider: providerLabel(info.externalTranscription, info.externalTranscriptionInfo)!, primary: info.externalTranscriptionMode === 'primary' }
++    : null;
++  const summary = info?.cloudSummary && campaign.allowCloudSummary
++    ? { provider: providerLabel(info.cloudSummary, info.cloudSummaryInfo)! }
+     : null;
+-  const summary = info?.cloudSummary && campaign.allowCloudSummary ? { provider: providerName(info.cloudSummary) } : null;
+   return { transcription, summary };
+ }
+ 
+@@ -38,7 +61,7 @@ export function CloudNotice({ info, campaign }: { info: ServerInfo | null; campa
+             : t('Ist 24 Stunden lang kein Worker erreichbar, transkribiert {provider}.', { provider: transcription.provider })}
+         </span>
+       )}
+-      {summary && <span className="small">{t('Recaps, Vorschläge und Unterlagen werden über {provider} ausgewertet.', { provider: summary.provider })}</span>}
++      {summary && <span className="small">{t('Kapitel schreibt: {provider}. Dafür gehen Text der Runde und Unterlagen dorthin, keine Stimmen.', { provider: summary.provider })}</span>}
+     </div>
+   );
+ }
+diff --git a/src/consent.ts b/src/consent.ts
+index 39fbe65..d5d3e31 100644
+--- a/src/consent.ts
++++ b/src/consent.ts
+@@ -12,6 +12,8 @@ export interface ConsentContext {
+   retention?: ServerInfo['audioRetention'];
+   /** Anbieter der Cloud-Transkription, wenn die Kampagne sie erlaubt (z. B. „Mistral“) */
+   cloudProvider?: string | null;
++  /** Anbieter der Cloud-Zusammenfassung, wenn die Kampagne sie erlaubt (Schnittstelle 0.4.11) */
++  summaryProvider?: string | null;
+ }
+ 
+ function retentionSentence(ctx: ConsentContext): string {
+@@ -28,14 +30,20 @@ function cloudSentence(ctx: ConsentContext): string {
+     : '';
+ }
+ 
++function summarySentence(ctx: ConsentContext): string {
++  return ctx.summaryProvider
++    ? ' ' + t('Die Zusammenfassung schreibt {provider}; dorthin geht nur Text, keine Aufnahme.', { provider: ctx.summaryProvider })
++    : '';
++}
++
+ export const CONSENT_STANDING = (campaignTitle: string, ctx: ConsentContext = {}) =>
+   t('Ich bin damit einverstanden, dass die Runden der Kampagne „{title}“ aufgenommen werden, solange ich dabei bin.', { title: campaignTitle }) +
+-  ' ' + retentionSentence(ctx) + cloudSentence(ctx) + ' ' +
++  ' ' + retentionSentence(ctx) + cloudSentence(ctx) + summarySentence(ctx) + ' ' +
+   t('Aus dem Text entstehen Zusammenfassungen, die alle Mitglieder der Kampagne lesen können. Ich kann diese Zustimmung jederzeit in der App widerrufen. Sie gilt dann ab sofort nicht mehr für künftige Aufnahmen; bereits veröffentlichte Zusammenfassungen bleiben bestehen.');
+ 
+ export const CONSENT_ON_SITE = (campaignTitle: string, ctx: ConsentContext = {}) =>
+   t('Ich bin damit einverstanden, dass die heutige Runde der Kampagne „{title}“ aufgenommen wird.', { title: campaignTitle }) +
+-  ' ' + retentionSentence(ctx) + cloudSentence(ctx) + ' ' +
++  ' ' + retentionSentence(ctx) + cloudSentence(ctx) + summarySentence(ctx) + ' ' +
+   t('Aus dem Text entsteht eine Zusammenfassung, die alle Mitglieder der Kampagne lesen können.');
+ 
+ /** Kurzfassung über dem einklappbaren Wortlaut */
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 1c93668..e46216d 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -602,7 +602,10 @@ export const en: Record<string, string> = {
+   "Angemeldet über {name}. Ein Passwort brauchst du nicht.": "Signed in via {name}. You don't need a password.",
+   "Quellcode (AGPL-3.0)": "Source code (AGPL-3.0)",
+   "Zusammenfassung und Unterlagen über {provider} erlauben": "Allow summaries and documents via {provider}",
+-  "Recaps, Vorschläge und Unterlagen werden über {provider} ausgewertet.": "Recaps, suggestions and documents are processed via {provider}.",
++  "Kapitel schreibt: {provider}. Dafür gehen Text der Runde und Unterlagen dorthin, keine Stimmen.": "Chapters are written by: {provider}. Text from the session and documents go there, no voices.",
++  "EU": "EU",
++  "außerhalb der EU": "outside the EU",
++  "Die Zusammenfassung schreibt {provider}; dorthin geht nur Text, keine Aufnahme.": "The summary is written by {provider}; only text goes there, no recording.",
+   "Dieser Anmeldedienst ist auf dem Server nicht eingerichtet.": "This sign-in service isn't set up on the server.",
+   "Der Verbinden-Vorgang ist abgelaufen. Bitte noch einmal starten.": "The connection attempt expired. Please start again.",
+   "Die Anmeldung ist abgelaufen. Bitte noch einmal.": "The sign-in expired. Please try again.",
+diff --git a/src/mocks/handlers.ts b/src/mocks/handlers.ts
+index b80ec24..380c16c 100644
+--- a/src/mocks/handlers.ts
++++ b/src/mocks/handlers.ts
+@@ -427,7 +427,7 @@ export const handlers = [
+       operator: nachbar ? 'Spielgemeinschaft Nachbarort e. V.' : 'Rollenspielverein (Testmodus)',
+       contact: nachbar ? 'vorstand@nachbarverein.test' : null,
+       // Eingebauter Testserver kann alles bis 0.4.7; der Nachbarverein bleibt alt (zeigt das Ausblenden neuer Funktionen)
+-      apiVersion: nachbar ? '0.3.9' : '0.4.10',
++      apiVersion: nachbar ? '0.3.9' : '0.4.11',
+       registration: 'invite_only',
+       authMethods: ['password'],
+       privacyPolicyUrl: null,
+@@ -438,6 +438,9 @@ export const handlers = [
+       externalTranscription: nachbar ? null : 'mistral',
+       externalTranscriptionMode: nachbar ? null : 'fallback',
+       cloudSummary: nachbar ? null : 'mistral',
++      // Ab 0.4.11: wer schreibt bzw. transkribiert, mit Land und EU
++      cloudSummaryInfo: nachbar ? null : { id: 'mistral', name: 'Mistral AI', region: 'eu', country: 'FR' },
++      externalTranscriptionInfo: nachbar ? null : { id: 'mistral', name: 'Mistral AI', region: 'eu', country: 'FR' },
+       minAppVersion: nachbar ? null : '0.8.0',
+       latestAppVersion: nachbar ? null : '0.10.1',
+       appDownloadUrl: nachbar ? null : 'https://example.org/taleward-0.9.1.apk',
+diff --git a/src/pages/Overview.tsx b/src/pages/Overview.tsx
+index 77b7994..c3e5c06 100644
+--- a/src/pages/Overview.tsx
++++ b/src/pages/Overview.tsx
+@@ -1,5 +1,5 @@
+ import { VoiceProfileHint } from '../components/VoiceProfileHint';
+-import { CloudNotice, cloudUse, providerName, useServerInfo } from '../components/CloudNotice';
++import { CloudNotice, cloudUse, providerLabel, useServerInfo } from '../components/CloudNotice';
+ import { isDeletedMember } from '../api/types';
+ import { InviteBox } from '../components/InviteBox';
+ import { confirmDialog } from '../components/confirm';
+@@ -181,7 +181,8 @@ export function RecordingConsent({ campaign, onChanged }: { campaign: Campaign;
+   const { user } = useAuth();
+   // Frist und Cloud-Dienst gehören in den Wortlaut, den die Person bestätigt
+   const info = useServerInfo();
+-  const consentCtx = { retention: info?.audioRetention, cloudProvider: cloudUse(info, campaign).transcription?.provider ?? null };
++  const cloud = cloudUse(info, campaign);
++  const consentCtx = { retention: info?.audioRetention, cloudProvider: cloud.transcription?.provider ?? null, summaryProvider: cloud.summary?.provider ?? null };
+   const me = campaign.members.find((m) => m.userId === user?.id);
+   const [open, setOpen] = useState(false);
+   const [busy, setBusy] = useState(false);
+@@ -264,9 +265,9 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved:
+   };
+   useEffect(() => {
+     if (editing) api.info().then((i) => {
+-      setExternalProvider(i.externalTranscription ?? null);
++      setExternalProvider(providerLabel(i.externalTranscription, i.externalTranscriptionInfo));
+       setPrimary(i.externalTranscriptionMode === 'primary');
+-      setSummaryProvider(i.cloudSummary ?? null);
++      setSummaryProvider(providerLabel(i.cloudSummary, i.cloudSummaryInfo));
+     }).catch(() => undefined);
+   }, [editing]);
+   const [busy, setBusy] = useState(false);
+@@ -325,12 +326,12 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved:
+           <div className="field">
+             <label className="check" style={{ alignItems: 'flex-start' }}>
+               <input type="checkbox" checked={allowExternal} onChange={(e) => setAllowExternal(e.target.checked)} style={{ marginTop: 3 }} />
+-              <span>{t('Transkription über {provider} erlauben', { provider: providerName(externalProvider) })}</span>
++              <span>{t('Transkription über {provider} erlauben', { provider: externalProvider })}</span>
+             </label>
+             <span className="muted small">
+               {primary
+-                ? t('Dieser Server transkribiert Aufnahmen direkt über {provider}. Die Stimmen verlassen dann den Verein – sag es vorher allen am Tisch.', { provider: providerName(externalProvider) })
+-                : t('Ist 24 Stunden lang kein Worker erreichbar, darf der Server ersatzweise {provider} nutzen (kostet wenige Cent pro Stunde Aufnahme). Die Stimmen verlassen dann den Verein – sag es vorher allen am Tisch.', { provider: providerName(externalProvider) })}
++                ? t('Dieser Server transkribiert Aufnahmen direkt über {provider}. Die Stimmen verlassen dann den Verein – sag es vorher allen am Tisch.', { provider: externalProvider })
++                : t('Ist 24 Stunden lang kein Worker erreichbar, darf der Server ersatzweise {provider} nutzen (kostet wenige Cent pro Stunde Aufnahme). Die Stimmen verlassen dann den Verein – sag es vorher allen am Tisch.', { provider: externalProvider })}
+             </span>
+           </div>
+         )}
+@@ -338,10 +339,10 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved:
+           <div className="field">
+             <label className="check" style={{ alignItems: 'flex-start' }}>
+               <input type="checkbox" checked={allowSummary} onChange={(e) => setAllowSummary(e.target.checked)} style={{ marginTop: 3 }} />
+-              <span>{t('Zusammenfassung und Unterlagen über {provider} erlauben', { provider: providerName(summaryProvider) })}</span>
++              <span>{t('Zusammenfassung und Unterlagen über {provider} erlauben', { provider: summaryProvider })}</span>
+             </label>
+             <span className="muted small">
+-              {t('Für Recap, Vorschläge und das Auswerten von Unterlagen geht Text an {provider} – Namen und Gespräche der Runde bzw. der Inhalt der Unterlage, keine Stimmen. Ohne Erlaubnis wartet beides auf ein lokales Modell.', { provider: providerName(summaryProvider) })}
++              {t('Für Recap, Vorschläge und das Auswerten von Unterlagen geht Text an {provider} – Namen und Gespräche der Runde bzw. der Inhalt der Unterlage, keine Stimmen. Ohne Erlaubnis wartet beides auf ein lokales Modell.', { provider: summaryProvider })}
+             </span>
+           </div>
+         )}
+diff --git a/src/pages/Recording.tsx b/src/pages/Recording.tsx
+index 1523b50..9bb4ded 100644
+--- a/src/pages/Recording.tsx
++++ b/src/pages/Recording.tsx
+@@ -464,7 +464,7 @@ export function Recording() {
+       {handover && (
+         <ConsentHandover
+           name={handover.name}
+-          text={CONSENT_ON_SITE(campaign.title, { retention: serverInfo?.audioRetention, cloudProvider: cloud.transcription?.provider ?? null })}
++          text={CONSENT_ON_SITE(campaign.title, { retention: serverInfo?.audioRetention, cloudProvider: cloud.transcription?.provider ?? null, summaryProvider: cloud.summary?.provider ?? null })}
+           onConsent={confirmHandover}
+           onCancel={() => setHandover(null)}
+         />
