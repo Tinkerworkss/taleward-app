@@ -1,5 +1,5 @@
 import { VoiceProfileHint } from '../components/VoiceProfileHint';
-import { CloudNotice, cloudUse, providerName, useServerInfo } from '../components/CloudNotice';
+import { CloudNotice, cloudUse, providerLabel, useServerInfo } from '../components/CloudNotice';
 import { isDeletedMember } from '../api/types';
 import { InviteBox } from '../components/InviteBox';
 import { confirmDialog } from '../components/confirm';
@@ -181,7 +181,8 @@ export function RecordingConsent({ campaign, onChanged }: { campaign: Campaign; 
   const { user } = useAuth();
   // Frist und Cloud-Dienst gehören in den Wortlaut, den die Person bestätigt
   const info = useServerInfo();
-  const consentCtx = { retention: info?.audioRetention, cloudProvider: cloudUse(info, campaign).transcription?.provider ?? null };
+  const cloud = cloudUse(info, campaign);
+  const consentCtx = { retention: info?.audioRetention, cloudProvider: cloud.transcription?.provider ?? null, summaryProvider: cloud.summary?.provider ?? null };
   const me = campaign.members.find((m) => m.userId === user?.id);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -264,9 +265,9 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved: 
   };
   useEffect(() => {
     if (editing) api.info().then((i) => {
-      setExternalProvider(i.externalTranscription ?? null);
+      setExternalProvider(providerLabel(i.externalTranscription, i.externalTranscriptionInfo));
       setPrimary(i.externalTranscriptionMode === 'primary');
-      setSummaryProvider(i.cloudSummary ?? null);
+      setSummaryProvider(providerLabel(i.cloudSummary, i.cloudSummaryInfo));
     }).catch(() => undefined);
   }, [editing]);
   const [busy, setBusy] = useState(false);
@@ -325,12 +326,12 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved: 
           <div className="field">
             <label className="check" style={{ alignItems: 'flex-start' }}>
               <input type="checkbox" checked={allowExternal} onChange={(e) => setAllowExternal(e.target.checked)} style={{ marginTop: 3 }} />
-              <span>{t('Transkription über {provider} erlauben', { provider: providerName(externalProvider) })}</span>
+              <span>{t('Transkription über {provider} erlauben', { provider: externalProvider })}</span>
             </label>
             <span className="muted small">
               {primary
-                ? t('Dieser Server transkribiert Aufnahmen direkt über {provider}. Die Stimmen verlassen dann den Verein – sag es vorher allen am Tisch.', { provider: providerName(externalProvider) })
-                : t('Ist 24 Stunden lang kein Worker erreichbar, darf der Server ersatzweise {provider} nutzen (kostet wenige Cent pro Stunde Aufnahme). Die Stimmen verlassen dann den Verein – sag es vorher allen am Tisch.', { provider: providerName(externalProvider) })}
+                ? t('Dieser Server transkribiert Aufnahmen direkt über {provider}. Die Stimmen verlassen dann den Verein – sag es vorher allen am Tisch.', { provider: externalProvider })
+                : t('Ist 24 Stunden lang kein Worker erreichbar, darf der Server ersatzweise {provider} nutzen (kostet wenige Cent pro Stunde Aufnahme). Die Stimmen verlassen dann den Verein – sag es vorher allen am Tisch.', { provider: externalProvider })}
             </span>
           </div>
         )}
@@ -338,10 +339,10 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved: 
           <div className="field">
             <label className="check" style={{ alignItems: 'flex-start' }}>
               <input type="checkbox" checked={allowSummary} onChange={(e) => setAllowSummary(e.target.checked)} style={{ marginTop: 3 }} />
-              <span>{t('Zusammenfassung und Unterlagen über {provider} erlauben', { provider: providerName(summaryProvider) })}</span>
+              <span>{t('Zusammenfassung und Unterlagen über {provider} erlauben', { provider: summaryProvider })}</span>
             </label>
             <span className="muted small">
-              {t('Für Recap, Vorschläge und das Auswerten von Unterlagen geht Text an {provider} – Namen und Gespräche der Runde bzw. der Inhalt der Unterlage, keine Stimmen. Ohne Erlaubnis wartet beides auf ein lokales Modell.', { provider: providerName(summaryProvider) })}
+              {t('Für Recap, Vorschläge und das Auswerten von Unterlagen geht Text an {provider} – Namen und Gespräche der Runde bzw. der Inhalt der Unterlage, keine Stimmen. Ohne Erlaubnis wartet beides auf ein lokales Modell.', { provider: summaryProvider })}
             </span>
           </div>
         )}

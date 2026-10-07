@@ -427,7 +427,7 @@ export const handlers = [
       operator: nachbar ? 'Spielgemeinschaft Nachbarort e. V.' : 'Rollenspielverein (Testmodus)',
       contact: nachbar ? 'vorstand@nachbarverein.test' : null,
       // Eingebauter Testserver kann alles bis 0.4.7; der Nachbarverein bleibt alt (zeigt das Ausblenden neuer Funktionen)
-      apiVersion: nachbar ? '0.3.9' : '0.4.10',
+      apiVersion: nachbar ? '0.3.9' : '0.4.11',
       registration: 'invite_only',
       authMethods: ['password'],
       privacyPolicyUrl: null,
@@ -438,6 +438,9 @@ export const handlers = [
       externalTranscription: nachbar ? null : 'mistral',
       externalTranscriptionMode: nachbar ? null : 'fallback',
       cloudSummary: nachbar ? null : 'mistral',
+      // Ab 0.4.11: wer schreibt bzw. transkribiert, mit Land und EU
+      cloudSummaryInfo: nachbar ? null : { id: 'mistral', name: 'Mistral AI', region: 'eu', country: 'FR' },
+      externalTranscriptionInfo: nachbar ? null : { id: 'mistral', name: 'Mistral AI', region: 'eu', country: 'FR' },
       minAppVersion: nachbar ? null : '0.8.0',
       latestAppVersion: nachbar ? null : '0.10.1',
       appDownloadUrl: nachbar ? null : 'https://example.org/taleward-0.9.1.apk',

@@ -12,6 +12,8 @@ export interface ConsentContext {
   retention?: ServerInfo['audioRetention'];
   /** Anbieter der Cloud-Transkription, wenn die Kampagne sie erlaubt (z. B. „Mistral“) */
   cloudProvider?: string | null;
+  /** Anbieter der Cloud-Zusammenfassung, wenn die Kampagne sie erlaubt (Schnittstelle 0.4.11) */
+  summaryProvider?: string | null;
 }
 
 function retentionSentence(ctx: ConsentContext): string {
@@ -28,14 +30,20 @@ function cloudSentence(ctx: ConsentContext): string {
     : '';
 }
 
+function summarySentence(ctx: ConsentContext): string {
+  return ctx.summaryProvider
+    ? ' ' + t('Die Zusammenfassung schreibt {provider}; dorthin geht nur Text, keine Aufnahme.', { provider: ctx.summaryProvider })
+    : '';
+}
+
 export const CONSENT_STANDING = (campaignTitle: string, ctx: ConsentContext = {}) =>
   t('Ich bin damit einverstanden, dass die Runden der Kampagne „{title}“ aufgenommen werden, solange ich dabei bin.', { title: campaignTitle }) +
-  ' ' + retentionSentence(ctx) + cloudSentence(ctx) + ' ' +
+  ' ' + retentionSentence(ctx) + cloudSentence(ctx) + summarySentence(ctx) + ' ' +
   t('Aus dem Text entstehen Zusammenfassungen, die alle Mitglieder der Kampagne lesen können. Ich kann diese Zustimmung jederzeit in der App widerrufen. Sie gilt dann ab sofort nicht mehr für künftige Aufnahmen; bereits veröffentlichte Zusammenfassungen bleiben bestehen.');
 
 export const CONSENT_ON_SITE = (campaignTitle: string, ctx: ConsentContext = {}) =>
   t('Ich bin damit einverstanden, dass die heutige Runde der Kampagne „{title}“ aufgenommen wird.', { title: campaignTitle }) +
-  ' ' + retentionSentence(ctx) + cloudSentence(ctx) + ' ' +
+  ' ' + retentionSentence(ctx) + cloudSentence(ctx) + summarySentence(ctx) + ' ' +
   t('Aus dem Text entsteht eine Zusammenfassung, die alle Mitglieder der Kampagne lesen können.');
 
 /** Kurzfassung über dem einklappbaren Wortlaut */

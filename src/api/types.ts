@@ -477,6 +477,18 @@ export interface CampaignDocument {
   createdAt: string;
 }
 
+/** Angaben zu einem Cloud-Anbieter, für alle am Tisch sichtbar (ab 0.4.11) */
+export interface CloudProviderInfo {
+  /** Kennung wie in cloudSummary bzw. externalTranscription, z. B. "mistral" */
+  id: string;
+  /** Anzeigename ohne Sprachbezug, z. B. "Mistral AI" */
+  name: string;
+  /** Verarbeitung in der EU oder außerhalb */
+  region: 'eu' | 'non_eu';
+  /** Land der Verarbeitung als ISO-3166-Code, z. B. "FR"; null = unbekannt */
+  country?: string | null;
+}
+
 /** Öffentliche Angaben eines Servers, abrufbar ohne Anmeldung (ab 0.3.2) */
 export interface ServerInfo {
   name: string;
@@ -505,6 +517,9 @@ export interface ServerInfo {
   externalTranscriptionMode?: 'fallback' | 'primary' | null;
   /** Anbieter der Cloud-Zusammenfassung (z. B. "mistral"); null = nur lokales Modell (ab 0.3.10) */
   cloudSummary?: string | null;
+  /** Wer die Kapitel schreibt bzw. transkribiert: Name, EU oder nicht, Land (ab 0.4.11) */
+  cloudSummaryInfo?: CloudProviderInfo | null;
+  externalTranscriptionInfo?: CloudProviderInfo | null;
   /** Ältere Apps werden abgewiesen (426 app_outdated) (ab 0.3.9) */
   minAppVersion?: string | null;
   /** Neueste verfügbare App-Version – die App zeigt dann „Neue Version“ (ab 0.3.9) */

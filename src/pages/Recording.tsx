@@ -464,7 +464,7 @@ export function Recording() {
       {handover && (
         <ConsentHandover
           name={handover.name}
-          text={CONSENT_ON_SITE(campaign.title, { retention: serverInfo?.audioRetention, cloudProvider: cloud.transcription?.provider ?? null })}
+          text={CONSENT_ON_SITE(campaign.title, { retention: serverInfo?.audioRetention, cloudProvider: cloud.transcription?.provider ?? null, summaryProvider: cloud.summary?.provider ?? null })}
           onConsent={confirmHandover}
           onCancel={() => setHandover(null)}
         />

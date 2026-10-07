@@ -1,10 +1,31 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import type { Campaign, ServerInfo } from '../api/types';
-import { t } from '../i18n';
+import type { Campaign, CloudProviderInfo, ServerInfo } from '../api/types';
+import { locale, t } from '../i18n';
 
 /** „mistral“ → „Mistral“ */
 export const providerName = (p: string) => p.charAt(0).toUpperCase() + p.slice(1);
+
+function countryName(code: string | null | undefined): string | null {
+  if (!code) return null;
+  try {
+    return new Intl.DisplayNames([locale()], { type: 'region' }).of(code.toUpperCase()) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/**
+ * Anbieter so, wie ihn alle am Tisch sehen: mit Land und ob die Daten in der EU bleiben (ab Schnittstelle 0.4.11),
+ * bei älteren Servern nur der Name, z. B. „Mistral AI (Frankreich, EU)“ bzw. „Mistral“.
+ */
+export function providerLabel(id: string | null | undefined, info?: CloudProviderInfo | null): string | null {
+  if (info) {
+    const where = [countryName(info.country), info.region === 'eu' ? t('EU') : t('außerhalb der EU')].filter(Boolean).join(', ');
+    return `${info.name} (${where})`;
+  }
+  return id ? providerName(id) : null;
+}
 
 /** Server-Info einmal pro Seite holen (Cloud-Dienste, Betriebsart) */
 export function useServerInfo(): ServerInfo | null {
@@ -18,9 +39,11 @@ export function useServerInfo(): ServerInfo | null {
 /** Welche Cloud-Dienste diese Kampagne gerade nutzt – für alle am Tisch sichtbar */
 export function cloudUse(info: ServerInfo | null, campaign: Campaign) {
   const transcription = info?.externalTranscription && campaign.allowExternalTranscription
-    ? { provider: providerName(info.externalTranscription), primary: info.externalTranscriptionMode === 'primary' }
+    ? { provider: providerLabel(info.externalTranscription, info.externalTranscriptionInfo)!, primary: info.externalTranscriptionMode === 'primary' }
     : null;
-  const summary = info?.cloudSummary && campaign.allowCloudSummary ? { provider: providerName(info.cloudSummary) } : null;
+  const summary = info?.cloudSummary && campaign.allowCloudSummary
+    ? { provider: providerLabel(info.cloudSummary, info.cloudSummaryInfo)! }
+    : null;
   return { transcription, summary };
 }
 
@@ -38,7 +61,7 @@ export function CloudNotice({ info, campaign }: { info: ServerInfo | null; campa
             : t('Ist 24 Stunden lang kein Worker erreichbar, transkribiert {provider}.', { provider: transcription.provider })}
         </span>
       )}
-      {summary && <span className="small">{t('Recaps, Vorschläge und Unterlagen werden über {provider} ausgewertet.', { provider: summary.provider })}</span>}
+      {summary && <span className="small">{t('Kapitel schreibt: {provider}. Dafür gehen Text der Runde und Unterlagen dorthin, keine Stimmen.', { provider: summary.provider })}</span>}
     </div>
   );
 }

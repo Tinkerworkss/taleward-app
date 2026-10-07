@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Taleward API
-  version: 0.4.10
+  version: 0.4.11
   description: |
     Schnittstelle zwischen der Taleward-App (Android, Web) und dem Taleward-Server.
 
@@ -157,6 +157,10 @@ info:
     /sessions/{id}/resummarize). Speaker.assignedMemberId zeigt die bestätigte Zuordnung; GET …/speakers geht auch nach
     der Bestätigung, PUT …/speakers in awaiting_review ändert die Zuordnung und schreibt das Kapitel neu. GET
     /invites/{code} nennt vor dem Beitritt ohne Anmeldung den Kampagnentitel (begrenzt wie der Beitritt).
+    Änderungen in 0.4.11 (Wer schreibt die Kapitel): ServerInfo.cloudSummaryInfo und
+    ServerInfo.externalTranscriptionInfo (CloudProviderInfo: Name, EU oder nicht, Land). Die App zeigt allen Mitgliedern
+    einer Kampagne mit allowCloudSummary bzw. allowExternalTranscription, wer die Kapitel schreibt bzw. transkribiert,
+    und nennt es im Einwilligungstext. Fehlen die Felder (ältere Server), zeigt die App nur die Kennung.
 
 servers:
   - url: https://taleward.example.org/api/v1
@@ -2718,6 +2722,33 @@ components:
             null = dieser Server transkribiert nur selbst. Sonst Name des externen Anbieters (z. B. "mistral"),
             den der Betreiber als Ersatz freigegeben hat. Nur dann zeigt die App der SL den Schalter
             allowExternalTranscription und nennt den Anbieter im Hinweis.
+        cloudSummaryInfo:
+          description: |
+            Ab 0.4.11. Angaben zum Anbieter aus cloudSummary für die Anzeige am Tisch und im Einwilligungstext;
+            null, wenn cloudSummary null ist.
+          oneOf:
+            - $ref: "#/components/schemas/CloudProviderInfo"
+            - type: "null"
+        externalTranscriptionInfo:
+          description: Ab 0.4.11. Wie cloudSummaryInfo, für externalTranscription; null, wenn externalTranscription null ist.
+          oneOf:
+            - $ref: "#/components/schemas/CloudProviderInfo"
+            - type: "null"
+
+    CloudProviderInfo:
+      type: object
+      description: |
+        Ab 0.4.11. Wer Text (Zusammenfassung) bzw. Aufnahmen (Transkription) verarbeitet. Ohne sprachabhängige Wörter,
+        damit die App sie in jeder Sprache gleich zeigen kann; Land und „EU“ übersetzt die App.
+      required: [id, name, region]
+      properties:
+        id: { type: string, description: 'Kennung wie in cloudSummary bzw. externalTranscription', example: mistral }
+        name: { type: string, description: Anzeigename des Anbieters, example: Mistral AI }
+        region: { type: string, enum: [eu, non_eu], description: 'Verarbeitung in der EU (eu) oder außerhalb (non_eu)' }
+        country:
+          type: [string, "null"]
+          description: Land der Verarbeitung als ISO-3166-1-alpha-2-Code; null = unbekannt
+          example: FR
 
     Organization:
       type: object
