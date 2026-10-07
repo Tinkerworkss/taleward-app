@@ -1,0 +1,46 @@
+From 77261338396326ff19fc4c701edf78c71c7d8295 Mon Sep 17 00:00:00 2001
+From: "Tinkerworks (Benjamin)"
+ <121437138+Tinkerworkss@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 09:41:19 +0200
+Subject: [PATCH] Schnittstelle: Adresse der zentralen Web-App
+
+Beschreibung der Web-Fassung und Beispiel fuer returnTo nennen jetzt
+app.taleward.org. Nur Text, keine neue Schnittstelle.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ docs/session-chronik-api.yaml | 11 ++++++-----
+ 1 file changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/docs/session-chronik-api.yaml b/docs/session-chronik-api.yaml
+index d7c579e..d8d9554 100644
+--- a/docs/session-chronik-api.yaml
++++ b/docs/session-chronik-api.yaml
+@@ -38,10 +38,11 @@ info:
+       SHA-256 prüfen, Installationsdialog (REQUEST_INSTALL_PACKAGES, FileProvider); Play-Store-Fassung ohne Updater
+       („Update im Play Store“). Beide mit demselben Schlüssel signiert. Kompatibilitätsfenster: Die App unterstützt
+       apiVersion ab einer festen Untergrenze (mindestens 12 Monate zurück); ältere Server gelten als „veraltet“.
+-    - Web-Fassung (ab 0.4.2): Die App läuft auch im Browser unter `/app/` – zentral auf der Taleward-Website
+-      (`https://taleward.org/app/`) und optional auf jedem Server (`https://<server>/app/`). Sie spricht direkt mit
++    - Web-Fassung (ab 0.4.2): Die App läuft auch im Browser – zentral unter eigener Adresse `https://app.taleward.org/`
++      (an der Wurzel; bis Oktober 2026 `https://taleward.org/app/`, das künftig dorthin umleitet) und optional auf
++      jedem Server (`https://<server>/app/`). Dieselbe Web-Fassung läuft an beiden Pfaden. Sie spricht direkt mit
+       den Vereinsservern, die Website sieht keine Inhalte. Server müssen dafür CORS erlauben: Herkunft der zentralen
+-      Website (Voreinstellung, in der Verwaltung abschaltbar) und die eigene; erlaubte Header mindestens Authorization,
++      Web-App (Voreinstellung, in der Verwaltung abschaltbar) und die eigene; erlaubte Header mindestens Authorization,
+       Content-Type, Accept-Language, X-Taleward-App, X-Chunk-SHA256; Methoden GET, POST, PUT, PATCH, DELETE.
+       Voraussetzung: HTTPS (Browser blockieren http-Server von einer https-Seite aus).
+     - Anmelden mit einem Dienst (ab 0.4.0) – die App spricht nie selbst mit Google & Co.:
+@@ -329,9 +330,9 @@ paths:
+           in: query
+           schema: { type: string }
+           description: |
+-            Nur Web-Fassung (ab 0.4.2): Rückweg statt taleward://auth, z. B. `https://taleward.org/app/#/auth`. Der Server
++            Nur Web-Fassung (ab 0.4.2): Rückweg statt taleward://auth, z. B. `https://app.taleward.org/#/auth`. Der Server
+             hängt `?ticket=…&serverId=…` bzw. `?error=…` wörtlich an den Wert an (auch hinter `#/auth`). Erlaubt sind nur
+-            fest hinterlegte Ziele: `<PUBLIC_URL>/app/#/auth` und die zentrale Web-App; sonst Rückweg mit
++            fest hinterlegte Ziele: `<PUBLIC_URL>/app/#/auth` und die zentrale Web-App (`<Herkunft>/#/auth`); sonst Rückweg mit
+             error=return_to_not_allowed über taleward://auth.
+       responses:
+         "302": { description: Weiterleitung zum Dienst }
