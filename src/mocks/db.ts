@@ -1,4 +1,4 @@
-import type { CampaignDocument, Comment, DatePoll, Entry, GmNotice, Member, Proposal, Recap, Session, Speaker } from '../api/types';
+import type { CampaignDocument, Comment, DatePoll, Entry, GmNotice, Member, Proposal, Recap, Session, Speaker, TranscriptSegment, UncertainTerm } from '../api/types';
 
 // Testdaten, angelehnt an den Klick-Prototyp. Alles erfunden.
 
@@ -227,6 +227,11 @@ export function speakersFor(): Speaker[] {
     { id: 'sp5', label: 'Stimme 5', speakingSeconds: 1640, sampleText: '„Warte, wer hat den Schlüssel eingesteckt?“', suggestedMemberId: null, confidence: 0.3, source: 'none' }
   ];
 }
+
+/** Abschrift, unsicher erkannte Namen und Stimmen je Session aus der Musterkampagne (sonst die festen Testdaten) */
+export const transcripts: Record<string, TranscriptSegment[]> = {};
+export const uncertainTerms: Record<string, UncertainTerm[]> = {};
+export const speakerLists: Record<string, Speaker[]> = {};
 
 export interface MockUpload {
   id: string;
