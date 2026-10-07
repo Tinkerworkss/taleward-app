@@ -1,0 +1,173 @@
+/* Sample campaign "The Quiet Waters" – English texts, same structure as de.ts. Everything is made up. */
+import type { MusterTextA } from './types';
+
+const MARA_BACKSTORY = `Mara grew up in Hohenwacht, where her mother Liv Venn drew maps for the archive. Six years ago Liv went into the archive one evening and never came back; the town declared she had moved away. Mara did not believe it and fled to her uncle Brann in Grauwehr, because she no longer trusted anyone in Hohenwacht. For two years she walked with the Reedwalkers and learned to read the moor the way others read a book. She does not like to talk about the archive, and she never takes off her mother's compass.`;
+const TAVIN_BACKSTORY = `Tavin came to the archive's scriptorium in Hohenwacht as an orphan and learned from Master Aldo Fenn to write neatly, read quickly and not ask too much. Last winter, as an exercise, he copied a page from an old border register. When Aldo vanished in the spring, Tavin left the town and took the copy with him, although he should never have had it. Over the summer he wandered the villages on the edge of the moor as a scribe, writing letters, contracts and grave inscriptions. Now he wants to go back and find out where his master went.`;
+const JUNA_BACKSTORY = `Juna has carried letters for the Moor Post for four years, between the villages on the edge of the Senkmoor and Hohenwacht. She knows every post station, every farm dog and every bridge that won't hold in a flood. She never reads what is in her bag, and she is proud of it. Only one letter she could never deliver; it has been lying at the bottom of her bag for three years, because nobody could find the addressee.`;
+
+export const enA: MusterTextA = {
+  title: `The Quiet Waters`,
+  description: `Three travellers crossing the Senkmoor to Hohenwacht, where more than paper goes missing in the archive.`,
+  systemName: `Nebelpfad (house rules)`,
+  worldInfo: `The Senkmoor lies between the fishing villages on its western edge and the town of Hohenwacht, which stands on a rocky ridge above the fog to the east. The Ennel winds through the moor, slow and brown, often flooding its banks in autumn. Firm paths are few: the old road over the toll bridge, a handful of plank walks, and the trails the Reedwalkers mark with knotted reeds. Anyone who wants to cross the moor needs a guide or a ferry.
+
+Grauwehr is the last village on the western bank of the Ennel, where the river enters the deep moor. People there live off eels, peat and whatever the river washes up. Half a day's walk north, on the moor road, stands the Moor Inn, the only inn for miles. Hohenwacht has a council, a council chancery and the great archive, where for centuries it has been recorded who owns which land and which water.
+
+On the edge of the moor people believe in the Still Ones: the drowned, who live on beneath the water and mostly want to be left in peace. You speak quietly over water at night and throw a coin into every river you cross. In Hohenwacht they call that superstition. People there throw coins anyway.
+
+Letters are carried by the Moor Post, messengers who walk the trails between the villages and the town. Salt is expensive on the edge of the moor; it comes on carts over the toll bridge. Whoever has a boat has friends; whoever hangs a lantern over the water usually has a good reason.`,
+  hotwords: ['Grauwehr', 'Hohenwacht', 'Senkmoor', 'Ennel', 'Oren Silt', 'Iria Sehl', 'Mara Venn', 'Tavin Rook', 'Juna Pell', 'Brann',
+    'Aldo Fenn', 'Liv Venn', 'Reedwalkers', 'Moor Post', 'Moor Inn', 'toll bridge', 'Berit Kamm', 'Sefa Morr', 'Ohm Tessel',
+    'Edmar Quell', 'Jorin Malz', 'Hunger Stone', 'border registers'],
+
+  members: {
+    lea: { summary: `Scout from Grauwehr; says little, sees a lot.`, backstory: MARA_BACKSTORY },
+    tom: { summary: `Travelling scribe with ink on his sleeves and an answer for everything except the important questions.`, backstory: TAVIN_BACKSTORY },
+    sina: { summary: `Messenger of the Moor Post, faster than any rumour and just as hard to stop.`, backstory: JUNA_BACKSTORY },
+  },
+
+  chapters: [
+    {
+      title: `The road to Grauwehr`, date: '2026-06-13', minutes: 190, present: ['anja', 'lea', 'tom'],
+      recap: `We met at the cross stone on the old road, where the water of the Senkmoor already stood across the path. Tavin Rook, a travelling scribe, wanted to reach Hohenwacht and was looking for someone to take him as far as Grauwehr. Mara Venn took two copper coins and led him over the plank walks.
+
+On the way, Tavin told us that he learned his trade in the archive of Hohenwacht and carries a copy from there. Mara said nothing to that. In the afternoon the fog came in. Mara found the way by the knotted reeds the Reedwalkers had left behind.
+
+In the evening we reached Grauwehr. Mara's uncle Brann, a fisherman, gave us soup and a place by the stove. He told us that several families left the village this spring and that the well water has tasted strange for some weeks.`,
+      threads: [`Why have so many families left Grauwehr?`, `What is wrong with the well?`],
+      gmNote: `Tavin's copy is a page from the old, unaltered border register for the Grauwehr-North fields. He has no idea what he is carrying. The families are leaving because someone is deliberately making life in Grauwehr hard.`,
+    },
+    {
+      title: `Salt in the well`, date: '2026-06-27', minutes: 205, present: ['anja', 'lea', 'tom'],
+      recap: `In the morning the water from the village well tasted so salty that Brann would not even give it to the goats any more. On the village square people argued about whether the river was turning the moor salty or whether the well was cursed.
+
+Tavin looked through the village book and found no record of the well ever turning salty, not in a hundred years. Mara let herself down the shaft on a rope. About halfway down, three sacks were wedged between the stones, heavy and wet, full of salt.
+
+We pulled the sacks up with Brann's boat hook. Brann said nobody in Grauwehr has that much salt; it must have come from outside. We emptied the well twice. By evening the water tasted less salty, and Brann reckoned it would be good again in a few days.`,
+      threads: [`Who put the sacks in the well?`, `Where does that much salt come from?`],
+      gmNote: `The sacks come from the store at the toll bridge. A fourth sack tore open down in the shaft and sank; it bore the archive's tower mark, burned into the cloth, and only Mara saw it. Quell had the salt bought through the archive's funds. The aim: Grauwehr is to empty, so that the land counts as abandoned in the register.`,
+    },
+    {
+      title: `The toll bridge`, date: '2026-07-11', minutes: 200, present: ['anja', 'lea', 'tom'],
+      recap: `We wanted to continue along the old road to Hohenwacht and came to the toll bridge over the Ennel. The barrier was down. A notice announced that the bridge was closed by order of the council of Hohenwacht.
+
+The toll keeper, Berit Kamm, asked for a pass we did not have. Tavin offered to rewrite her toll book, which was in poor shape. She declined, but let us wait by the stove in the toll house until the rain eased.
+
+Behind the toll house stood an open shed. Mara saw sacks in it of the same kind as in the well at Grauwehr. When we asked Berit about them, she said it was grit salt for the winter.
+
+As we left, Berit said the only way across the Ennel now was with Oren Silt, the ferryman at Grauwehr. But he doesn't take just anyone.`,
+      threads: [`Why did the council close the bridge?`, `Did the sacks in the well come from Berit's shed?`, `How do you talk Oren Silt into it?`],
+      gmNote: `Berit handed out the salt for money but doesn't know exactly who is behind it. The closure only applies to people without a pass; the border riders cross whenever they like.`,
+    },
+    {
+      title: `A letter without a seal`, date: '2026-07-25', minutes: 185, present: ['anja', 'lea', 'tom', 'sina'],
+      recap: `Back in Grauwehr, a messenger of the Moor Post was waiting at the landing: Juna Pell, with wet boots and a bag full of letters. One was addressed to “Tavin Rook, scribe, currently in Grauwehr”. It had no seal and no signature.
+
+The letter said Tavin should not bring the copy back to Hohenwacht while the archive keys were in the wrong hands, and that he should trust no one who helped him get to Hohenwacht. Tavin said he knew the handwriting: it belonged to his master Aldo Fenn, who has been missing since the spring.
+
+Juna told us a man in a grey coat had handed her the letter at the post station in Hohenwacht and paid double the fee without wanting a receipt. She did not know the man. With the bridge closed, she had come by the old ford in the north, a three-day detour; after the recent rain, the ford can no longer be crossed.
+
+Juna decided to come along with us for a while, since her next round leads through the moor anyway. Brann told us that Oren Silt often drinks at the Moor Inn in the evenings.`,
+      threads: [`Who was the man in the grey coat?`, `What does the letter mean by “while the keys are in the wrong hands”?`, `Where is Aldo Fenn?`],
+      gmNote: `The man in the grey coat was Aldo Fenn himself. Officially he is away on travels; in fact Quell has him watched in his own house, and he slipped out only to take the letter to the post station. “The keys” are the archive keys, which council scribe Edmar Quell has held for seven years.`,
+    },
+    {
+      title: `Night at the Moor Inn`, date: '2026-08-22', minutes: 180, present: ['anja', 'tom', 'sina'],
+      recap: `That evening Mara stayed with Brann in Grauwehr. Tavin and Juna went to the Moor Inn to ask about Oren Silt. The innkeeper, Jorin Malz, said Oren had not been in for days.
+
+In the taproom sat a border rider from Hohenwacht, Sefa Morr, in a grey coat. She asked the guests about a woman with ink on her fingers who had left the town. Nobody admitted to having seen her.
+
+In the night Juna woke because the floorboards creaked. Sefa Morr was standing at our table and had opened Tavin's bag. When Juna spoke to her, she said she had mistaken the bag for another and went outside. Nothing was missing. The copy was in Tavin's boot anyway.
+
+In the morning Sefa Morr was gone. Jorin Malz said there had been more border riders on the moor road this summer than in the years before.`,
+      threads: [`Who is Sefa Morr looking for?`, `What did she want in Tavin's bag?`],
+      gmNote: `Sefa is looking for Iria Sehl on Edmar Quell's orders. She suspects a former archive scribe like Tavin might help Iria and wanted to know what he carries.`,
+    },
+    {
+      title: `Voices in the reeds`, date: '2026-09-05', minutes: 210, present: ['anja', 'lea', 'tom', 'sina'], guest: 'Mika',
+      recap: `Mara led us into the reeds north of Grauwehr, to where the Reedwalkers keep their camps; they live on both banks of the Ennel. For a long time we heard only whistles made of reed, now on the left, now on the right. Mara answered with two short whistles, and everything went quiet.
+
+A young Reedwalker named Rell took us to Ohm Tessel, the eldest. Tessel told us that border riders have been guarding the toll bridge since the summer and turn back everyone without a pass. He advised us to go with Oren Silt.
+
+About Oren, Tessel only said that he crosses on dark nights, takes one copper coin per person and keeps the lantern out. Anyone who wants light is welcome to swim.
+
+The next evening Rell walked us back to the landing at Grauwehr and showed us where Oren's ferry lies. The next dark night is in two weeks.`,
+      threads: [`Why are border riders guarding a closed bridge?`, `Does Ohm Tessel know Oren better than he lets on?`],
+      gmNote: `The Reedwalkers know that Oren is taking someone from Hohenwacht across this autumn, but not who. Tessel wants the group along so that someone keeps an eye on it.`,
+    },
+    {
+      title: `The last ferry at Grauwehr`, date: '2026-09-19', minutes: 195, present: ['anja', 'lea', 'tom', 'sina'],
+      recap: `On the dark night we went down to the landing. Oren Silt was already waiting. He said this was his last crossing of the year; soon the Ennel would be too high.
+
+At Grauwehr, Oren Silt took us across the river. One copper coin per person, the lantern out. He stood at the front with the pole and did not say a word the whole way. The ferry sat lower in the water than we had expected.
+
+On the far bank, the road to Hohenwacht lay in fog. Oren tied the ferry up at the landing and said he would sleep on board and go back in the morning. We made camp under an old willow.`,
+      threads: [`Why did the ferryman want so little light?`, `Why did the ferry sit so low in the water?`],
+      gmNote: `Iria Sehl lay beneath the front planks. Oren wore her signet ring as a pledge; Mara saw it. Tavin heard Iria's knocking signal. Each of these is known to only one character.`,
+    },
+  ],
+  entries: [
+    { key: 'mara', type: 'pc', holder: 'lea', name: `Mara Venn`, summary: `Scout from Grauwehr; says little, sees a lot.`,
+      mentions: [[1, `led Tavin to Grauwehr for two copper coins`], [2, `let herself down the well shaft on a rope`], [3, `saw salt sacks in the toll keeper's shed`], [6, `led us to the Reedwalkers`], [7, `crossed the Ennel with Oren`]] },
+    { key: 'tavin', type: 'pc', holder: 'tom', name: `Tavin Rook`, summary: `Travelling scribe with ink on his sleeves and an answer for everything except the important questions.`,
+      mentions: [[1, `was looking for a guide to Grauwehr`], [2, `found no salted well in the village book`], [3, `offered to rewrite Berit's toll book`], [4, `recognised Aldo Fenn's handwriting in the letter`], [5, `his bag was searched at night`], [7, `crossed the Ennel with Oren`]] },
+    { key: 'juna', type: 'pc', holder: 'sina', name: `Juna Pell`, summary: `Messenger of the Moor Post, faster than any rumour and just as hard to stop.`,
+      mentions: [[4, `brought Tavin the letter without a seal`], [5, `caught Sefa Morr at Tavin's bag`], [6, `came along to the Reedwalkers`], [7, `crossed the Ennel with Oren`]] },
+    { key: 'oren', type: 'npc', name: `Oren Silt`, summary: `Ferryman at Grauwehr. Takes one copper coin per person and only crosses without light. Since the bridge was closed, the only way over the Ennel. Took us across in chapter 7.`,
+      gmNotes: `Helps Iria Sehl escape for money; her signet ring serves as a pledge until the rest is paid. He doesn't know what she is carrying.`,
+      mentions: [[3, `Berit named him as the only way across the Ennel`], [4, `according to Brann, drinks at the Moor Inn in the evenings`], [5, `had not been at the Moor Inn for days`], [6, `Ohm Tessel advised us to go with him`], [7, `took us across without light`]] },
+    { key: 'berit', type: 'npc', name: `Berit Kamm`, summary: `Toll keeper at the toll bridge. Would not let us cross without a pass. Salt sacks are stored in her shed; she says it is grit salt for the winter.`,
+      gmNotes: `Handed out salt from the bridge store for money; it ended up in the Grauwehr well. Doesn't know exactly who is behind it.`,
+      mentions: [[3, `asked for a pass and spoke of grit salt`]] },
+    { key: 'sefa', type: 'npc', name: `Sefa Morr`, summary: `Border rider from Hohenwacht in a grey coat. Asked at the Moor Inn about a woman with ink on her fingers and searched Tavin's bag at night.`,
+      gmNotes: `Is hunting Iria Sehl on Edmar Quell's orders.`,
+      mentions: [[5, `asked about a woman with ink on her fingers, opened Tavin's bag`]] },
+    { key: 'tessel', type: 'npc', name: `Ohm Tessel`, summary: `Eldest of the Reedwalkers. Speaks softly and lets others finish. Advised us to go with Oren Silt rather than over the bridge.`,
+      gmNotes: `Knows Oren is taking someone from Hohenwacht across this autumn, but not who.`,
+      mentions: [[6, `told us about the border riders at the bridge`]] },
+    { key: 'iria', type: 'npc', gmOnly: true, name: `Iria Sehl`, summary: `Archivist from Hohenwacht.`,
+      gmNotes: `Fleeing Hohenwacht. Hides beneath the front planks of Oren's ferry and carries copies of altered border registers. Her signet ring is Oren's pledge.`,
+      mentions: [[7, `lay beneath the front planks during the crossing`]] },
+    { key: 'quell', type: 'npc', gmOnly: true, name: `Edmar Quell`, summary: `Council scribe in Hohenwacht, keeper of the archive keys.`,
+      gmNotes: `Has been having pages of the border registers replaced for six years, for the past two mostly for the fields around Grauwehr. Gives Sefa Morr her orders; the salt in the well goes back to him.` },
+    { key: 'grauwehr', type: 'location', name: `Grauwehr`, summary: `Fishing village on the west bank of the Ennel, on the edge of the Senkmoor. Mara's uncle Brann lives here. In early summer the well was salted.`,
+      mentions: [[1, `arrival at Brann's`], [2, `the village well was salted`], [4, `Juna was waiting at the landing`], [6, `Rell showed us Oren's landing`], [7, `departure of the ferry`]] },
+    { key: 'hohenwacht', type: 'location', name: `Hohenwacht`, summary: `Town on the rocky ridge east of the moor, with its council, council chancery and the great archive. The goal of our journey.`,
+      mentions: [[1, `Tavin's destination`], [3, `the council had the bridge closed`], [4, `the letter was sent from there`], [5, `Sefa Morr comes from there`], [7, `the road there lay beyond the Ennel in fog`]] },
+    { key: 'senkmoor', type: 'location', name: `Senkmoor`, summary: `Wide moor between Grauwehr and Hohenwacht, crossed by the Ennel. Without a guide or a ferry there is no way through.`,
+      mentions: [[1, `water stood over the old road`], [6, `Reedwalker camps in the reeds`], [7, `the road to Hohenwacht lay in fog`]] },
+    { key: 'moorkrug', type: 'location', name: `Moor Inn`, summary: `Inn on the moor road, half a day's walk north of Grauwehr. The innkeeper is Jorin Malz.`,
+      mentions: [[4, `Brann: Oren drinks there`], [5, `night with Sefa Morr`]] },
+    { key: 'bruecke', type: 'location', name: `Toll bridge`, summary: `Stone bridge over the Ennel on the old road to Hohenwacht. Closed by order of the council since the summer; passage only with a pass.`,
+      gmNotes: `The closure does not apply to border riders.`,
+      mentions: [[3, `closed, salt in the shed`], [6, `border riders stand guard there`]] },
+    { key: 'schilfgaenger', type: 'faction', name: `The Reedwalkers`, summary: `Scouts of the Senkmoor who mark safe paths with knotted reeds. Mara spent two years with them.`,
+      mentions: [[1, `their knotted reeds showed the way`], [6, `visit to Ohm Tessel`]] },
+    { key: 'moorpost', type: 'faction', name: `The Moor Post`, summary: `Messengers who carry letters along the moor trails between the villages and Hohenwacht. Juna has been one of them for four years.`,
+      mentions: [[4, `Juna arrived as a Moor Post messenger`]] },
+    { key: 'q-salz', type: 'quest', status: 'done', name: `The salt in the well`, summary: `The well at Grauwehr tasted of salt. We found three salt sacks in the shaft and pulled them out; the water is clearing again. Who put them there is still unknown.`,
+      gmNotes: `The order came from Hohenwacht; Grauwehr is meant to empty.`,
+      mentions: [[2, `sacks found and removed`], [3, `same sacks in the shed at the bridge`]] },
+    { key: 'q-ennel', type: 'quest', status: 'done', name: `Across the Ennel`, summary: `The bridge was closed and we needed another way across the river. Oren Silt took us over on a dark night.`,
+      mentions: [[3, `bridge closed`], [6, `Tessel advised the ferry`], [7, `crossed with Oren`]] },
+    { key: 'q-hohenwacht', type: 'quest', status: 'active', name: `To Hohenwacht`, summary: `Tavin wants to reach Hohenwacht to find his master. Since the letter without a seal, it is unclear whether that is a good idea.`,
+      mentions: [[1, `Tavin wants to go to Hohenwacht`], [4, `the letter warns against it`], [7, `the road lies beyond the Ennel`]] },
+    { key: 'abschrift', type: 'item', holder: 'tom', name: `Tavin's copy`, summary: `A copy from the archive of Hohenwacht that Tavin took with him when he left the town. It shows field boundaries around Grauwehr. Tavin keeps it in his boot.`,
+      gmNotes: `A page from the old, unaltered border register. Together with Iria's copies, proof of the forgery.`,
+      mentions: [[1, `Tavin mentioned it`], [4, `the letter mentions it`], [5, `was safe in Tavin's boot`]] },
+    { key: 'brief', type: 'item', holder: 'tom', name: `Letter without a seal`, summary: `Letter without seal or signature that Juna Pell brought to Tavin. It warns him not to bring the copy to Hohenwacht. Tavin recognises Aldo Fenn's handwriting.`,
+      gmNotes: `Aldo Fenn handed it in at the post station himself, wearing the grey coat.`,
+      mentions: [[4, `delivered by Juna`]] },
+    { key: 'turmzeichen', type: 'other', hiddenFrom: ['tom', 'sina'], name: `Tower mark in the well shaft`, summary: `Down in the shaft hung a fourth salt sack, which tore open and sank before it could be hauled up. It had a mark burned into it: a slender tower with three windows. Mara saw it while hanging on the rope. She knows it from her mother's maps; it is the mark of the archive of Hohenwacht.`,
+      gmNotes: `The sacks came from the store at the toll bridge; Quell had the salt bought through the archive's funds. The mark proves the trail leads to Hohenwacht.`,
+      mentions: [[2, `Mara saw it in the shaft on a fourth sack, which sank`]] },
+    { key: 'siegelring', type: 'other', hiddenFrom: ['tom', 'sina'], name: `Signet ring on Oren's hand`, summary: `During the crossing Oren Silt wore a signet ring of the archive of Hohenwacht, bearing the tower with three windows. Mara saw it by the glow of Oren's pipe when he took the coins.`,
+      gmNotes: `It is Iria Sehl's ring, her pledge for the crossing.`,
+      mentions: [[7, `Mara saw it by the glow of Oren's pipe`]] },
+    { key: 'klopfen', type: 'other', hiddenFrom: ['lea', 'sina'], name: `Knocking beneath the planks`, summary: `During the crossing Tavin, who sat right at the front, heard knocking beneath the front planks of the ferry, three times. Oren acted as if he heard nothing.`,
+      gmNotes: `Iria Sehl's agreed signal to Oren that all is well beneath the planks.`,
+      mentions: [[7, `Tavin heard it three times`]] },
+    { key: 'register', type: 'other', gmOnly: true, name: `The border registers`, summary: `The border registers in the archive of Hohenwacht record who owns which land and which water in the Senkmoor.`,
+      gmNotes: `For a good six years pages have been replaced, for the past two mostly those for the fields around Grauwehr: they are recorded as abandoned or flooded and so fall to the council. Liv Venn noticed the first forgeries and vanished. Tavin's copy shows the old state.` }
+  ],
+};
