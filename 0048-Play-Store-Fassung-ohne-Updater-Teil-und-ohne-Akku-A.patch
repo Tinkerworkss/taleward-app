@@ -1,0 +1,112 @@
+From a186eb8b06486e82db590cff2fe8627c6473ad8e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 7 Oct 2026 21:36:59 +0200
+Subject: [PATCH] Play-Store-Fassung: ohne Updater-Teil und ohne
+ Akku-Ausnahme-Berechtigung
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ README.md                                    |  2 +-
+ native-android/BackgroundRecorderPlugin.java |  9 ++++++++
+ scripts/setup-android.mjs                    | 23 ++++++++++++++++----
+ 3 files changed, 29 insertions(+), 5 deletions(-)
+
+diff --git a/README.md b/README.md
+index b5e93ba..cd8ef4b 100644
+--- a/README.md
++++ b/README.md
+@@ -72,7 +72,7 @@ Voraussetzungen: Node.js 22, für Android zusätzlich Android Studio (mit JDK 21
+ | `npm run build` | App bauen (echter Server) |
+ | `npm run build:web` | Web-Fassung für den Unterpfad `/app/` |
+ | `npm run android` / `npm run android:mock` | Android-Projekt einrichten und in Android Studio öffnen |
+-| `npm run android:store` | Android ohne eigenen Updater (für den Play Store) |
++| `npm run android:store` | Android für den Play Store: ohne eigenen Updater, ohne Bitte um Ausnahme von der Akku-Optimierung |
+ | `npm run i18n:check` | Prüft, ob alle Texte übersetzt sind |
+ | `npm run screenshots` | Aufnahmen der Demo für Website und Store (siehe `scripts/screenshots.mjs`) |
+ 
+diff --git a/native-android/BackgroundRecorderPlugin.java b/native-android/BackgroundRecorderPlugin.java
+index 70b72f8..e5a3ae6 100644
+--- a/native-android/BackgroundRecorderPlugin.java
++++ b/native-android/BackgroundRecorderPlugin.java
+@@ -4,6 +4,7 @@ import android.Manifest;
+ import android.content.Context;
+ import android.content.Intent;
+ import android.content.SharedPreferences;
++import android.content.pm.PackageManager;
+ import android.net.Uri;
+ import android.os.Build;
+ import android.os.Handler;
+@@ -160,6 +161,14 @@ public class BackgroundRecorderPlugin extends Plugin {
+ 
+     @PluginMethod
+     public void requestIgnoreBatteryOptimizations(PluginCall call) {
++        // Play-Store-Fassung ohne diese Berechtigung: gleich die Liste in den Akku-Einstellungen öffnen
++        boolean mayAsk = ContextCompat.checkSelfPermission(getContext(), Manifest.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
++            == PackageManager.PERMISSION_GRANTED;
++        if (!mayAsk) {
++            getActivity().startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
++            call.resolve();
++            return;
++        }
+         try {
+             Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                 .setData(Uri.parse("package:" + getContext().getPackageName()));
+diff --git a/scripts/setup-android.mjs b/scripts/setup-android.mjs
+index 03f6226..37c452b 100644
+--- a/scripts/setup-android.mjs
++++ b/scripts/setup-android.mjs
+@@ -80,10 +80,22 @@ if (gradleNew !== gradle) {
+   }
+ }
+ 
++// Play-Store-Fassung (npm run android:store setzt --store): ohne Updater, ohne Bitte um Ausnahme von der
++// Akku-Optimierung. Der Store verbietet Selbst-Aktualisierung und lässt diese Berechtigung nur in Ausnahmen zu.
++const STORE = process.argv.includes('--store');
++const STORE_SKIP = ['AppUpdaterPlugin.java'];
++
+ const javaDir = join(android, 'app/src/main/java/app/taleward');
+ mkdirSync(javaDir, { recursive: true });
+ for (const f of readdirSync(join(root, 'native-android')).filter((f) => f.endsWith('.java'))) {
+-  copyFileSync(join(root, 'native-android', f), join(javaDir, f));
++  if (STORE && STORE_SKIP.includes(f)) {
++    rmSync(join(javaDir, f), { force: true });
++    console.log('Store-Fassung, ausgelassen:', f);
++    continue;
++  }
++  let code = readFileSync(join(root, 'native-android', f), 'utf8');
++  if (STORE && f === 'MainActivity.java') code = code.replace(/^\s*registerPlugin\(AppUpdaterPlugin\.class\);\n/m, '');
++  writeFileSync(join(javaDir, f), code);
+   console.log('kopiert:', f);
+ }
+ 
+@@ -105,7 +117,7 @@ const permissions = [
+   'android.permission.FOREGROUND_SERVICE_MICROPHONE',
+   'android.permission.POST_NOTIFICATIONS',
+   'android.permission.WAKE_LOCK',
+-  'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'
++  ...(STORE ? [] : ['android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'])
+ ];
+ for (const p of permissions) {
+   if (!manifest.includes(`"${p}"`)) {
+@@ -114,8 +126,7 @@ for (const p of permissions) {
+   }
+ }
+ 
+-// Updater nur in der APK-Fassung (Play Store verbietet Selbst-Aktualisierung): npm run android:store setzt --store
+-const STORE = process.argv.includes('--store');
++// Updater nur in der APK-Fassung (Play Store verbietet Selbst-Aktualisierung)
+ const INSTALL_PERM = '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />';
+ if (!STORE && !manifest.includes('REQUEST_INSTALL_PACKAGES')) {
+   manifest = manifest.replace('</manifest>', `    ${INSTALL_PERM}\n</manifest>`);
+@@ -125,6 +136,10 @@ if (STORE && manifest.includes('REQUEST_INSTALL_PACKAGES')) {
+   manifest = manifest.replace(/\s*<uses-permission android:name="android\.permission\.REQUEST_INSTALL_PACKAGES" \/>/, '');
+   console.log('Store-Fassung: REQUEST_INSTALL_PACKAGES entfernt');
+ }
++if (STORE && manifest.includes('REQUEST_IGNORE_BATTERY_OPTIMIZATIONS')) {
++  manifest = manifest.replace(/\s*<uses-permission android:name="android\.permission\.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" \/>/, '');
++  console.log('Store-Fassung: REQUEST_IGNORE_BATTERY_OPTIMIZATIONS entfernt');
++}
+ 
+ // App-Adresse taleward://… (Einladungen öffnen die App direkt)
+ if (!manifest.includes('android:scheme="taleward"')) {
