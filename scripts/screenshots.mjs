@@ -101,6 +101,14 @@ for (const run of RUNS) {
   // Kapitel 8 hat unsichere Namen; für die Aufnahmen gleich zur Prüfung
   await page.evaluate((key) => sessionStorage.setItem(key, '1'), `session-chronik.names-skipped.${conn}.s-${t.cid}-8`);
 
+  // In der Musterkampagne haben alle schon zugestimmt; für die Aufnahmen 2 und 3 zieht Sina ihre
+  // Zustimmung zurück, damit „Zustimmen lassen“ zu sehen ist
+  await page.evaluate(async (base, cid) => {
+    await fetch(`${base}/api/v1/campaigns/${cid}/recording-consent`, {
+      method: 'PUT', headers: { Authorization: 'Bearer mock-token:u-sina', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ granted: false })
+    });
+  }, SERVER, t.cid);
   await go(`${k}/aufnahme`); await shot(2);
   await go(`${s}/stimmen`); await shot(4);
   await go(`${s}/freigabe`);
