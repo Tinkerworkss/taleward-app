@@ -1,7 +1,7 @@
 import { withSafeLinks } from './safeUrl';
 import { getLang, t, tk } from '../i18n';
 import { APP_VERSION, currentConnection, hasValidToken, serverKnowsAppVersion, updateConnection, type Connection } from './connections';
-import type {
+import type { InvitePreview,
   ApiError,
   Campaign,
   CampaignSummary,
@@ -290,6 +290,8 @@ function makeApi(conn: () => Connection) {
     request<Session>('POST', `/campaigns/${campaignId}/sessions`, { body: { playedAt, attendees, title } }),
   status: (sessionId: string) => request<ProcessingStatus>('GET', `/sessions/${sessionId}/status`),
   retry: (sessionId: string) => request<ProcessingStatus>('POST', `/sessions/${sessionId}/retry`),
+  /** Kapitel aus der vorhandenen Abschrift neu schreiben (ab 0.4.10, nur in awaiting_review) */
+  resummarize: (sessionId: string) => request<ProcessingStatus>('POST', `/sessions/${sessionId}/resummarize`),
 
   startUpload: (
     sessionId: string,
@@ -399,6 +401,20 @@ export const api = makeApi(currentConnection);
 /** Endpunkte eines bestimmten Servers, z. B. für die Kampagnenliste über alle Server */
 export function apiFor(conn: Connection) {
   return makeApi(() => conn);
+}
+
+/**
+ * Vorschau einer Einladung ohne Anmeldung (ab Schnittstelle 0.4.10): Kampagnentitel vor dem Beitritt.
+ * null, wenn der Server sie nicht kennt (älter) oder nicht erreichbar ist – dann geht es ohne Titel weiter.
+ * Ein ungültiger Code (404 invite_invalid) wird als Fehler weitergegeben.
+ */
+export async function fetchInvitePreview(baseUrl: string, code: string): Promise<InvitePreview | null> {
+  try {
+    return await requestOn<InvitePreview>({ id: '_probe', baseUrl, name: '', operator: null, apiVersion: null, token: null, expiresAt: null, user: null }, 'GET', `/invites/${encodeURIComponent(code)}`);
+  } catch (e) {
+    if (isApiError(e, 'invite_invalid')) throw e;
+    return null;
+  }
 }
 
 /** Öffentliche Info eines Servers, ohne Verbindung (vor dem Anmelden) */

@@ -260,6 +260,15 @@ export interface Speaker {
   source: 'intro_round' | 'voice_match' | 'discord_track' | 'none';
   /** Als Gast benannt (ab 0.4.7) */
   assignedGuestName?: string | null;
+  /** Bestätigte Zuordnung nach der Bestätigung (ab 0.4.10); null = Gast oder ignoriert, fehlt = noch nicht bestätigt */
+  assignedMemberId?: string | null;
+}
+
+/** Vorschau einer Einladung ohne Anmeldung (ab 0.4.10) */
+export interface InvitePreview {
+  campaignTitle: string;
+  seatCharacterName?: string | null;
+  expiresAt?: string | null;
 }
 
 export type ProposalDecision = 'open' | 'accepted' | 'rejected';

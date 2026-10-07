@@ -119,32 +119,8 @@ export function p(path: string): string {
   return `/v/${currentId ?? currentConnection().id}${path}`;
 }
 
-/** Adresse vereinheitlichen: „verein.de“ → „https://verein.de/api/v1“ */
-export function normalizeBaseUrl(input: string): string {
-  let s = input.trim();
-  if (s.startsWith('/')) return s.replace(/\/+$/, '');
-  if (!/^https?:\/\//i.test(s)) {
-    // Server nur im Heimnetz (IP-Adresse, localhost, .local, .fritz.box) laufen ohne HTTPS unter http://<IP>:8000
-    const host = s.split(/[/:]/)[0].toLowerCase();
-    const lan = /^(\d{1,3}\.){3}\d{1,3}$/.test(host) || host === 'localhost' || host.endsWith('.local') || host.endsWith('.fritz.box');
-    s = (lan ? 'http://' : 'https://') + s;
-  }
-  const u = new URL(s);
-  const path = u.pathname.replace(/\/+$/, '');
-  return `${u.origin}${path.endsWith('/api/v1') ? path : '/api/v1'}`;
-}
+export { normalizeBaseUrl, parseInvite } from './addresses';
 
-/**
- * Einladung erkennen: Link „https://verein.de/einladung/RABE-4821“ (mit Server)
- * oder nur der Code „RABE-4821“ (Server muss dann gewählt werden).
- */
-export function parseInvite(input: string): { baseUrl: string | null; code: string } | null {
-  const s = input.trim();
-  const link = s.match(/^(https?:\/\/[^/\s]+)(?:\/[^\s]*)?\/einladung\/([A-Za-z0-9-]+)\/?$/i);
-  if (link) return { baseUrl: `${link[1]}/api/v1`, code: link[2].toUpperCase() };
-  if (/^[A-Za-z]+-\d+$/.test(s)) return { baseUrl: null, code: s.toUpperCase() };
-  return null;
-}
 
 function newId(baseUrl: string): string {
   const base = baseUrl.replace(/^https?:\/\//, '').replace(/\/api\/v1$/, '').replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'server';

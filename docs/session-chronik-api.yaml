@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: Taleward API
-  version: 0.4.9
+  version: 0.4.10
   description: |
     Schnittstelle zwischen der Taleward-App (Android, Web) und dem Taleward-Server.
 
     Grundregeln:
-    - Alle Endpunkte außer /auth/login, /auth/register und /info erfordern ein Bearer-Token.
+    - Alle Endpunkte außer /auth/login, /auth/register, /info und /invites/{code} erfordern ein Bearer-Token.
     - Rollen gelten pro Kampagne: `gm` (Spielleitung) oder `player`.
     - Der SERVER setzt den Spoilerschutz durch: Einträge mit `visibility: gm_only`,
       offene Vorschläge, SL-Notizen und Transkripte werden an Spieler nie ausgeliefert
@@ -152,6 +152,11 @@ info:
     Hinweis an die SL beim Austritt: gmNotices `character_orphaned`; Entry.formerHolderMemberId (nur SL). Die Person
     selbst (Hintergrund, Kommentare, Zustimmungen, characterId, Porträt) geht nicht mit. 429 `too_many_requests` auch
     bei POST /auth/login und POST /campaigns/join. Einladungscodes ab Server 0.4.37 länger (WORT-12345678).
+    Änderungen in 0.4.10 (Kapitel neu schreiben, Stimmen nachträglich prüfen, Vorschau einer Einladung): Die SL lässt
+    ein Kapitel im Zustand awaiting_review aus der vorhandenen Abschrift neu schreiben (POST
+    /sessions/{id}/resummarize). Speaker.assignedMemberId zeigt die bestätigte Zuordnung; GET …/speakers geht auch nach
+    der Bestätigung, PUT …/speakers in awaiting_review ändert die Zuordnung und schreibt das Kapitel neu. GET
+    /invites/{code} nennt vor dem Beitritt ohne Anmeldung den Kampagnentitel (begrenzt wie der Beitritt).
 
 servers:
   - url: https://taleward.example.org/api/v1
@@ -677,6 +682,32 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /invites/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        schema: { type: string }
+        description: Einladungscode, Groß- und Kleinschreibung egal (wie bei POST /campaigns/join)
+    get:
+      tags: [Kampagnen]
+      summary: Vorschau einer Einladung, ohne Anmeldung (ab 0.4.10)
+      description: |
+        Damit die App vor dem Beitritt sagen kann, wohin es geht („Du trittst ‚Die leisen Wasser' bei“), auch wenn die
+        Person noch kein Konto auf diesem Server hat. Liefert nur, was die Einladungsseite /einladung/{code} ohnehin
+        zeigt: Kampagnentitel und – bei einer Platz-Einladung – den Namen der Figur. Keine Mitglieder, keine Inhalte.
+        Unbekannte, abgelaufene oder aufgebrauchte Codes → 404 mit code `invite_invalid`. Fehlversuche zählen zur selben Begrenzung wie
+        POST /campaigns/join (je Adresse) → 429 `too_many_requests`. Antwort mit `Cache-Control: no-store`.
+      security: []
+      responses:
+        "200":
+          description: Gültige Einladung
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InvitePreview" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /campaigns/{campaignId}:
@@ -1569,6 +1600,31 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /sessions/{sessionId}/resummarize:
+    parameters: [{ $ref: "#/components/parameters/sessionId" }]
+    post:
+      tags: [Sessions]
+      summary: Kapitel aus der vorhandenen Abschrift neu schreiben (nur SL, ab 0.4.10)
+      description: |
+        Nur im Zustand `awaiting_review`. Schreibt Recap, offene Fäden, Vorschläge und Prüfteil neu – aus der
+        vorhandenen Abschrift mit den aktuellen Korrekturen und der aktuellen Stimmenzuordnung, mit dem Stand des
+        Servers von jetzt (z. B. nach einem Update). Kein neues Hochladen, das Audio wird nicht gebraucht.
+        Verworfen werden: Bearbeitungen am Recap-Entwurf und alle Entscheidungen zu Vorschlägen dieses Kapitels
+        (sie wirken ohnehin erst beim Veröffentlichen). Bleiben: SL-Notiz, Korrekturen, Stimmenzuordnung,
+        Anwesenheit, Kommentare. Die Session geht nach `summarizing`, danach wieder `awaiting_review`.
+        Kostet wie eine neue Zusammenfassung (Usage) und folgt der Cloud-Freigabe der Kampagne.
+        Andere Zustände → 409 `wrong_state`; Abschrift fehlt → 409 `transcript_missing`.
+      responses:
+        "202":
+          description: Neu eingereiht
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProcessingStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /sessions/{sessionId}/uploads:
     parameters: [{ $ref: "#/components/parameters/sessionId" }]
     post:
@@ -1709,7 +1765,10 @@ paths:
     get:
       tags: [Stimmen]
       summary: Erkannte Stimmen mit Zuordnungsvorschlag (nur SL)
-      description: Bei source=discord sind alle Stimmen bereits zugeordnet, der Schritt entfällt.
+      description: |
+        Bei source=discord sind alle Stimmen bereits zugeordnet, der Schritt entfällt.
+        Ab 0.4.10 auch nach der Bestätigung (summarizing, awaiting_review, published), solange die Abschrift da ist;
+        dann mit assignedMemberId bzw. assignedGuestName.
       responses:
         "200":
           description: OK
@@ -1724,6 +1783,10 @@ paths:
     put:
       tags: [Stimmen]
       summary: Zuordnung bestätigen, danach startet die Zusammenfassung
+      description: |
+        In `awaiting_speakers`. Ab 0.4.10 auch in `awaiting_review`: ändert die Zuordnung und schreibt das Kapitel neu
+        (wie POST …/resummarize, mit denselben Folgen für Recap-Bearbeitungen und Entscheidungen). Andere Zustände →
+        409 `wrong_state`.
       requestBody:
         required: true
         content:
@@ -3011,6 +3074,22 @@ components:
         confidence: { type: number, minimum: 0, maximum: 1 }
         source: { type: string, enum: [intro_round, voice_match, discord_track, none] }
         assignedGuestName: { type: [string, "null"], description: "Ab 0.4.7: als Gast benannt (nach PUT)" }
+        assignedMemberId:
+          type: [string, "null"]
+          description: |
+            Ab 0.4.10: bestätigte Zuordnung nach PUT. Fehlt das Feld oder ist die Session noch in awaiting_speakers,
+            gibt es noch keine Bestätigung. null nach der Bestätigung = Gast (assignedGuestName) oder ignoriert.
+
+    InvitePreview:
+      type: object
+      description: Ab 0.4.10, Antwort von GET /invites/{code}
+      required: [campaignTitle]
+      properties:
+        campaignTitle: { type: string }
+        seatCharacterName:
+          type: [string, "null"]
+          description: Bei einer Platz-Einladung (POST …/members/{id}/invite) der Name der Figur auf diesem Platz
+        expiresAt: { type: [string, "null"], format: date-time }
 
     Proposal:
       type: object

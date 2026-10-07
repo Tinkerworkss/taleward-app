@@ -119,6 +119,12 @@ function advance(s: MockSession): ProcessingStatus {
       s.state = 'awaiting_review';
       s.phaseStartedAt = null;
       progress = null;
+      const old = rewrites[s.id];
+      if (old) {
+        delete rewrites[s.id];
+        if (old.recap) recaps[s.id] = { ...old.recap, review: old.recap.review ? { ...old.recap.review, stale: false } : undefined };
+        proposals.push(...old.proposals.map((p) => ({ ...p, decision: 'open' as const })));
+      }
       if (!recaps[s.id]) {
         recaps[s.id] = {
           sessionId: s.id, number: s.number, title: s.title ?? `Kapitel ${s.number}`, publishedAt: null,
@@ -291,6 +297,18 @@ const exportsMock: Record<string, CampaignExport & { campaignId: string; readyAt
 const importsMock: Record<string, { id: string; fileName: string; chunkCount: number; got: Set<number>; doneAt: number | null; campaignId: string | null; host: string }> = {};
 /** Einladungen für genau einen offenen Platz: Code → [Kampagne, Platz] */
 const seatCodes: Record<string, [string, string]> = {};
+/** Bestätigte Stimmenzuordnung je Session (0.4.10: auch nach der Bestätigung abrufbar) */
+const assignments: Record<string, Record<string, { memberId: string | null; guestName: string | null }>> = {};
+/** Kapitel neu schreiben (0.4.10): Entwurf merken und nach dem Durchlauf wieder einsetzen, Entscheidungen offen */
+const rewrites: Record<string, { recap: Recap | undefined; proposals: Proposal[] }> = {};
+
+function startRewrite(s: MockSession) {
+  rewrites[s.id] = { recap: recaps[s.id], proposals: proposals.filter((p) => p.sessionId === s.id) };
+  delete recaps[s.id];
+  for (let i = proposals.length - 1; i >= 0; i--) if (proposals[i].sessionId === s.id) proposals.splice(i, 1);
+  s.state = 'summarizing';
+  s.phaseStartedAt = Date.now();
+}
 
 function exportView(x: CampaignExport & { campaignId: string; readyAt: number }): CampaignExport {
   const left = x.readyAt - Date.now();
@@ -398,7 +416,7 @@ export const handlers = [
     const nachbar = new URL(request.url).hostname === NACHBAR_HOST;
     if (hostKey(request) === DEMO_HOST) {
       return HttpResponse.json({
-        name: 'Taleward', operator: 'Euer Verein e. V.', contact: null, apiVersion: '0.4.9', registration: 'invite_only',
+        name: 'Taleward', operator: 'Euer Verein e. V.', contact: null, apiVersion: '0.4.10', registration: 'invite_only',
         authMethods: ['password'], privacyPolicyUrl: null, minAge: 16, externalTranscription: null,
         minAppVersion: null, latestAppVersion: null, appDownloadUrl: null, releaseNotes: null
       });
@@ -408,7 +426,7 @@ export const handlers = [
       operator: nachbar ? 'Spielgemeinschaft Nachbarort e. V.' : 'Rollenspielverein (Testmodus)',
       contact: nachbar ? 'vorstand@nachbarverein.test' : null,
       // Eingebauter Testserver kann alles bis 0.4.7; der Nachbarverein bleibt alt (zeigt das Ausblenden neuer Funktionen)
-      apiVersion: nachbar ? '0.3.9' : '0.4.9',
+      apiVersion: nachbar ? '0.3.9' : '0.4.10',
       registration: 'invite_only',
       authMethods: ['password'],
       privacyPolicyUrl: null,
@@ -475,6 +493,21 @@ export const handlers = [
       return HttpResponse.json({ status: 'register', registrationToken: 'reg-mock', suggestedDisplayName: 'Robin', email: 'robin@example.org', provider });
     }
     return HttpResponse.json({ status: 'email_in_use', provider });
+  }),
+
+  // Vorschau einer Einladung ohne Anmeldung (0.4.10)
+  http.get(`${B}/invites/:code`, ({ params, request }) => {
+    const code = String(params.code).trim().toUpperCase();
+    const seat = seatCodes[code];
+    if (seat) {
+      const c = campaigns.find((x) => x.id === seat[0]);
+      const m = c?.members.find((x) => x.id === seat[1] && x.openSeat);
+      if (c && m) return HttpResponse.json({ campaignTitle: c.title, seatCharacterName: m.characterName ?? null, expiresAt: new Date(Date.now() + 7 * 864e5).toISOString() });
+    }
+    const host = hostKey(request);
+    const c = campaigns.find((x) => (x.host ?? 'local') === host && x.inviteCode.toUpperCase() === code);
+    if (!c) return err(404, 'invite_invalid', 'Dieser Einladungscode ist ungültig oder abgelaufen. Frag deine Spielleitung nach einem neuen.');
+    return HttpResponse.json({ campaignTitle: c.title, seatCharacterName: null, expiresAt: new Date(Date.now() + 7 * 864e5).toISOString() });
   }),
 
   // Ab hier alles nur mit Token
@@ -1402,12 +1435,28 @@ export const handlers = [
     return HttpResponse.json(advance(s), { status: 202 });
   }),
 
+  http.post(`${B}/sessions/:id/resummarize`, ({ params }) => {
+    const s = sessions.find((x) => x.id === params.id);
+    if (!s || !isGm(s.campaignId)) return err(404, 'not_found', 'Session nicht gefunden.');
+    if (s.state !== 'awaiting_review') return err(409, 'wrong_state', 'Neu schreiben geht nur, solange das Kapitel auf deine Prüfung wartet.');
+    startRewrite(s);
+    return HttpResponse.json(advance(s), { status: 202 });
+  }),
+
   http.get(`${B}/sessions/:id/speakers`, ({ params }) => {
     const s = sessions.find((x) => x.id === params.id);
     if (!s || !isGm(s.campaignId)) return err(403, 'forbidden', 'Nur die Spielleitung ordnet Stimmen zu.');
     const list = demoSpeakers(s.id) ?? speakersFor();
     // Mit Stimmprofil wird die eigene Stimme ohne Vorstellungsrunde erkannt
     if (voiceStatus().status === 'ready') list[0] = { ...list[0], source: 'voice_match', confidence: 0.97, sampleText: '„Also, wo waren wir stehen geblieben?“' };
+    // Nach der Bestätigung (0.4.10): bestätigte Zuordnung mitliefern; ältere Testsessions gelten als wie vorgeschlagen bestätigt
+    if (s.state !== 'awaiting_speakers') {
+      const a = assignments[s.id];
+      return HttpResponse.json(list.map((sp) => {
+        const x = a?.[sp.id];
+        return { ...sp, assignedMemberId: x ? x.memberId : sp.suggestedMemberId, assignedGuestName: x ? x.guestName : sp.assignedGuestName ?? null };
+      }));
+    }
     return HttpResponse.json(list);
   }),
 
@@ -1418,6 +1467,13 @@ export const handlers = [
     if (mapping.some((x) => x.memberId && x.guestName)) return err(400, 'invalid_input', 'Eine Stimme ist entweder ein Mitglied oder ein Gast.');
     const guests = s.attendees.map((a) => a.guestName).filter(Boolean);
     if (mapping.some((x) => x.guestName && !guests.includes(x.guestName))) return err(400, 'guest_unknown', 'Diesen Gast gibt es in dieser Runde nicht.');
+    if (s.state !== 'awaiting_speakers' && s.state !== 'awaiting_review') return err(409, 'wrong_state', 'Die Stimmen lassen sich gerade nicht ändern.');
+    assignments[s.id] = Object.fromEntries(mapping.map((x) => [x.speakerId, { memberId: x.memberId, guestName: x.guestName ?? null }]));
+    if (s.state === 'awaiting_review') {
+      // 0.4.10: Zuordnung geändert → Kapitel aus der Abschrift neu schreiben
+      startRewrite(s);
+      return HttpResponse.json(advance(s), { status: 202 });
+    }
     s.state = 'summarizing';
     s.phaseStartedAt = Date.now();
     if (voiceStatus().status === 'ready' && voice.learnFromSessions) voice.learnedSessionCount++;
