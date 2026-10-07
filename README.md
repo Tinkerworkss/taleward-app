@@ -58,7 +58,9 @@ Dann <http://localhost:5173> öffnen (am besten in der Handy-Ansicht der Entwick
 mit beliebigem Namen und Passwort anmelden. Weitere Test-Server im Testmodus:
 
 - `https://nachbarverein.test/einladung/SALZ-2026` unter „Einladung annehmen“ – ein zweiter Server mit Registrierung
-- `https://taleward.euer-verein.de` – Demo „Die leisen Wasser“, Anmeldung als `anja`, `lea` oder `tom`
+- `https://muster.taleward.invalid` – Musterkampagne „Die leisen Wasser“ (Sprache nach der App), Anmeldung als `anja`
+  (Spielleitung), `lea`, `tom` oder `sina` mit beliebigem Passwort. Dieselbe Kampagne gibt es in der richtigen App unter
+  „Ohne Server ausprobieren“.
 
 ## Entwickeln
 

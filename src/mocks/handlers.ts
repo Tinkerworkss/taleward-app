@@ -1,11 +1,11 @@
 import { http, HttpResponse, delay } from 'msw';
-import { DEMO_HOST, DEMO_USERS, demoSpeakers } from './demo';
+import { DEMO_HOST, DEMO_USERS, musterProbe } from './muster/seed';
 
 /** Alle Titelbild-IDs (Schnittstelle 0.4.3) – wie der Server: neue Kampagnen bekommen eines zufällig */
 const COVER_IDS = ['meadow', 'forest', 'desert', 'city', 'cyber', 'mountains', 'coast', 'swamp', 'dungeon', 'space', 'castle', 'dark-fantasy', 'moonwood', 'ancient-ruins', 'tavern', 'battlefield', 'frozen-north', 'arcane-ruins', 'fairy-wilds', 'underworld', 'storm-coast', 'steampunk', 'post-apocalypse', 'western', 'noir', 'space-opera', 'orient', 'necropolis', 'manor', 'riverside-mystery'];
 import type { CampaignDocument, CampaignExport, CampaignSummary, Character, ImportStatus, Chronicle, Comment, Correction, WorldEntryIn, WorldEntryStatus, Entry, DatePoll, EntryInput, ProcessingStatus, Proposal, Recap, Session, UncertainTerm, VoteAnswer, VoiceProfile, Member } from '../api/types';
 import {
-  ME, NACHBAR_HOST, account, gmNotices, world, type WorldRecord, campaigns, comments, coverImages, datePolls, documents, portraits, proposalsForDocument, seen, entries, gmNotes, proposals, proposalsFor, recaps, sessions, speakersFor, uploads,
+  ME, NACHBAR_HOST, account, gmNotices, world, type WorldRecord, campaigns, comments, coverImages, datePolls, documents, portraits, proposalsForDocument, seen, entries, gmNotes, proposals, proposalsFor, recaps, sessions, speakersFor, uploads, speakerLists, transcripts, uncertainTerms,
   type MockCampaign, type MockSession
 } from './db';
 
@@ -125,14 +125,15 @@ function advance(s: MockSession): ProcessingStatus {
         if (old.recap) recaps[s.id] = { ...old.recap, review: old.recap.review ? { ...old.recap.review, stale: false } : undefined };
         proposals.push(...old.proposals.map((p) => ({ ...p, decision: 'open' as const })));
       }
+      const probe = musterProbe(s.campaignId, s.id);
       if (!recaps[s.id]) {
         recaps[s.id] = {
           sessionId: s.id, number: s.number, title: s.title ?? `Kapitel ${s.number}`, publishedAt: null,
-          text: 'Dies ist ein Test-Recap aus dem nachgeahmten Server. Der echte Server schreibt hier die Zusammenfassung der Session.',
-          openThreads: ['Offener Faden aus der Testsession']
+          text: probe?.recap ?? 'Dies ist ein Test-Recap aus dem nachgeahmten Server. Der echte Server schreibt hier die Zusammenfassung der Session.',
+          openThreads: probe?.threads ?? ['Offener Faden aus der Testsession']
         };
       }
-      if (!proposals.some((p) => p.sessionId === s.id)) proposals.push(...proposalsFor(s.id));
+      if (!probe && !proposals.some((p) => p.sessionId === s.id)) proposals.push(...proposalsFor(s.id));
     }
   }
   return {
@@ -152,7 +153,7 @@ function advance(s: MockSession): ProcessingStatus {
 
 // ---------------- Qualitätsprüfung (0.4.6): unsicher erkannte Namen im Testmodus
 
-const uncertain: Record<string, UncertainTerm[]> = {
+const uncertain: Record<string, UncertainTerm[]> = Object.assign(uncertainTerms, {
   's-c-grau-13': [
     { id: 'ut1', heard: 'Ilsabeth', alternatives: ['Ilsabet', 'Elisabeth'], occurrences: 4, confidence: 0.41,
       examples: [{ start: 1790, quote: 'Ilsabeth, kannst du dir den Wachmann ansehen?' }, { start: 1812, quote: 'Danke, Ilsabeth.' }],
@@ -162,7 +163,7 @@ const uncertain: Record<string, UncertainTerm[]> = {
     { id: 'ut3', heard: 'Veira', alternatives: ['Veyra', 'Vera'], occurrences: 3, confidence: 0.48,
       examples: [{ start: 1530, quote: 'Veira, lass sie durch.' }], suggestedEntryId: null, suggestedMemberId: null }
   ]
-};
+});
 
 /** Kurzes Test-Transkript rund um die Belegstellen von Kapitel 13 (Korrekturen wirken auch hier) */
 const transcriptLines: [number, string | null, string][] = [
@@ -180,14 +181,14 @@ const transcriptLines: [number, string | null, string][] = [
   [6210, null, 'Das Zeichen ist dasselbe wie auf dem Siegel!'],
   [6230, 'm-robin', 'Hört ihr das?']
 ];
-const transcriptFixes: [string, string][] = [];
+/** Korrekturen je Session, wirken auf die Abschrift */
+const transcriptFixes: Record<string, [string, string][]> = {};
 
 function transcriptFor(sessionId: string) {
+  const fix = (text: string) => (transcriptFixes[sessionId] ?? []).reduce((acc, [a, b]) => replaceWord(acc, a, b), text);
+  if (transcripts[sessionId]) return transcripts[sessionId].map((x) => ({ ...x, text: fix(x.text) }));
   if (sessionId !== 's-c-grau-13') return [];
-  return transcriptLines.map(([start, memberId, text], i) => ({
-    start, end: start + 6, speakerId: `sp${i % 4}`, memberId,
-    text: transcriptFixes.reduce((acc, [a, b]) => replaceWord(acc, a, b), text)
-  }));
+  return transcriptLines.map(([start, memberId, text], i) => ({ start, end: start + 6, speakerId: `sp${i % 4}`, memberId, text: fix(text) }));
 }
 
 /** Recap so, wie diese Person ihn sehen darf: den Prüfteil bekommt nur die SL */
@@ -403,10 +404,10 @@ export const handlers = [
     await delay(300);
     const body = (await request.json()) as { username?: string; password?: string };
     if (!body.username || !body.password) return err(401, 'invalid_credentials', 'Benutzername und Passwort eingeben.');
-    // Demo-Server: nur anja, lea, tom – das Token trägt die Person (siehe installMockFetch)
+    // Musterserver: nur anja, lea, tom, sina – das Token trägt die Person (siehe installMockFetch)
     if (hostKey(request) === DEMO_HOST) {
       const u = DEMO_USERS[body.username.trim().toLowerCase()];
-      if (!u) return err(401, 'invalid_credentials', 'Auf dem Demo-Server gibt es anja, lea und tom.');
+      if (!u) return err(401, 'invalid_credentials', 'Auf dem Musterserver gibt es anja, lea, tom und sina.');
       return HttpResponse.json({ accessToken: `${TOKEN}:${u.id}`, expiresAt: new Date(Date.now() + 864e5 * 30).toISOString(), user: u });
     }
     return HttpResponse.json({ accessToken: TOKEN, expiresAt: new Date(Date.now() + 864e5 * 30).toISOString(), user: meUser() });
@@ -1446,7 +1447,7 @@ export const handlers = [
   http.get(`${B}/sessions/:id/speakers`, ({ params }) => {
     const s = sessions.find((x) => x.id === params.id);
     if (!s || !isGm(s.campaignId)) return err(403, 'forbidden', 'Nur die Spielleitung ordnet Stimmen zu.');
-    const list = demoSpeakers(s.id) ?? speakersFor();
+    const list = [...(speakerLists[s.id] ?? musterProbe(s.campaignId, s.id)?.speakers ?? speakersFor())];
     // Mit Stimmprofil wird die eigene Stimme ohne Vorstellungsrunde erkannt
     if (voiceStatus().status === 'ready') list[0] = { ...list[0], source: 'voice_match', confidence: 0.97, sampleText: '„Also, wo waren wir stehen geblieben?“' };
     // Nach der Bestätigung (0.4.10): bestätigte Zuordnung mitliefern; ältere Testsessions gelten als wie vorgeschlagen bestätigt
@@ -1565,7 +1566,7 @@ export const handlers = [
       uncertain[s.id] = (uncertain[s.id] ?? []).filter((u) => u.heard !== k.heard);
       const correct = k.correct.trim();
       if (!correct) continue; // so lassen, nur nicht mehr melden
-      if (s.id === 's-c-grau-13') transcriptFixes.push([k.heard, correct]);
+      (transcriptFixes[s.id] ??= []).push([k.heard, correct]);
       if (r) r.text = replaceWord(r.text, k.heard, correct);
       for (const p of proposals.filter((x) => x.sessionId === s.id)) {
         p.title = replaceWord(p.title, k.heard, correct);

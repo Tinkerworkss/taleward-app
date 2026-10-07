@@ -1,5 +1,5 @@
 /*
- * Aufnahmen für Website und Store aus dem Testmodus (Demo „Die leisen Wasser“).
+ * Aufnahmen für Website und Store aus dem Testmodus (Musterkampagne „Die leisen Wasser“).
  *
  *   npm run build:mock
  *   npx vite preview --port 4173          (in einem zweiten Fenster laufen lassen)
@@ -13,7 +13,7 @@ import puppeteer from 'puppeteer-core';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:4173';
 const OUT = process.env.OUT_DIR ?? 'screenshots';
-const SERVER = 'https://taleward.euer-verein.de';
+const SERVER = 'https://muster.taleward.invalid';
 const DPR = 1080 / 411;
 const W = 411, H = 2400.9 / DPR; // leicht aufgerundet, damit genau 2400 px entstehen
 
@@ -25,12 +25,12 @@ const CHROME = process.env.CHROME_PATH ?? [
 if (!CHROME) throw new Error('Chrome/Edge nicht gefunden – bitte CHROME_PATH setzen.');
 
 const L = {
-  de: { cid: 'c-wasser', next: 'Weiter', askConsent: 'Zustimmen lassen', agree: 'Zustimmen', summarize: 'Zusammenfassung erstellen',
+  de: { cid: 'c-wasser', next: 'Weiter', askConsent: 'Zustimmen lassen', agree: 'Zustimmen',
     accept: 'Übernehmen', publish: 'Recap veröffentlichen', invite: 'Mitspielende einladen', qr: 'QR-Code zeigen',
-    all: 'Alle (', world: 'Mitgebrachte Welt', mara: '00000000-0000-4000-8000-000000000001' },
-  en: { cid: 'c-waters', next: 'Continue', askConsent: 'Ask to agree', agree: 'Agree', summarize: 'Create summary',
+    all: 'Alle (', world: 'Mitgebrachte Welt', mara: '00000000-0000-4000-8000-000000000701' },
+  en: { cid: 'c-waters', next: 'Continue', askConsent: 'Ask to agree', agree: 'Agree',
     accept: 'Accept', publish: 'Publish recap', invite: 'Invite players', qr: 'Show QR code',
-    all: 'All (', world: 'Brought-along world', mara: '00000000-0000-4000-8000-000000000101' }
+    all: 'All (', world: 'Brought-along world', mara: '00000000-0000-4000-8000-000000000801' }
 };
 
 // Welche Aufnahmen in welchem Thema (Stern in der Anfrage = zusätzlich Spielabend)
@@ -97,11 +97,12 @@ for (const run of RUNS) {
 
   await login('anja');
   const conn = await page.evaluate(() => JSON.parse(localStorage.getItem('session-chronik.connections'))[0].id);
-  const k = `/v/${conn}/k/${t.cid}`, s = `/v/${conn}/s/s-${t.cid}-7`;
+  const k = `/v/${conn}/k/${t.cid}`, s = `/v/${conn}/s/s-${t.cid}-8`;
+  // Kapitel 8 hat unsichere Namen; für die Aufnahmen gleich zur Prüfung
+  await page.evaluate((key) => sessionStorage.setItem(key, '1'), `session-chronik.names-skipped.${conn}.s-${t.cid}-8`);
 
   await go(`${k}/aufnahme`); await shot(2);
   await go(`${s}/stimmen`); await shot(4);
-  await click(t.summarize); await wait(12000);
   await go(`${s}/freigabe`);
   await page.evaluate(() => document.querySelector('details.card summary')?.click());
   await shot(5);
@@ -119,7 +120,9 @@ for (const run of RUNS) {
     await shot(3);
     await page.evaluate(() => { window.__recTarget = 0; });
   }
-  await go(`${s}/freigabe`); await click(t.accept); await wait(500); await click(t.publish); await wait(1500);
+  await go(`${s}/freigabe`); await click(t.accept); await wait(500); await click(t.publish); await wait(500);
+  // Offene Vorschläge: Rückfrage bestätigen
+  await page.evaluate(() => [...document.querySelectorAll('[role=dialog] button')].find((b) => /^(Veröffentlichen|Publish)$/.test(b.textContent.trim()))?.click()); await wait(1500);
   await go(`${k}/bibel`);
   await page.evaluate(() => [...document.querySelectorAll('.card-title')].find((c) => c.textContent.trim() === 'Oren Silt')?.closest('.card')?.scrollIntoView({ block: 'start' }));
   await page.evaluate(() => document.querySelector('.screen-main').scrollBy(0, -12));
@@ -134,9 +137,11 @@ for (const run of RUNS) {
 
   if (run.shots.some((n) => CHAR.includes(n))) {
     // Sammlung liegt im Speicher der App; die Demo liefert sie fertig (nur im Testmodus)
-    const seed = (who) => page.evaluate((lang, w, c) => {
-      localStorage.setItem('taleward.characters', JSON.stringify(window.__talewardDemo.demoCollection(lang, w, c)));
-    }, run.lang, who, conn);
+    const seed = (who) => page.evaluate((lang, w) => {
+      const c = JSON.parse(localStorage.getItem('session-chronik.connections')).find((x) => x.user?.username === w);
+      const list = window.__talewardDemo.musterCollection(lang, w, c.id, c.name, `${c.baseUrl}|${c.user.id}`);
+      localStorage.setItem('taleward.characters', JSON.stringify(list));
+    }, run.lang, who);
     const scrollTo = (text) => page.evaluate((txt) => {
       [...document.querySelectorAll('h2')].find((h) => h.textContent.trim() === txt)?.scrollIntoView({ block: 'start' });
       document.querySelector('.screen-main').scrollBy(0, -12);

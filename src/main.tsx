@@ -11,6 +11,7 @@ import '@fontsource/alegreya/400-italic.css';
 import './theme.css';
 import { App } from './App';
 import { applyThemeMode } from './themeMode';
+import { getLang } from './i18n';
 
 async function start() {
   applyThemeMode();
@@ -23,7 +24,7 @@ async function start() {
   }
   if (import.meta.env.VITE_API_MODE === 'mock') {
     const { installMockFetch } = await import('./mocks/installMockFetch');
-    installMockFetch();
+    installMockFetch({ lang: getLang() });
   }
   // Web-Fassung: installierbar auf dem Startbildschirm (Service Worker nur für die eigenen Dateien)
   if (import.meta.env.VITE_DIST === 'web' && 'serviceWorker' in navigator) {
