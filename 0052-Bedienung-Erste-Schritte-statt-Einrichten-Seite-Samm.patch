@@ -1,0 +1,477 @@
+From 7f3d7269dd9d205402dff30487abab58f1a64d8c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 8 Oct 2026 00:17:38 +0200
+Subject: [PATCH] =?UTF-8?q?Bedienung:=20Erste=20Schritte=20statt=20Einrich?=
+ =?UTF-8?q?ten-Seite,=20Sammlung=20sichern,=20Termin=20aufger=C3=A4umt?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ src/App.tsx                  |  4 +-
+ src/characters/backup.ts     | 94 ++++++++++++++++++++++++++++++++++++
+ src/i18n/en.ts               | 18 +++++--
+ src/pages/Campaigns.tsx      |  2 +-
+ src/pages/CharacterPage.tsx  |  3 ++
+ src/pages/CharactersPage.tsx | 35 +++++++++++++-
+ src/pages/DatePollPage.tsx   | 49 +++++++++++--------
+ src/pages/Overview.tsx       | 55 +++++++++++++++++----
+ src/pages/SetupPage.tsx      | 74 ----------------------------
+ src/theme.css                | 10 ++++
+ 10 files changed, 232 insertions(+), 112 deletions(-)
+ create mode 100644 src/characters/backup.ts
+ delete mode 100644 src/pages/SetupPage.tsx
+
+diff --git a/src/App.tsx b/src/App.tsx
+index 819f310..acb2592 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -26,3 +26,2 @@ import { VoiceProfile } from './pages/VoiceProfile';
+ import { WelcomePage } from './pages/WelcomePage';
+-import { SetupPage } from './pages/SetupPage';
+ import { BroughtPage } from './pages/BroughtPage';
+@@ -76,3 +75,4 @@ function Routed() {
+       <Route path="/v/:conn/k/:campaignId/willkommen" element={scoped(<WelcomePage />)} />
+-      <Route path="/v/:conn/k/:campaignId/einrichten" element={scoped(<SetupPage />)} />
++      {/* Frühere Seite „Neue Kampagne einrichten“: jetzt „Erste Schritte“ auf der Übersicht */}
++      <Route path="/v/:conn/k/:campaignId/einrichten" element={<Navigate to=".." relative="path" replace />} />
+       <Route path="/v/:conn/k/:campaignId/charakter/:memberId" element={scoped(<CharacterPage />)} />
+diff --git a/src/characters/backup.ts b/src/characters/backup.ts
+new file mode 100644
+index 0000000..70b217c
+--- /dev/null
++++ b/src/characters/backup.ts
+@@ -0,0 +1,94 @@
++/*
++ * Sammlung sichern und zurückholen. Die Sammlung liegt nur im Gerät; geht das Handy verloren oder wird die App
++ * gelöscht, wäre sie weg. Eine Sicherung ist eine Datei taleward-charaktere/1 (JSON) mit allen eigenen Charakteren,
++ * auch Bildern, mitgebrachter Welt, Abschriften und privaten Notizen. Sie bleibt beim Menschen, nie auf einem Server.
++ */
++import { APP_VERSION, listConnections } from '../api/connections';
++import { t } from '../i18n';
++import { allStoredCharacters, listCharacters, myAccountKeys, putCharacters, type StoredCharacter } from './store';
++
++export const BACKUP_FORMAT = 'taleward-charaktere/1';
++
++interface BackupFile {
++  format: typeof BACKUP_FORMAT;
++  exportedAt: string;
++  appVersion: string;
++  characters: StoredCharacter[];
++}
++
++/** Datei mit der ganzen eigenen Sammlung */
++export function backupFile(now = new Date()): File {
++  const data: BackupFile = { format: BACKUP_FORMAT, exportedAt: now.toISOString(), appVersion: APP_VERSION, characters: listCharacters() };
++  return new File([JSON.stringify(data)], `taleward-charaktere-${now.toISOString().slice(0, 10)}.json`, { type: 'application/json' });
++}
++
++/** Auf dem Handy über „Teilen“ (Speichern, Mail …), im Browser als Download */
++export async function saveOrShare(file: File, title: string): Promise<void> {
++  const nav = navigator as Navigator & { canShare?: (d: { files: File[] }) => boolean };
++  if (nav.canShare?.({ files: [file] })) {
++    try {
++      await navigator.share({ files: [file], title });
++    } catch (e) {
++      if (!(e instanceof DOMException && e.name === 'AbortError')) throw e;
++    }
++    return;
++  }
++  const a = document.createElement('a');
++  a.href = URL.createObjectURL(file);
++  a.download = file.name;
++  a.click();
++  window.setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
++}
++
++const isText = (v: unknown) => typeof v === 'string';
++
++/** Grobe Prüfung eines Charakters aus einer fremden Datei – alles Unbekannte wird verworfen */
++function valid(c: unknown): c is StoredCharacter {
++  if (!c || typeof c !== 'object') return false;
++  const x = c as Record<string, unknown>;
++  return isText(x.id) && isText(x.name) && (x.name as string).trim() !== '' && isText(x.updatedAt)
++    && Array.isArray(x.world) && Array.isArray(x.links) && typeof x.chronicles === 'object' && x.chronicles !== null
++    && (x.portrait === null || x.portrait === undefined || (isText(x.portrait) && (x.portrait as string).startsWith('data:image/')));
++}
++
++export interface RestoreResult { added: number; updated: number; unchanged: number }
++
++/**
++ * Sicherung zurückholen. Neue Charaktere kommen dazu, vorhandene werden nur durch einen neueren Stand ersetzt.
++ * Verknüpfungen mit Servern, die dieses Gerät nicht kennt, fallen weg (dort muss man sich erst anmelden).
++ */
++export function restoreBackup(text: string): RestoreResult {
++  let data: Partial<BackupFile>;
++  try {
++    data = JSON.parse(text);
++  } catch {
++    throw new Error(t('Das ist keine Sicherung der Charakter-Sammlung.'));
++  }
++  if (data?.format !== BACKUP_FORMAT || !Array.isArray(data.characters)) {
++    throw new Error(t('Das ist keine Sicherung der Charakter-Sammlung.'));
++  }
++  const known = new Set(listConnections().map((c) => c.id));
++  const mine = myAccountKeys();
++  // Ohne Anmeldung gehörte der Charakter niemandem und bliebe unsichtbar
++  if (!mine.length) throw new Error(t('Melde dich erst bei einem Server an, dann kannst du die Sammlung zurückholen.'));
++  const all = new Map(allStoredCharacters().map((c) => [c.id, c]));
++  const result: RestoreResult = { added: 0, updated: 0, unchanged: 0 };
++  const take: StoredCharacter[] = [];
++  for (const c of data.characters.filter(valid)) {
++    const old = all.get(c.id);
++    if (old && Date.parse(old.updatedAt) >= Date.parse(c.updatedAt)) {
++      result.unchanged++;
++      continue;
++    }
++    take.push({
++      ...c,
++      notes: isText(c.notes) ? c.notes : '',
++      owners: [...new Set([...(old?.owners ?? []), ...mine])],
++      links: c.links.filter((l) => l && known.has(l.connId))
++    });
++    if (old) result.updated++;
++    else result.added++;
++  }
++  if (take.length) putCharacters(take);
++  return result;
++}
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 4737665..ba09e34 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -326,5 +326,2 @@ export const en: Record<string, string> = {
+   "Zur Kampagne": "Go to the campaign",
+-  "Neue Kampagne einrichten": "Set up your new campaign",
+-  "Alles hier ist optional und lässt sich später auf der Übersicht ändern.": "Everything here is optional and can be changed later from the overview.",
+-  "Gib den Code weiter. Wer beitritt, legt danach seinen Charakter an.": "Share the code. Whoever joins will then create their character.",
+   "Noch keine Kurzbeschreibung.": "No short description yet.",
+@@ -335,4 +332,2 @@ export const en: Record<string, string> = {
+   "Charakter bearbeiten": "Edit character",
+-  "Mein Bild": "My picture",
+-  "Meinen Charakter ansehen": "View my character",
+   "Dein Charakter ist noch unvollständig": "Your character isn't complete yet",
+@@ -1012,2 +1007,15 @@ export const en: Record<string, string> = {
+   "Bitte zuerst Datum und Uhrzeit wählen.": "Please choose a date and time first.",
++  "Mehr": "More",
++  "Die Welt beschreiben": "Describe the world",
++  "Erste Schritte": "First steps",
++  "Alles optional. Erledigtes bekommt einen Haken.": "All optional. Done steps get a tick.",
++  "Los": "Go",
++  "Ausblenden": "Hide",
++  "Das ist keine Sicherung der Charakter-Sammlung.": "This is not a backup of the character collection.",
++  "Melde dich erst bei einem Server an, dann kannst du die Sammlung zurückholen.": "Sign in to a server first, then you can restore the collection.",
++  "Zurückgeholt: {a} neu, {u} aktualisiert, {s} schon aktuell.": "Restored: {a} new, {u} updated, {s} already up to date.",
++  "Sammlung sichern": "Back up collection",
++  "Sichere deine Charaktere ab und zu als Datei. Auf einem neuen Gerät holst du sie damit zurück. Die Datei enthält auch deine privaten Notizen – gib sie nicht weiter.": "Back up your characters as a file now and then. On a new device, you restore them from it. The file also contains your private notes – don’t pass it on.",
++  "Als Datei sichern": "Save as a file",
++  "Aus Datei zurückholen": "Restore from a file",
+ };
+diff --git a/src/pages/Campaigns.tsx b/src/pages/Campaigns.tsx
+index 1477fe4..7dc3ebb 100644
+--- a/src/pages/Campaigns.tsx
++++ b/src/pages/Campaigns.tsx
+@@ -144,3 +144,3 @@ export function Campaigns() {
+       const c = await apiFor(conn).createCampaign(value.trim(), '', language, system, system === 'other' ? systemName.trim() || null : null);
+-      navigate(`/v/${conn.id}/k/${c.id}/einrichten`);
++      navigate(`/v/${conn.id}/k/${c.id}`);
+     } catch (e) {
+diff --git a/src/pages/CharacterPage.tsx b/src/pages/CharacterPage.tsx
+index d36ae0f..b38cec5 100644
+--- a/src/pages/CharacterPage.tsx
++++ b/src/pages/CharacterPage.tsx
+@@ -15,2 +15,4 @@ import { Divider, ErrorBox, Screen, rememberCampaign } from '../components/Scree
+ import { t } from '../i18n';
++import { MoveConsent } from './Overview';
++import { apiAtLeast } from '../api/connections';
+ 
+@@ -115,2 +117,3 @@ export function CharacterPage() {
+                 )}
++              {member.role === 'player' && apiAtLeast('0.4.8') && <MoveConsent campaign={campaign} me={member} onChanged={load} />}
+             </>
+diff --git a/src/pages/CharactersPage.tsx b/src/pages/CharactersPage.tsx
+index e492213..311dbfe 100644
+--- a/src/pages/CharactersPage.tsx
++++ b/src/pages/CharactersPage.tsx
+@@ -8,3 +8,4 @@ import { listCharacters, onCharactersChanged, STATUS_ORDER } from '../characters
+ import { linkOutdated } from '../characters/sync';
+-import { Screen } from '../components/Screen';
++import { ErrorBox, Screen } from '../components/Screen';
++import { backupFile, restoreBackup, saveOrShare } from '../characters/backup';
+ import { t, tn } from '../i18n';
+@@ -20,2 +21,19 @@ export function CharactersPage() {
+   const [creating, setCreating] = useState(false);
++  const [backupError, setBackupError] = useState<unknown>(null);
++  const [restored, setRestored] = useState<string | null>(null);
++  const save = async () => {
++    setBackupError(null);
++    try { await saveOrShare(backupFile(), t('Meine Charaktere')); } catch (e) { setBackupError(e); }
++  };
++  const restore = async (file: File | undefined) => {
++    if (!file) return;
++    setBackupError(null);
++    setRestored(null);
++    try {
++      const r = restoreBackup(await file.text());
++      setRestored(t('Zurückgeholt: {a} neu, {u} aktualisiert, {s} schon aktuell.', { a: r.added, u: r.updated, s: r.unchanged }));
++    } catch (e) {
++      setBackupError(e);
++    }
++  };
+   useEffect(() => {
+@@ -88,2 +106,17 @@ export function CharactersPage() {
+           </p>
++          {/* Sicherung: Handy weg oder App gelöscht – dann ist die Datei der einzige Rückweg */}
++          <details className="card" open={list.length === 0 || undefined}>
++            <summary style={{ fontWeight: 700 }}>{t('Sammlung sichern')}</summary>
++            <span className="small">{t('Sichere deine Charaktere ab und zu als Datei. Auf einem neuen Gerät holst du sie damit zurück. Die Datei enthält auch deine privaten Notizen – gib sie nicht weiter.')}</span>
++            <ErrorBox error={backupError} />
++            {restored && <span className="small" role="status">{restored}</span>}
++            <div className="row wrap" style={{ gap: 8 }}>
++              {list.length > 0 && <button type="button" className="btn small outline" onClick={save}>{t('Als Datei sichern')}</button>}
++              <label className="btn small outline">
++                {t('Aus Datei zurückholen')}
++                <input type="file" accept=".json,application/json" onChange={(e) => { restore(e.target.files?.[0]); e.target.value = ''; }}
++                  style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden' }} />
++              </label>
++            </div>
++          </details>
+         </>
+diff --git a/src/pages/DatePollPage.tsx b/src/pages/DatePollPage.tsx
+index 53c551f..8105d78 100644
+--- a/src/pages/DatePollPage.tsx
++++ b/src/pages/DatePollPage.tsx
+@@ -122,3 +122,3 @@ export function DatePollPage() {
+             return (
+-              <div key={o.id} className={mine ? 'card' : 'card warn'}>
++              <div key={o.id} className={mine ? 'card' : 'card task'}>
+                 <div className="row between" style={{ alignItems: 'flex-start' }}>
+@@ -147,20 +147,31 @@ export function DatePollPage() {
+ 
+-                {(gm || canRemove) && (
+-                  <div className="row wrap" style={{ gap: 8 }}>
+-                    {gm && (
+-                      <button type="button" className={best?.id === o.id ? 'btn small moss' : 'btn small moss outline'} disabled={busy} onClick={async () => {
+-                        if (await confirmDialog(t('{date} als nächsten Termin festlegen? Die Abstimmung wird damit beendet.', { date: formatDateTime(o.startsAt) }), { confirmLabel: t('Festlegen') })) {
+-                          run(() => api.closeDatePoll(open.id, o.id));
+-                        }
+-                      }}>
+-                        {t('Diesen Termin festlegen')}
+-                      </button>
+-                    )}
+-                    {canRemove && (
+-                      <button type="button" className="btn small danger outline" disabled={busy} onClick={() => run(() => api.removeDateOption(open.id, o.id))}>
+-                        {t('Entfernen')}
+-                      </button>
+-                    )}
+-                  </div>
+-                )}
++                {(gm || canRemove) && (() => {
++                  // Festlegen steht offen nur bei der besten Wahl; alles Seltene unter „Mehr“
++                  const isBest = best?.id === o.id && score(o) > 0;
++                  const fix = (cls: string) => (
++                    <button type="button" className={cls} disabled={busy} onClick={async () => {
++                      if (await confirmDialog(t('{date} als nächsten Termin festlegen? Die Abstimmung wird damit beendet.', { date: formatDateTime(o.startsAt) }), { confirmLabel: t('Festlegen') })) {
++                        run(() => api.closeDatePoll(open.id, o.id));
++                      }
++                    }}>
++                      {t('Diesen Termin festlegen')}
++                    </button>
++                  );
++                  return (
++                    <>
++                      {gm && isBest && fix('btn small moss')}
++                      <details className="more">
++                        <summary className="small">{t('Mehr')}</summary>
++                        <div className="row wrap" style={{ gap: 8, paddingBottom: 4 }}>
++                          {gm && !isBest && fix('btn small moss outline')}
++                          {canRemove && (
++                            <button type="button" className="btn small danger outline" disabled={busy} onClick={() => run(() => api.removeDateOption(open.id, o.id))}>
++                              {t('Entfernen')}
++                            </button>
++                          )}
++                        </div>
++                      </details>
++                    </>
++                  );
++                })()}
+               </div>
+diff --git a/src/pages/Overview.tsx b/src/pages/Overview.tsx
+index d9d2911..9d77aa0 100644
+--- a/src/pages/Overview.tsx
++++ b/src/pages/Overview.tsx
+@@ -20,3 +20,3 @@ import { useAuth } from '../auth/AuthContext';
+ import type { Campaign, GameSystem, GmNotice, Member, SessionSummary, Usage } from '../api/types';
+-import { IconInfo, IconLock } from '../components/Icons';
++import { IconCheck, IconInfo, IconLock } from '../components/Icons';
+ import { Divider, ErrorBox, Screen, rememberCampaign } from '../components/Screen';
+@@ -88,2 +88,3 @@ export function Overview() {
+           {me && !me.recordingConsentAt && <RecordingConsent campaign={campaign} onChanged={load} />}
++          {gm && sessions?.length === 0 && <FirstSteps campaign={campaign} onCover={() => { setPickingCover(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />}
+           {characterIncomplete(me) && (
+@@ -159,3 +160,3 @@ export function Overview() {
+           <Divider />
+-          <WorldInfo campaign={campaign} onSaved={setCampaign} />
++          <div id="world"><WorldInfo campaign={campaign} onSaved={setCampaign} /></div>
+           </div>
+@@ -167,3 +168,3 @@ export function Overview() {
+ 
+-          {gm && <InviteBox campaignId={campaignId} campaignTitle={campaign.title} />}
++          {gm && <div id="invite"><InviteBox campaignId={campaignId} campaignTitle={campaign.title} /></div>}
+           {gm && <UsageLine campaignId={campaignId} />}
+@@ -178,2 +179,41 @@ export function Overview() {
+ 
++/**
++ * Erste Schritte einer neuen Kampagne (SL, solange es kein Kapitel gibt): Titelbild, Welt, Einladen. Jeder Punkt führt
++ * zur Stelle auf dieser Seite; erledigte Punkte bekommen einen Haken, die Karte verschwindet, wenn alles erledigt oder
++ * ausgeblendet ist. Ersetzt die frühere Seite „Neue Kampagne einrichten“.
++ */
++function FirstSteps({ campaign, onCover }: { campaign: Campaign; onCover: () => void }) {
++  const key = `taleward.firstSteps.hidden.${campaign.id}`;
++  const [hidden, setHidden] = useState(() => {
++    try { return localStorage.getItem(key) === '1'; } catch { return false; }
++  });
++  const players = campaign.members.filter((m) => m.role === 'player' && !isDeletedMember(m) && m.userId).length;
++  const steps = [
++    { label: t('Titelbild wählen'), done: hasCover(campaign), go: onCover },
++    { label: t('Die Welt beschreiben'), done: !!campaign.worldInfo?.trim(), go: () => document.getElementById('world')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
++    { label: t('Mitspielende einladen'), done: players > 0, go: () => document.getElementById('invite')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
++  ];
++  if (hidden || steps.every((s) => s.done)) return null;
++  const hide = () => {
++    try { localStorage.setItem(key, '1'); } catch { /* egal */ }
++    setHidden(true);
++  };
++  return (
++    <section className="card task" aria-labelledby="first-steps">
++      <strong id="first-steps">{t('Erste Schritte')}</strong>
++      <span className="muted small">{t('Alles optional. Erledigtes bekommt einen Haken.')}</span>
++      {steps.map((s) => (
++        <div key={s.label} className="row" style={{ minHeight: 48, gap: 10 }}>
++          <span aria-hidden style={{ width: 24, display: 'inline-flex', justifyContent: 'center', color: s.done ? 'var(--salbei)' : 'var(--ink-faint)' }}>
++            {s.done ? <IconCheck size={18} /> : '○'}
++          </span>
++          <span style={{ flex: 1 }}>{s.label}{s.done && <span className="visually-hidden"> – {t('erledigt')}</span>}</span>
++          {!s.done && <button type="button" className="btn small outline" onClick={s.go}>{t('Los')}</button>}
++        </div>
++      ))}
++      <button type="button" className="btn small ghost" style={{ alignSelf: 'flex-start' }} onClick={hide}>{t('Ausblenden')}</button>
++    </section>
++  );
++}
++
+ /** Eigene, stehende Zustimmung zu Aufnahmen in dieser Kampagne. Ohne Zustimmung: auffällig oben. */
+@@ -484,8 +524,3 @@ function Members({ campaign, onChanged }: { campaign: Campaign; onChanged: () =>
+       )}
+-      {me && (
+-        <Link className="btn ghost small" style={{ alignSelf: 'flex-start' }} to={p(`/k/${campaign.id}/charakter/${me.id}`)}>
+-          {me.role === 'gm' ? t('Mein Bild') : t('Meinen Charakter ansehen')}
+-        </Link>
+-      )}
+-      {me && me.role === 'player' && apiAtLeast('0.4.8') && <MoveConsent campaign={campaign} me={me} onChanged={onChanged} />}
++      {/* Eigener Charakter und Umzugs-Haken: über die eigene Zeile oben (Charakterseite) */}
+       {me && <VoiceProfileHint />}
+@@ -500,3 +535,3 @@ function Members({ campaign, onChanged }: { campaign: Campaign; onChanged: () =>
+  */
+-function MoveConsent({ campaign, me, onChanged }: { campaign: Campaign; me: Member; onChanged: () => void }) {
++export function MoveConsent({ campaign, me, onChanged }: { campaign: Campaign; me: Member; onChanged: () => void }) {
+   const [busy, setBusy] = useState(false);
+diff --git a/src/pages/SetupPage.tsx b/src/pages/SetupPage.tsx
+deleted file mode 100644
+index f335999..0000000
+--- a/src/pages/SetupPage.tsx
++++ /dev/null
+@@ -1,74 +0,0 @@
+-import { p } from '../api/connections';
+-import { useEffect, useRef, useState } from 'react';
+-import { useNavigate, useParams } from 'react-router-dom';
+-import { api } from '../api/client';
+-import type { Campaign } from '../api/types';
+-import { Divider, ErrorBox, Screen, rememberCampaign } from '../components/Screen';
+-import { CoverPicker } from '../covers/CoverPicker';
+-import { CampaignCover, hasCover } from '../covers/CampaignCover';
+-import { t } from '../i18n';
+-import { InviteBox, RecordingConsent, WorldInfo } from './Overview';
+-
+-/** Nach dem Anlegen einer Kampagne (SL): Titelbild, Welt, eigene Zustimmung, Einladen. Alles optional. */
+-export function SetupPage() {
+-  const { campaignId = '' } = useParams();
+-  const navigate = useNavigate();
+-  const [campaign, setCampaign] = useState<Campaign | null>(null);
+-  const [error, setError] = useState<unknown>(null);
+-  // Titelbildauswahl: offen, solange keins gewählt ist; danach eingeklappt mit „Titelbild ändern“
+-  const [pickerOpen, setPickerOpen] = useState(true);
+-  const firstLoad = useRef(true);
+-
+-  const load = () =>
+-    api.campaign(campaignId).then((c) => {
+-      rememberCampaign(c);
+-      setCampaign(c);
+-      if (firstLoad.current) {
+-        firstLoad.current = false;
+-        setPickerOpen(!hasCover(c));
+-      }
+-    }).catch(setError);
+-
+-  const coverChanged = (c: Campaign) => {
+-    setCampaign(c);
+-    if (hasCover(c)) setPickerOpen(false);
+-  };
+-
+-  useEffect(() => {
+-    load();
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [campaignId]);
+-
+-  return (
+-    <Screen narrow nav={false} overline={t('Neue Kampagne einrichten')} title={campaign?.title ?? ' '}>
+-      <ErrorBox error={error} />
+-      {campaign && (
+-        <>
+-          <p className="muted" style={{ margin: 0 }}>{t('Alles hier ist optional und lässt sich später auf der Übersicht ändern.')}</p>
+-          {hasCover(campaign) && <CampaignCover campaign={campaign} height={pickerOpen ? 130 : 180} radius="var(--radius)" />}
+-          {pickerOpen ? (
+-            <div id="cover-picker">
+-              <CoverPicker campaign={campaign} onChanged={coverChanged}
+-                onClose={() => setPickerOpen(false)} embedded={!hasCover(campaign)} />
+-            </div>
+-          ) : (
+-            <button type="button" className="btn outline small" style={{ alignSelf: 'flex-start' }}
+-              aria-expanded={false} onClick={() => setPickerOpen(true)}>
+-              {t('Titelbild ändern')}
+-            </button>
+-          )}
+-          <Divider />
+-          <WorldInfo campaign={campaign} onSaved={setCampaign} />
+-          <Divider />
+-          <RecordingConsent campaign={campaign} onChanged={load} />
+-          <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+-            <h2>{t('Mitspielende einladen')}</h2>
+-            <p className="muted small" style={{ margin: 0 }}>{t('Gib den Code weiter. Wer beitritt, legt danach seinen Charakter an.')}</p>
+-            <InviteBox campaignId={campaign.id} campaignTitle={campaign.title} />
+-          </section>
+-          <button type="button" className="btn" onClick={() => navigate(p(`/k/${campaignId}`), { replace: true })}>{t('Zur Kampagne')}</button>
+-        </>
+-      )}
+-    </Screen>
+-  );
+-}
+diff --git a/src/theme.css b/src/theme.css
+index 42ad9ea..8d3b6ae 100644
+--- a/src/theme.css
++++ b/src/theme.css
+@@ -161,2 +161,12 @@ textarea:focus-visible {
+ 
++/* Nur für Screenreader */
++.visually-hidden {
++  position: absolute;
++  width: 1px;
++  height: 1px;
++  overflow: hidden;
++  clip-path: inset(50%);
++  white-space: nowrap;
++}
++
+ /* Was vor dem Hauptknopf noch fehlt (components/Missing.tsx) */
