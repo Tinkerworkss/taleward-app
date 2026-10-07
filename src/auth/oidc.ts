@@ -60,7 +60,9 @@ export async function startProviderLogin(opts: {
   localStorage.setItem(PENDING, JSON.stringify(pending));
   // Im Browser (Web-Fassung) zurück auf diese Seite statt auf taleward:// – nur erlaubte Ziele nimmt der Server an
   const web = !Capacitor.isNativePlatform() && !MOCK;
-  const returnTo = web ? `${window.location.origin}${import.meta.env.BASE_URL}#/auth` : null;
+  // Pfad der geladenen Seite statt fester Basis: dieselbe Web-Fassung läuft unter /app/ und an der Wurzel
+  const path = window.location.pathname.replace(/index\.html$/, '');
+  const returnTo = web ? `${window.location.origin}${path}#/auth` : null;
   const q = new URLSearchParams({ challenge, purpose: opts.purpose, ...(linkToken ? { linkToken } : {}), ...(returnTo ? { returnTo } : {}) });
   const url = `${opts.baseUrl}/auth/oidc/${opts.provider}/start?${q}`;
 
