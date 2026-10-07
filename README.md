@@ -72,7 +72,7 @@ Voraussetzungen: Node.js 22, für Android zusätzlich Android Studio (mit JDK 21
 | `npm run build` | App bauen (echter Server) |
 | `npm run build:web` | Web-Fassung für den Unterpfad `/app/` |
 | `npm run android` / `npm run android:mock` | Android-Projekt einrichten und in Android Studio öffnen |
-| `npm run android:store` | Android ohne eigenen Updater (für den Play Store) |
+| `npm run android:store` | Android für den Play Store: ohne eigenen Updater, ohne Bitte um Ausnahme von der Akku-Optimierung |
 | `npm run i18n:check` | Prüft, ob alle Texte übersetzt sind |
 | `npm run screenshots` | Aufnahmen der Demo für Website und Store (siehe `scripts/screenshots.mjs`) |
 

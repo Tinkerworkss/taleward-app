@@ -80,10 +80,22 @@ if (gradleNew !== gradle) {
   }
 }
 
+// Play-Store-Fassung (npm run android:store setzt --store): ohne Updater, ohne Bitte um Ausnahme von der
+// Akku-Optimierung. Der Store verbietet Selbst-Aktualisierung und lässt diese Berechtigung nur in Ausnahmen zu.
+const STORE = process.argv.includes('--store');
+const STORE_SKIP = ['AppUpdaterPlugin.java'];
+
 const javaDir = join(android, 'app/src/main/java/app/taleward');
 mkdirSync(javaDir, { recursive: true });
 for (const f of readdirSync(join(root, 'native-android')).filter((f) => f.endsWith('.java'))) {
-  copyFileSync(join(root, 'native-android', f), join(javaDir, f));
+  if (STORE && STORE_SKIP.includes(f)) {
+    rmSync(join(javaDir, f), { force: true });
+    console.log('Store-Fassung, ausgelassen:', f);
+    continue;
+  }
+  let code = readFileSync(join(root, 'native-android', f), 'utf8');
+  if (STORE && f === 'MainActivity.java') code = code.replace(/^\s*registerPlugin\(AppUpdaterPlugin\.class\);\n/m, '');
+  writeFileSync(join(javaDir, f), code);
   console.log('kopiert:', f);
 }
 
@@ -105,7 +117,7 @@ const permissions = [
   'android.permission.FOREGROUND_SERVICE_MICROPHONE',
   'android.permission.POST_NOTIFICATIONS',
   'android.permission.WAKE_LOCK',
-  'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'
+  ...(STORE ? [] : ['android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'])
 ];
 for (const p of permissions) {
   if (!manifest.includes(`"${p}"`)) {
@@ -114,8 +126,7 @@ for (const p of permissions) {
   }
 }
 
-// Updater nur in der APK-Fassung (Play Store verbietet Selbst-Aktualisierung): npm run android:store setzt --store
-const STORE = process.argv.includes('--store');
+// Updater nur in der APK-Fassung (Play Store verbietet Selbst-Aktualisierung)
 const INSTALL_PERM = '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />';
 if (!STORE && !manifest.includes('REQUEST_INSTALL_PACKAGES')) {
   manifest = manifest.replace('</manifest>', `    ${INSTALL_PERM}\n</manifest>`);
@@ -124,6 +135,10 @@ if (!STORE && !manifest.includes('REQUEST_INSTALL_PACKAGES')) {
 if (STORE && manifest.includes('REQUEST_INSTALL_PACKAGES')) {
   manifest = manifest.replace(/\s*<uses-permission android:name="android\.permission\.REQUEST_INSTALL_PACKAGES" \/>/, '');
   console.log('Store-Fassung: REQUEST_INSTALL_PACKAGES entfernt');
+}
+if (STORE && manifest.includes('REQUEST_IGNORE_BATTERY_OPTIMIZATIONS')) {
+  manifest = manifest.replace(/\s*<uses-permission android:name="android\.permission\.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" \/>/, '');
+  console.log('Store-Fassung: REQUEST_IGNORE_BATTERY_OPTIMIZATIONS entfernt');
 }
 
 // App-Adresse taleward://… (Einladungen öffnen die App direkt)

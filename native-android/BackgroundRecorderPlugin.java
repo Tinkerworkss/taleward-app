@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
@@ -160,6 +161,14 @@ public class BackgroundRecorderPlugin extends Plugin {
 
     @PluginMethod
     public void requestIgnoreBatteryOptimizations(PluginCall call) {
+        // Play-Store-Fassung ohne diese Berechtigung: gleich die Liste in den Akku-Einstellungen öffnen
+        boolean mayAsk = ContextCompat.checkSelfPermission(getContext(), Manifest.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+            == PackageManager.PERMISSION_GRANTED;
+        if (!mayAsk) {
+            getActivity().startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+            call.resolve();
+            return;
+        }
         try {
             Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
                 .setData(Uri.parse("package:" + getContext().getPackageName()));
