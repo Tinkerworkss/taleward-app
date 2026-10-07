@@ -35,12 +35,14 @@ const L = {
 
 // Welche Aufnahmen in welchem Thema (Stern in der Anfrage = zusätzlich Spielabend)
 // 10–14: Charaktere (Schnittstelle 0.4.7) – Sammlung, Charakterseite, mitgebrachte Welt, Willkommen, SL-Prüfung
+// 15: Startbildschirm (drei Wege: Einladung, selbst leiten, ohne Server ausprobieren)
 const CHAR = [10, 11, 12, 13, 14];
+const START = [15];
 const RUNS = [
-  { lang: 'de', theme: 'pergament', shots: [1, 2, 3, 4, 5, 6, 7, 8, 9, ...CHAR] },
-  { lang: 'en', theme: 'pergament', shots: [1, 2, 3, 4, 5, 6, 7, 8, 9, ...CHAR] },
-  { lang: 'de', theme: 'spielabend', shots: [1, 7, ...CHAR] },
-  { lang: 'en', theme: 'spielabend', shots: [1, 7, ...CHAR] }
+  { lang: 'de', theme: 'pergament', shots: [1, 2, 3, 4, 5, 6, 7, 8, 9, ...CHAR, ...START] },
+  { lang: 'en', theme: 'pergament', shots: [1, 2, 3, 4, 5, 6, 7, 8, 9, ...CHAR, ...START] },
+  { lang: 'de', theme: 'spielabend', shots: [1, 7, ...CHAR, ...START] },
+  { lang: 'en', theme: 'spielabend', shots: [1, 7, ...CHAR, ...START] }
 ].map((r) => (process.env.SHOTS ? { ...r, shots: r.shots.filter((n) => process.env.SHOTS.split(',').map(Number).includes(n)) } : r));
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -94,6 +96,16 @@ for (const run of RUNS) {
     localStorage.setItem('taleward.theme', theme === 'spielabend' ? 'dark' : 'light');
   }, run.lang, run.theme);
   await page.reload(); await wait(800);
+  // 15: Startbildschirm ohne Einladung – Feld leer, Testmodus-Hinweis ausgeblendet
+  if (run.shots.includes(15)) {
+    await page.evaluate(() => {
+      const input = document.querySelector('#address');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      [...document.querySelectorAll('p')].filter((x) => x.textContent.includes('/api/v1')).forEach((x) => x.remove());
+    });
+    await shot(15);
+  }
 
   await login('anja');
   const conn = await page.evaluate(() => JSON.parse(localStorage.getItem('session-chronik.connections'))[0].id);
