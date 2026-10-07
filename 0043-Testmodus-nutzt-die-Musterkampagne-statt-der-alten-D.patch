@@ -1,0 +1,286 @@
+From 869014b0876b046fcc9ac7028d33bee23568e0be Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 7 Oct 2026 17:26:48 +0200
+Subject: [PATCH 43/45] Testmodus nutzt die Musterkampagne statt der alten Demo
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ README.md                     |  4 +++-
+ scripts/screenshots.mjs       | 29 +++++++++++++++++------------
+ src/main.tsx                  |  3 ++-
+ src/mocks/handlers.ts         | 33 +++++++++++++++++----------------
+ src/mocks/installMockFetch.ts | 24 ++++++++++++++++--------
+ 5 files changed, 55 insertions(+), 38 deletions(-)
+
+diff --git a/README.md b/README.md
+index ee5a5c7..b5e93ba 100644
+--- a/README.md
++++ b/README.md
+@@ -58,7 +58,9 @@ Dann <http://localhost:5173> öffnen (am besten in der Handy-Ansicht der Entwick
+ mit beliebigem Namen und Passwort anmelden. Weitere Test-Server im Testmodus:
+ 
+ - `https://nachbarverein.test/einladung/SALZ-2026` unter „Einladung annehmen“ – ein zweiter Server mit Registrierung
+-- `https://taleward.euer-verein.de` – Demo „Die leisen Wasser“, Anmeldung als `anja`, `lea` oder `tom`
++- `https://muster.taleward.invalid` – Musterkampagne „Die leisen Wasser“ (Sprache nach der App), Anmeldung als `anja`
++  (Spielleitung), `lea`, `tom` oder `sina` mit beliebigem Passwort. Dieselbe Kampagne gibt es in der richtigen App unter
++  „Ohne Server ausprobieren“.
+ 
+ ## Entwickeln
+ 
+diff --git a/scripts/screenshots.mjs b/scripts/screenshots.mjs
+index c2be353..c23947f 100644
+--- a/scripts/screenshots.mjs
++++ b/scripts/screenshots.mjs
+@@ -1,5 +1,5 @@
+ /*
+- * Aufnahmen für Website und Store aus dem Testmodus (Demo „Die leisen Wasser“).
++ * Aufnahmen für Website und Store aus dem Testmodus (Musterkampagne „Die leisen Wasser“).
+  *
+  *   npm run build:mock
+  *   npx vite preview --port 4173          (in einem zweiten Fenster laufen lassen)
+@@ -13,7 +13,7 @@ import puppeteer from 'puppeteer-core';
+ 
+ const BASE = process.env.BASE_URL ?? 'http://localhost:4173';
+ const OUT = process.env.OUT_DIR ?? 'screenshots';
+-const SERVER = 'https://taleward.euer-verein.de';
++const SERVER = 'https://muster.taleward.invalid';
+ const DPR = 1080 / 411;
+ const W = 411, H = 2400.9 / DPR; // leicht aufgerundet, damit genau 2400 px entstehen
+ 
+@@ -25,12 +25,12 @@ const CHROME = process.env.CHROME_PATH ?? [
+ if (!CHROME) throw new Error('Chrome/Edge nicht gefunden – bitte CHROME_PATH setzen.');
+ 
+ const L = {
+-  de: { cid: 'c-wasser', next: 'Weiter', askConsent: 'Zustimmen lassen', agree: 'Zustimmen', summarize: 'Zusammenfassung erstellen',
++  de: { cid: 'c-wasser', next: 'Weiter', askConsent: 'Zustimmen lassen', agree: 'Zustimmen',
+     accept: 'Übernehmen', publish: 'Recap veröffentlichen', invite: 'Mitspielende einladen', qr: 'QR-Code zeigen',
+-    all: 'Alle (', world: 'Mitgebrachte Welt', mara: '00000000-0000-4000-8000-000000000001' },
+-  en: { cid: 'c-waters', next: 'Continue', askConsent: 'Ask to agree', agree: 'Agree', summarize: 'Create summary',
++    all: 'Alle (', world: 'Mitgebrachte Welt', mara: '00000000-0000-4000-8000-000000000701' },
++  en: { cid: 'c-waters', next: 'Continue', askConsent: 'Ask to agree', agree: 'Agree',
+     accept: 'Accept', publish: 'Publish recap', invite: 'Invite players', qr: 'Show QR code',
+-    all: 'All (', world: 'Brought-along world', mara: '00000000-0000-4000-8000-000000000101' }
++    all: 'All (', world: 'Brought-along world', mara: '00000000-0000-4000-8000-000000000801' }
+ };
+ 
+ // Welche Aufnahmen in welchem Thema (Stern in der Anfrage = zusätzlich Spielabend)
+@@ -97,11 +97,12 @@ for (const run of RUNS) {
+ 
+   await login('anja');
+   const conn = await page.evaluate(() => JSON.parse(localStorage.getItem('session-chronik.connections'))[0].id);
+-  const k = `/v/${conn}/k/${t.cid}`, s = `/v/${conn}/s/s-${t.cid}-7`;
++  const k = `/v/${conn}/k/${t.cid}`, s = `/v/${conn}/s/s-${t.cid}-8`;
++  // Kapitel 8 hat unsichere Namen; für die Aufnahmen gleich zur Prüfung
++  await page.evaluate((key) => sessionStorage.setItem(key, '1'), `session-chronik.names-skipped.${conn}.s-${t.cid}-8`);
+ 
+   await go(`${k}/aufnahme`); await shot(2);
+   await go(`${s}/stimmen`); await shot(4);
+-  await click(t.summarize); await wait(12000);
+   await go(`${s}/freigabe`);
+   await page.evaluate(() => document.querySelector('details.card summary')?.click());
+   await shot(5);
+@@ -119,7 +120,9 @@ for (const run of RUNS) {
+     await shot(3);
+     await page.evaluate(() => { window.__recTarget = 0; });
+   }
+-  await go(`${s}/freigabe`); await click(t.accept); await wait(500); await click(t.publish); await wait(1500);
++  await go(`${s}/freigabe`); await click(t.accept); await wait(500); await click(t.publish); await wait(500);
++  // Offene Vorschläge: Rückfrage bestätigen
++  await page.evaluate(() => [...document.querySelectorAll('[role=dialog] button')].find((b) => /^(Veröffentlichen|Publish)$/.test(b.textContent.trim()))?.click()); await wait(1500);
+   await go(`${k}/bibel`);
+   await page.evaluate(() => [...document.querySelectorAll('.card-title')].find((c) => c.textContent.trim() === 'Oren Silt')?.closest('.card')?.scrollIntoView({ block: 'start' }));
+   await page.evaluate(() => document.querySelector('.screen-main').scrollBy(0, -12));
+@@ -134,9 +137,11 @@ for (const run of RUNS) {
+ 
+   if (run.shots.some((n) => CHAR.includes(n))) {
+     // Sammlung liegt im Speicher der App; die Demo liefert sie fertig (nur im Testmodus)
+-    const seed = (who) => page.evaluate((lang, w, c) => {
+-      localStorage.setItem('taleward.characters', JSON.stringify(window.__talewardDemo.demoCollection(lang, w, c)));
+-    }, run.lang, who, conn);
++    const seed = (who) => page.evaluate((lang, w) => {
++      const c = JSON.parse(localStorage.getItem('session-chronik.connections')).find((x) => x.user?.username === w);
++      const list = window.__talewardDemo.musterCollection(lang, w, c.id, c.name, `${c.baseUrl}|${c.user.id}`);
++      localStorage.setItem('taleward.characters', JSON.stringify(list));
++    }, run.lang, who);
+     const scrollTo = (text) => page.evaluate((txt) => {
+       [...document.querySelectorAll('h2')].find((h) => h.textContent.trim() === txt)?.scrollIntoView({ block: 'start' });
+       document.querySelector('.screen-main').scrollBy(0, -12);
+diff --git a/src/main.tsx b/src/main.tsx
+index b23e5fc..16cab6b 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -11,6 +11,7 @@ import '@fontsource/alegreya/400-italic.css';
+ import './theme.css';
+ import { App } from './App';
+ import { applyThemeMode } from './themeMode';
++import { getLang } from './i18n';
+ 
+ async function start() {
+   applyThemeMode();
+@@ -23,7 +24,7 @@ async function start() {
+   }
+   if (import.meta.env.VITE_API_MODE === 'mock') {
+     const { installMockFetch } = await import('./mocks/installMockFetch');
+-    installMockFetch();
++    installMockFetch({ lang: getLang() });
+   }
+   // Web-Fassung: installierbar auf dem Startbildschirm (Service Worker nur für die eigenen Dateien)
+   if (import.meta.env.VITE_DIST === 'web' && 'serviceWorker' in navigator) {
+diff --git a/src/mocks/handlers.ts b/src/mocks/handlers.ts
+index d86b7bf..b80ec24 100644
+--- a/src/mocks/handlers.ts
++++ b/src/mocks/handlers.ts
+@@ -1,11 +1,11 @@
+ import { http, HttpResponse, delay } from 'msw';
+-import { DEMO_HOST, DEMO_USERS, demoSpeakers } from './demo';
++import { DEMO_HOST, DEMO_USERS, musterProbe } from './muster/seed';
+ 
+ /** Alle Titelbild-IDs (Schnittstelle 0.4.3) – wie der Server: neue Kampagnen bekommen eines zufällig */
+ const COVER_IDS = ['meadow', 'forest', 'desert', 'city', 'cyber', 'mountains', 'coast', 'swamp', 'dungeon', 'space', 'castle', 'dark-fantasy', 'moonwood', 'ancient-ruins', 'tavern', 'battlefield', 'frozen-north', 'arcane-ruins', 'fairy-wilds', 'underworld', 'storm-coast', 'steampunk', 'post-apocalypse', 'western', 'noir', 'space-opera', 'orient', 'necropolis', 'manor', 'riverside-mystery'];
+ import type { CampaignDocument, CampaignExport, CampaignSummary, Character, ImportStatus, Chronicle, Comment, Correction, WorldEntryIn, WorldEntryStatus, Entry, DatePoll, EntryInput, ProcessingStatus, Proposal, Recap, Session, UncertainTerm, VoteAnswer, VoiceProfile, Member } from '../api/types';
+ import {
+-  ME, NACHBAR_HOST, account, gmNotices, world, type WorldRecord, campaigns, comments, coverImages, datePolls, documents, portraits, proposalsForDocument, seen, entries, gmNotes, proposals, proposalsFor, recaps, sessions, speakersFor, uploads,
++  ME, NACHBAR_HOST, account, gmNotices, world, type WorldRecord, campaigns, comments, coverImages, datePolls, documents, portraits, proposalsForDocument, seen, entries, gmNotes, proposals, proposalsFor, recaps, sessions, speakersFor, uploads, speakerLists, transcripts, uncertainTerms,
+   type MockCampaign, type MockSession
+ } from './db';
+ 
+@@ -125,14 +125,15 @@ function advance(s: MockSession): ProcessingStatus {
+         if (old.recap) recaps[s.id] = { ...old.recap, review: old.recap.review ? { ...old.recap.review, stale: false } : undefined };
+         proposals.push(...old.proposals.map((p) => ({ ...p, decision: 'open' as const })));
+       }
++      const probe = musterProbe(s.campaignId, s.id);
+       if (!recaps[s.id]) {
+         recaps[s.id] = {
+           sessionId: s.id, number: s.number, title: s.title ?? `Kapitel ${s.number}`, publishedAt: null,
+-          text: 'Dies ist ein Test-Recap aus dem nachgeahmten Server. Der echte Server schreibt hier die Zusammenfassung der Session.',
+-          openThreads: ['Offener Faden aus der Testsession']
++          text: probe?.recap ?? 'Dies ist ein Test-Recap aus dem nachgeahmten Server. Der echte Server schreibt hier die Zusammenfassung der Session.',
++          openThreads: probe?.threads ?? ['Offener Faden aus der Testsession']
+         };
+       }
+-      if (!proposals.some((p) => p.sessionId === s.id)) proposals.push(...proposalsFor(s.id));
++      if (!probe && !proposals.some((p) => p.sessionId === s.id)) proposals.push(...proposalsFor(s.id));
+     }
+   }
+   return {
+@@ -152,7 +153,7 @@ function advance(s: MockSession): ProcessingStatus {
+ 
+ // ---------------- Qualitätsprüfung (0.4.6): unsicher erkannte Namen im Testmodus
+ 
+-const uncertain: Record<string, UncertainTerm[]> = {
++const uncertain: Record<string, UncertainTerm[]> = Object.assign(uncertainTerms, {
+   's-c-grau-13': [
+     { id: 'ut1', heard: 'Ilsabeth', alternatives: ['Ilsabet', 'Elisabeth'], occurrences: 4, confidence: 0.41,
+       examples: [{ start: 1790, quote: 'Ilsabeth, kannst du dir den Wachmann ansehen?' }, { start: 1812, quote: 'Danke, Ilsabeth.' }],
+@@ -162,7 +163,7 @@ const uncertain: Record<string, UncertainTerm[]> = {
+     { id: 'ut3', heard: 'Veira', alternatives: ['Veyra', 'Vera'], occurrences: 3, confidence: 0.48,
+       examples: [{ start: 1530, quote: 'Veira, lass sie durch.' }], suggestedEntryId: null, suggestedMemberId: null }
+   ]
+-};
++});
+ 
+ /** Kurzes Test-Transkript rund um die Belegstellen von Kapitel 13 (Korrekturen wirken auch hier) */
+ const transcriptLines: [number, string | null, string][] = [
+@@ -180,14 +181,14 @@ const transcriptLines: [number, string | null, string][] = [
+   [6210, null, 'Das Zeichen ist dasselbe wie auf dem Siegel!'],
+   [6230, 'm-robin', 'Hört ihr das?']
+ ];
+-const transcriptFixes: [string, string][] = [];
++/** Korrekturen je Session, wirken auf die Abschrift */
++const transcriptFixes: Record<string, [string, string][]> = {};
+ 
+ function transcriptFor(sessionId: string) {
++  const fix = (text: string) => (transcriptFixes[sessionId] ?? []).reduce((acc, [a, b]) => replaceWord(acc, a, b), text);
++  if (transcripts[sessionId]) return transcripts[sessionId].map((x) => ({ ...x, text: fix(x.text) }));
+   if (sessionId !== 's-c-grau-13') return [];
+-  return transcriptLines.map(([start, memberId, text], i) => ({
+-    start, end: start + 6, speakerId: `sp${i % 4}`, memberId,
+-    text: transcriptFixes.reduce((acc, [a, b]) => replaceWord(acc, a, b), text)
+-  }));
++  return transcriptLines.map(([start, memberId, text], i) => ({ start, end: start + 6, speakerId: `sp${i % 4}`, memberId, text: fix(text) }));
+ }
+ 
+ /** Recap so, wie diese Person ihn sehen darf: den Prüfteil bekommt nur die SL */
+@@ -403,10 +404,10 @@ export const handlers = [
+     await delay(300);
+     const body = (await request.json()) as { username?: string; password?: string };
+     if (!body.username || !body.password) return err(401, 'invalid_credentials', 'Benutzername und Passwort eingeben.');
+-    // Demo-Server: nur anja, lea, tom – das Token trägt die Person (siehe installMockFetch)
++    // Musterserver: nur anja, lea, tom, sina – das Token trägt die Person (siehe installMockFetch)
+     if (hostKey(request) === DEMO_HOST) {
+       const u = DEMO_USERS[body.username.trim().toLowerCase()];
+-      if (!u) return err(401, 'invalid_credentials', 'Auf dem Demo-Server gibt es anja, lea und tom.');
++      if (!u) return err(401, 'invalid_credentials', 'Auf dem Musterserver gibt es anja, lea, tom und sina.');
+       return HttpResponse.json({ accessToken: `${TOKEN}:${u.id}`, expiresAt: new Date(Date.now() + 864e5 * 30).toISOString(), user: u });
+     }
+     return HttpResponse.json({ accessToken: TOKEN, expiresAt: new Date(Date.now() + 864e5 * 30).toISOString(), user: meUser() });
+@@ -1446,7 +1447,7 @@ export const handlers = [
+   http.get(`${B}/sessions/:id/speakers`, ({ params }) => {
+     const s = sessions.find((x) => x.id === params.id);
+     if (!s || !isGm(s.campaignId)) return err(403, 'forbidden', 'Nur die Spielleitung ordnet Stimmen zu.');
+-    const list = demoSpeakers(s.id) ?? speakersFor();
++    const list = [...(speakerLists[s.id] ?? musterProbe(s.campaignId, s.id)?.speakers ?? speakersFor())];
+     // Mit Stimmprofil wird die eigene Stimme ohne Vorstellungsrunde erkannt
+     if (voiceStatus().status === 'ready') list[0] = { ...list[0], source: 'voice_match', confidence: 0.97, sampleText: '„Also, wo waren wir stehen geblieben?“' };
+     // Nach der Bestätigung (0.4.10): bestätigte Zuordnung mitliefern; ältere Testsessions gelten als wie vorgeschlagen bestätigt
+@@ -1565,7 +1566,7 @@ export const handlers = [
+       uncertain[s.id] = (uncertain[s.id] ?? []).filter((u) => u.heard !== k.heard);
+       const correct = k.correct.trim();
+       if (!correct) continue; // so lassen, nur nicht mehr melden
+-      if (s.id === 's-c-grau-13') transcriptFixes.push([k.heard, correct]);
++      (transcriptFixes[s.id] ??= []).push([k.heard, correct]);
+       if (r) r.text = replaceWord(r.text, k.heard, correct);
+       for (const p of proposals.filter((x) => x.sessionId === s.id)) {
+         p.title = replaceWord(p.title, k.heard, correct);
+diff --git a/src/mocks/installMockFetch.ts b/src/mocks/installMockFetch.ts
+index ec443d3..45869e7 100644
+--- a/src/mocks/installMockFetch.ts
++++ b/src/mocks/installMockFetch.ts
+@@ -1,30 +1,38 @@
+ import { getResponse } from 'msw';
+ import { handlers } from './handlers';
+ import { ME } from './db';
+-import { DEMO_USERS } from './demo';
+-import { demoCollection } from './demoCharacters';
++import { DEMO_USERS, musterCollection, seedMuster } from './muster/seed';
+ 
+ const DEFAULT_ME = { ...ME };
+ 
+ /**
+- * Testmodus: leitet alle Anfragen an /api/v1 auf die nachgeahmten Endpunkte um.
++ * Testmodus: leitet Anfragen an /api/v1 auf die nachgeahmten Endpunkte um.
+  * Bewusst ohne Service Worker, damit es auch in der Android-APK funktioniert.
+  * Die Daten leben nur im Arbeitsspeicher und sind nach einem Neustart zurückgesetzt.
++ *
++ * onlyHost: nur Anfragen an diesen Server abfangen, alles andere geht unverändert hinaus (Musterkampagne in der
++ * richtigen App). lang: Sprache der Musterkampagne.
+  */
+-export function installMockFetch(): void {
++export function installMockFetch(options: { lang: 'de' | 'en'; onlyHost?: string }): void {
++  seedMuster(options.lang);
+   const realFetch = window.fetch.bind(window);
+-  // Für die Aufnahmen (scripts/screenshots.mjs): Demo-Sammlung „Meine Charaktere“
+-  (window as unknown as { __talewardDemo: unknown }).__talewardDemo = { demoCollection };
++  if (!options.onlyHost) {
++    // Für die Aufnahmen (scripts/screenshots.mjs): Sammlung „Meine Charaktere“ der Musterkampagne
++    (window as unknown as { __talewardDemo: unknown }).__talewardDemo = { musterCollection };
++  }
+   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+     const request = new Request(input, init);
+-    if (new URL(request.url).pathname.startsWith('/api/v1/')) {
+-      // Wer fragt? Demo-Tokens tragen die Person („mock-token:u-lea“), sonst der Standard-Nutzer
++    const url = new URL(request.url);
++    if (url.pathname.startsWith('/api/v1/') && (!options.onlyHost || url.hostname === options.onlyHost)) {
++      // Wer fragt? Muster-Tokens tragen die Person („mock-token:u-lea“), sonst der Standard-Nutzer
+       const token = (request.headers.get('Authorization') ?? '').replace(/^Bearer /, '');
+       const id = token.split(':')[1];
+       const who = Object.values(DEMO_USERS).find((u) => u.id === id) ?? DEFAULT_ME;
+       Object.assign(ME, who);
+       const response = await getResponse(handlers, request);
+       if (response) return response;
++      // Musterserver: nie ins Netz, auch nicht bei einem Weg, den der Testmodus nicht kennt
++      if (options.onlyHost) return new Response(JSON.stringify({ code: 'not_found', message: 'Not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+     }
+     return realFetch(input, init);
+   };
