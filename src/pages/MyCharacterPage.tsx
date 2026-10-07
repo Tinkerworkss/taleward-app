@@ -203,9 +203,11 @@ export function MyCharacterPage() {
             const read = ch.sessions.filter((s) => s.recap);
             return (
               <details key={ch.campaign.id + ch.server.url} className="card" style={{ gap: 10 }}>
-                <summary style={{ cursor: 'pointer', minHeight: 32 }}>
-                  <strong>{ch.campaign.title}</strong>
-                  <span className="muted small"> · {tn(read.length, '{n} Kapitel', '{n} Kapitel')} · {t('Stand {date}', { date: formatDate(ch.takenAt) })}</span>
+                <summary>
+                  <span style={{ flex: 1 }}>
+                    <strong>{ch.campaign.title}</strong>
+                    <span className="muted small"> · {tn(read.length, '{n} Kapitel', '{n} Kapitel')} · {t('Stand {date}', { date: formatDate(ch.takenAt) })}</span>
+                  </span>
                 </summary>
                 {read.map((s) => (
                   <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

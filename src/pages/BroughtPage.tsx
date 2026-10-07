@@ -61,7 +61,7 @@ export function BroughtPage() {
 
       {decided.length > 0 && (
         <details className="card" style={{ gap: 10 }}>
-          <summary style={{ cursor: 'pointer', fontWeight: 700, minHeight: 32 }}>{t('Bereits entschieden ({n})', { n: decided.length })}</summary>
+          <summary style={{ fontWeight: 700 }}>{t('Bereits entschieden ({n})', { n: decided.length })}</summary>
           {decided.map((p) => {
             const m = campaign?.members.find((x) => x.id === p.submittedByMemberId);
             return (

@@ -58,7 +58,7 @@ export function LoginSettings({ conn }: { conn: Connection }) {
 
   return (
     <details className="card" style={{ gap: 12 }}>
-      <summary style={{ cursor: 'pointer', fontWeight: 700, minHeight: 32 }}>{t('Anmeldung und E-Mail')}</summary>
+      <summary style={{ fontWeight: 700 }}>{t('Anmeldung und E-Mail')}</summary>
 
       {/* E-Mail */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

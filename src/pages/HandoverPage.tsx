@@ -163,11 +163,12 @@ export function HandoverPage() {
             </div>
           )}
 
+          {players.length > 0 && !target && <span className="muted small">{t('Wähle oben, wer die Spielleitung bekommt.')}</span>}
           {players.length > 0 && (
             <button type="button" className={stepDown ? 'btn danger' : 'btn'} disabled={busy || !target} onClick={handOver}>
               {target
                 ? (stepDown ? t('An {name} übergeben', { name: target.displayName }) : t('{name} zur Spielleitung machen', { name: target.displayName }))
-                : t('Erst oben auswählen')}
+                : t('Übergeben')}
             </button>
           )}
         </>

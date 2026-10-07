@@ -87,7 +87,7 @@ export function Overview() {
           {/* Zuerst, was jetzt zu tun ist: Zustimmung (nur wenn sie fehlt), Charakter, offenes Kapitel, Termin, neuer Recap */}
           {me && !me.recordingConsentAt && <RecordingConsent campaign={campaign} onChanged={load} />}
           {characterIncomplete(me) && (
-            <Link to={p(`/k/${campaignId}/charakter/${me!.id}`)} className="card warn">
+            <Link to={p(`/k/${campaignId}/charakter/${me!.id}`)} className="card task">
               <strong>{t('Dein Charakter ist noch unvollständig')}</strong>
               <span className="muted small">{t('Name, Bild und Kurzbeschreibung helfen allen am Tisch.')}</span>
             </Link>
@@ -95,11 +95,11 @@ export function Overview() {
 
           {/* Stand der Kampagne */}
           {gm && pending.length > 0 && (
-            <Link to={p(`/s/${pending[0].id}`)} className={needsMe(pending[0].state) ? 'card warn' : 'card'}>
+            <Link to={p(`/s/${pending[0].id}`)} className={needsMe(pending[0].state) ? 'card task' : 'card'}>
               <div className="row between">
                 <strong>{t('Kapitel {n}', { n: pending[0].number })}</strong>
-                {/* Rot nur, wenn die SL etwas tun muss; sonst arbeitet gerade der Server */}
-                <span className={needsMe(pending[0].state) ? 'pill seal' : 'pill'}>
+                {/* Hervorgehoben, wenn die SL etwas tun muss; sonst arbeitet gerade der Server. Rot bleibt für Achtung. */}
+                <span className={needsMe(pending[0].state) ? 'pill brass' : 'pill'}>
                   {PENDING_LABEL[pending[0].state] ? t(PENDING_LABEL[pending[0].state]!) : pending[0].state}
                 </span>
               </div>
@@ -112,20 +112,20 @@ export function Overview() {
             </Link>
           )}
           {gm && !!campaign.openCharacterProposals && (
-            <Link to={p(`/k/${campaignId}/mitgebracht`)} className="card warn">
+            <Link to={p(`/k/${campaignId}/mitgebracht`)} className="card task">
               <div className="row between">
                 <strong>{t('Mitgebrachte Welt')}</strong>
-                <span className="pill seal">{tn(campaign.openCharacterProposals, '{n} offen', '{n} offen')}</span>
+                <span className="pill brass">{tn(campaign.openCharacterProposals, '{n} offen', '{n} offen')}</span>
               </div>
               <span className="muted small">{t('Die Charaktere bringen Einträge für die Bibel mit. Tippen zum Prüfen.')}</span>
             </Link>
           )}
           {gm && campaign.gmNotices?.map((n) => <GmNoticeCard key={n.id} campaign={campaign} notice={n} onDone={load} />)}
           {/* Nächste Runde */}
-          <Link to={p(`/k/${campaignId}/termin`)} className={campaign.datePollNeedsMyVote ? 'card warn' : 'card'}>
+          <Link to={p(`/k/${campaignId}/termin`)} className={campaign.datePollNeedsMyVote ? 'card task' : 'card'}>
             <div className="row between">
               <span className="overline">{t('Nächste Runde')}</span>
-              {campaign.datePollNeedsMyVote && <span className="pill seal">{t('Abstimmen')}</span>}
+              {campaign.datePollNeedsMyVote && <span className="pill brass">{t('Abstimmen')}</span>}
             </div>
             {campaign.nextSessionAt
               ? <strong style={{ fontFamily: 'var(--display)', fontSize: 19 }}>{formatDateTime(campaign.nextSessionAt)}</strong>
@@ -220,7 +220,7 @@ export function RecordingConsent({ campaign, onChanged }: { campaign: Campaign; 
       <h2>{t('Aufnahmen')}</h2>
       <p style={{ margin: 0 }}>{CONSENT_SUMMARY(consentCtx)}</p>
       <details>
-        <summary className="small" style={{ cursor: 'pointer', fontWeight: 700, minHeight: 32, display: 'flex', alignItems: 'center' }}>{t('Genauer Wortlaut')}</summary>
+        <summary className="small" style={{ fontWeight: 700 }}>{t('Genauer Wortlaut')}</summary>
         <p className="small" style={{ margin: '4px 0 0' }}>{CONSENT_STANDING(campaign.title, consentCtx)}</p>
       </details>
       <ErrorBox error={error} />
@@ -331,7 +331,7 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved: 
             <span className="muted small">
               {primary
                 ? t('Dieser Server transkribiert Aufnahmen direkt über {provider}. Die Stimmen verlassen dann den Verein – sag es vorher allen am Tisch.', { provider: externalProvider })
-                : t('Ist 24 Stunden lang kein Worker erreichbar, darf der Server ersatzweise {provider} nutzen (kostet wenige Cent pro Stunde Aufnahme). Die Stimmen verlassen dann den Verein – sag es vorher allen am Tisch.', { provider: externalProvider })}
+                : t('Ist 24 Stunden lang kein Worker erreichbar, darf der Server als Ausweichlösung {provider} nutzen (kostet wenige Cent pro Stunde Aufnahme). Die Stimmen verlassen dann den Verein – sag es vorher allen am Tisch.', { provider: externalProvider })}
             </span>
           </div>
         )}
@@ -393,8 +393,8 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved: 
       <div className="row between">
         <h2 style={{ margin: 0 }}>
           <button type="button" className="fold-toggle" aria-expanded={!closed} aria-controls="world-text" onClick={toggleClosed}>
-            <span aria-hidden="true" className="fold-chevron">›</span>
             {t('Die Welt')}
+            <span aria-hidden="true" className="fold-chevron">›</span>
           </button>
         </h2>
         {gm && <button type="button" className="btn ghost small" onClick={() => setEditing(true)}>{t('Bearbeiten')}</button>}
@@ -468,7 +468,7 @@ function Members({ campaign, onChanged }: { campaign: Campaign; onChanged: () =>
       {/* Ausgetretene und gelöschte Konten bleiben im Hintergrund (Kapitel, Kommentare), stehen aber nicht mehr am Tisch */}
       {former.length > 0 && (
         <details className="card" style={{ gap: 2, padding: '8px 12px' }}>
-          <summary className="muted small" style={{ cursor: 'pointer', minHeight: 32, fontWeight: 700 }}>
+          <summary className="muted small" style={{ fontWeight: 700 }}>
             {t('Ehemalige ({n})', { n: former.length })}
           </summary>
           {former.map((m) => (
@@ -589,15 +589,17 @@ function CampaignManage({ campaign, me, onChanged }: { campaign: Campaign; me: M
 
   return (
     <details className="card" style={{ gap: 10 }}>
-      <summary style={{ cursor: 'pointer', fontWeight: 700, minHeight: 32 }}>{gm ? t('Kampagne verwalten') : t('Kampagne verlassen')}</summary>
+      <summary style={{ fontWeight: 700 }}>{gm ? t('Kampagne verwalten') : t('Kampagne verlassen')}</summary>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
       <ErrorBox error={error} />
+      {gm && <span className="overline">{t('Weitergeben')}</span>}
       {gm && (
         <Link className="btn outline" to={p(`/k/${campaign.id}/spielleitung`)}>{t('Spielleitung übergeben')}</Link>
       )}
       {gm && apiAtLeast('0.4.8') && (
         <Link className="btn outline" to={p(`/k/${campaign.id}/umziehen`)}>{t('Kampagne umziehen')}</Link>
       )}
+      {gm && <span className="overline" style={{ marginTop: 6 }}>{t('Beenden')}</span>}
       {gm && (
         <button type="button" className="btn outline" disabled={busy} onClick={() => archive(!campaign.archivedAt)}>
           {campaign.archivedAt ? t('Wieder aufnehmen') : t('Kampagne abschließen')}

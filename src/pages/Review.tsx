@@ -248,9 +248,11 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
 
   return (
     <details className="card" open={reviewNeedsAttention(recap) || undefined}>
-      <summary style={{ cursor: 'pointer', minHeight: 32 }}>
-        <strong>{t('Recap-Entwurf:')}</strong> {recap.title}
-        {recap.review?.state === 'done' && <span className="muted small" style={{ display: 'block' }}>{reportSentence(recap)}</span>}
+      <summary>
+        <span style={{ flex: 1 }}>
+          <strong>{t('Recap-Entwurf:')}</strong> {recap.title}
+          {recap.review?.state === 'done' && <span className="muted small" style={{ display: 'block' }}>{reportSentence(recap)}</span>}
+        </span>
       </summary>
       {/* Mit Gegenprüfung (ab 0.4.6) je Absatz eine Randmarke mit Belegen, sonst der reine Text */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>

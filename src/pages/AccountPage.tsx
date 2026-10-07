@@ -1,13 +1,14 @@
 import { isUnencrypted } from '../api/addresses';
 import { oidcErrorText } from './ConnectPage';
 import { LoginSettings } from '../components/LoginSettings';
+import { ImportCampaign } from '../components/ImportCampaign';
 import { confirmDialog } from '../components/confirm';
 import { ThemeSwitch } from '../themeMode';
 import { NotifySettingsSection } from '../notify/NotifySettings';
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { apiFor } from '../api/client';
-import { APP_VERSION, hasValidToken, isOutdated, removeConnection, type Connection } from '../api/connections';
+import { APP_VERSION, apiAtLeast, hasValidToken, isOutdated, removeConnection, type Connection } from '../api/connections';
 import { useAuth } from '../auth/AuthContext';
 import { IconInfo } from '../components/Icons';
 import { ErrorBox, Screen } from '../components/Screen';
@@ -51,6 +52,7 @@ export function AccountPage() {
 function ConnectionCard({ conn }: { conn: Connection }) {
   const navigate = useNavigate();
   const [deleting, setDeleting] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -141,9 +143,13 @@ function ConnectionCard({ conn }: { conn: Connection }) {
           <button type="button" className="btn small outline" onClick={signOut}>{t('Abmelden')}</button>
         </div>
         <LoginSettings conn={conn} />
+        {/* Umzug von einem anderen Server (ab 0.4.8) – selten gebraucht, darum hier statt auf der Kampagnenliste */}
+        {apiAtLeast('0.4.8', conn) && (importing
+          ? <ImportCampaign servers={[conn]} onCancel={() => setImporting(false)} />
+          : <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start' }} onClick={() => setImporting(true)}>{t('Kampagne aus Datei übernehmen')}</button>)}
         {/* Selten gebraucht – eingeklappt */}
         <details className="card" style={{ gap: 10 }}>
-          <summary style={{ cursor: 'pointer', fontWeight: 700, minHeight: 32 }}>{t('Daten und Konto löschen')}</summary>
+          <summary style={{ fontWeight: 700 }}>{t('Daten und Konto löschen')}</summary>
           <div className="row wrap" style={{ gap: 8 }}>
             <button type="button" className="btn small outline" onClick={exportData}>{t('Meine Daten herunterladen')}</button>
             <button type="button" className="btn small danger outline" onClick={() => setDeleting(true)}>{t('Konto löschen')}</button>

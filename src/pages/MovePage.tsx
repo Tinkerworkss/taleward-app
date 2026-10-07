@@ -73,7 +73,7 @@ export function MovePage() {
             <h2>{t('So geht es')}</h2>
             <ol style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <li>{t('Hier eine Datei der Kampagne erstellen und herunterladen.')}</li>
-              <li>{t('In der App beim neuen Server anmelden und auf der Kampagnenliste „Kampagne aus Datei übernehmen“ wählen.')}</li>
+              <li>{t('In der App beim neuen Server anmelden, dann unter „Konten und Server“ beim neuen Server „Kampagne aus Datei übernehmen“ wählen.')}</li>
               <li>{t('Alle bekommen dort einen freien Platz. Wer mit der Figur aus der eigenen Sammlung beitritt, setzt sich von selbst darauf.')}</li>
             </ol>
             <span className="muted small">{t('Hier auf „{server}“ bleibt alles, wie es ist. Löschen kannst du die Kampagne später selbst.', { server: currentConnection().name })}</span>
@@ -87,7 +87,7 @@ export function MovePage() {
               <>
                 {players.map((m) => (
                   <div key={m.id} className="row" style={{ gap: 10, minHeight: 48 }}>
-                    <Avatar campaignId={campaign.id} member={m} size={32} />
+                    <Avatar campaignId={campaign.id} member={m} size={40} />
                     <span style={{ flex: 1 }}>{m.characterName ?? m.displayName}<span className="muted small"> · {m.displayName}</span></span>
                     <span className={m.moveConsentAt ? 'pill moss' : 'pill'}>{m.moveConsentAt ? t('alles') : t('nur der Name')}</span>
                   </div>
@@ -101,7 +101,7 @@ export function MovePage() {
           </section>
 
           <details className="card">
-            <summary style={{ cursor: 'pointer', fontWeight: 700, minHeight: 32 }}>{t('Was mitgeht und was nicht')}</summary>
+            <summary style={{ fontWeight: 700 }}>{t('Was mitgeht und was nicht')}</summary>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
               <span className="small"><strong>{t('Geht mit:')}</strong> {t('veröffentlichte Kapitel und Recaps, die Bibel mit allem Geheimen, deine Unterlagen, Titelbild, die Plätze am Tisch und – mit Zustimmung – Charakterdaten und Kommentare.')}</span>
               <span className="small"><strong>{t('Bleibt hier:')}</strong> {t('Konten, Namen und E-Mail-Adressen, Einwilligungen, Stimmprofile, Aufnahmen, Abschriften, Vorschläge, Terminabstimmungen, Kapitel in Arbeit und die Freigaben für Cloud-Dienste.')}</span>
@@ -130,7 +130,7 @@ export function MovePage() {
                 {sizeLabel(exp.sizeBytes)}{exp.expiresAt ? ' · ' + t('herunterladbar bis {date}', { date: formatDateFull(exp.expiresAt) }) : ''}
               </span>
               <a className="btn" href={href} target="_blank" rel="noopener noreferrer" download>{t('Herunterladen')}</a>
-              <span className="muted small">{t('Weiter geht es auf dem neuen Server: Kampagnenliste → „Kampagne aus Datei übernehmen“.')}</span>
+              <span className="muted small">{t('Weiter geht es auf dem neuen Server: „Konten und Server“ → „Kampagne aus Datei übernehmen“.')}</span>
             </section>
           )}
           {exp?.state === 'failed' && (

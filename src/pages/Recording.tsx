@@ -367,7 +367,7 @@ export function Recording() {
           </div>
 
           <details className="card">
-            <summary style={{ cursor: 'pointer', fontWeight: 700, minHeight: 32 }}>{t('Vorhandene Aufnahme hochladen')}</summary>
+            <summary style={{ fontWeight: 700 }}>{t('Vorhandene Aufnahme hochladen')}</summary>
             <div className="field" style={{ marginTop: 8 }}>
               <label htmlFor="file-table">{t('Tischaufnahme (eine Datei)')}</label>
               <input id="file-table" type="file" accept="audio/*" disabled={!allConsented} onChange={(e) => pickFile(e.target.files?.[0])} />
