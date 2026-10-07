@@ -44,6 +44,8 @@ jobs:
   signieren:
     needs: bauen
     runs-on: ubuntu-24.04
+    # Signierschlüssel liegen nur in dieser Umgebung; sie ist auf main beschränkt
+    environment: apk-signatur
     permissions: {}
     env:
       CERT_SHA256: 6a3e3ef2210c19d74ea39e372a03061f5096ede1b37a943aaa0121438e2bf573
@@ -61,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           [ -n "$KEYSTORE_B64" ] || { echo "Secret TALEWARD_KEYSTORE_BASE64 fehlt"; exit 1; }
-          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          BT=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
           KS="$RUNNER_TEMP/taleward.jks"
           trap 'rm -f "$KS"' EXIT
           echo "$KEYSTORE_B64" | base64 -d > "$KS"

@@ -122,6 +122,8 @@ jobs:
   veroeffentlichen:
     needs: [release, web, apk]
     runs-on: ubuntu-24.04
+    # Signierschlüssel liegen nur in dieser Umgebung; sie ist auf main beschränkt
+    environment: apk-signatur
     permissions:
       contents: write
     env:
