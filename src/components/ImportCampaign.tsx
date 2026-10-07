@@ -4,6 +4,7 @@ import { apiFor } from '../api/client';
 import type { Connection } from '../api/connections';
 import { t, tk, tn } from '../i18n';
 import { ErrorBox } from './Screen';
+import { Missing } from './Missing';
 
 /** Feste Fehlerschlüssel des Servers beim Import (0.4.8) → Sätze in der Sprache der App */
 const IMPORT_MESSAGES: Record<string, string> = {
@@ -26,9 +27,11 @@ export function ImportCampaign({ servers, onCancel }: { servers: Connection[]; o
   const [phase, setPhase] = useState<'pick' | 'upload' | 'check'>('pick');
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<unknown>(null);
+  const [tried, setTried] = useState(false);
   const conn = servers.find((c) => c.id === serverId) ?? servers[0];
 
   const run = async () => {
+    setTried(true);
     if (!file || !conn) return;
     const api = apiFor(conn);
     setError(null);
@@ -81,13 +84,15 @@ export function ImportCampaign({ servers, onCancel }: { servers: Connection[]; o
               </select>
             </div>
           )}
-          <div className="field">
-            <label htmlFor="ifile">{t('Datei')}</label>
-            <input id="ifile" type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-          </div>
+          <label className="btn outline">
+            {file ? file.name : t('Datei wählen (taleward-kampagne-….zip)')}
+            <input type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden' }} />
+          </label>
           <ErrorBox error={error} />
+          <Missing text={file ? null : t('Bitte zuerst die Datei wählen.')} shown={tried} />
           <div className="row">
-            <button className="btn small" type="button" disabled={!file} onClick={run}>{t('Kampagne übernehmen')}</button>
+            <button className="btn small" type="button" onClick={run}>{t('Kampagne übernehmen')}</button>
             <button className="btn small ghost" type="button" onClick={onCancel}>{t('Abbrechen')}</button>
           </div>
         </>

@@ -14,6 +14,7 @@ import { useAuth } from '../auth/AuthContext';
 import { IconInfo } from '../components/Icons';
 import { Divider, ErrorBox } from '../components/Screen';
 import { MusterTry } from '../components/Muster';
+import { Missing } from '../components/Missing';
 import { LanguageSwitch, t } from '../i18n';
 
 const DEFAULT_SERVER: string = import.meta.env.VITE_API_BASE ?? '';
@@ -44,6 +45,7 @@ export function ConnectPage() {
   const oidc = params.get('oidc');
   const [pendingReg] = useState(() => (oidc === 'register' ? readPendingRegister() : null));
   const [error, setError] = useState<unknown>(null);
+  const [tried, setTried] = useState(false);
 
   // Kommt die Seite über einen Einladungslink (App-Link oder „Einladung annehmen“), gleich weiter prüfen
   useEffect(() => {
@@ -54,6 +56,12 @@ export function ConnectPage() {
   const checkServer = async (e?: FormEvent) => {
     e?.preventDefault();
     setError(null);
+    if (!address.trim()) {
+      setTried(true);
+      document.getElementById('address')?.focus();
+      return;
+    }
+    setTried(false);
     const invite = parseInvite(address);
     let url: string;
     try {
@@ -102,6 +110,8 @@ export function ConnectPage() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!baseUrl || !info) return;
+    setTried(true);
+    if (missing) return;
     setBusy(true);
     setError(null);
     try {
@@ -120,9 +130,17 @@ export function ConnectPage() {
 
   const canRegister = info?.registration === 'invite_only';
   const pwMismatch = mode === 'register' && password2.length > 0 && password !== password2;
-  const ready = mode === 'login'
-    ? !!username.trim() && !!password
-    : !!code.trim() && !!username.trim() && !!displayName.trim() && password.length >= 8 && password === password2 && privacy && age;
+  // Was vor dem Anmelden noch fehlt – der Knopf bleibt antippbar und sagt es dann
+  const missing = mode === 'login'
+    ? (!username.trim() ? t('Bitte den Benutzernamen eingeben.') : !password ? t('Bitte das Passwort eingeben.') : null)
+    : !code.trim() ? t('Bitte den Einladungscode eingeben.')
+    : !displayName.trim() ? t('Bitte deinen Namen eingeben.')
+    : !username.trim() ? t('Bitte einen Benutzernamen eingeben.')
+    : password.length < 8 ? t('Das Passwort braucht mindestens 8 Zeichen.')
+    : password !== password2 ? t('Die Passwörter stimmen nicht überein.')
+    : !privacy ? t('Bitte bestätige, dass du die Datenschutzhinweise gelesen hast.')
+    : !age ? t('Bitte bestätige das Mindestalter.')
+    : null;
 
   return (
     <div className="screen narrow">
@@ -135,15 +153,17 @@ export function ConnectPage() {
 
         {!info && (
           <form onSubmit={checkServer} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <h2>{active.length ? t('Weiteren Server verbinden') : t('Mit einem Server verbinden')}</h2>
+            <h2>{active.length ? t('Weiteren Server verbinden') : t('Ich habe eine Einladung')}</h2>
             <div className="field">
               <label htmlFor="address">{t('Einladungslink oder Serveradresse')}</label>
-              <LinkInput id="address" value={address} onChange={setAddress} placeholder="https://taleward.mein-verein.de/einladung/RABE-4821" />
-              <span className="muted small">{t('Neu dabei: Den Link bekommst du von deiner SL.')}</span>
-              <span className="muted small">{t('Schon ein Konto: Die Adresse deines Servers reicht, z. B. taleward.mein-verein.de. Danach meldest du dich an.')}</span>
+              <LinkInput id="address" value={address} onChange={setAddress} describedBy="address-new address-account"
+                placeholder={t('https://taleward.unser-verein.example/einladung/RABE-4821')} />
+              <span id="address-new" className="muted small">{t('Neu dabei: Den Link bekommst du von deiner SL, als Text oder QR-Code.')}</span>
+              <span id="address-account" className="muted small">{t('Schon ein Konto: Die Adresse deines Servers reicht, z. B. taleward.unser-verein.example. Danach meldest du dich an.')}</span>
             </div>
             <ErrorBox error={error} />
-            <button className="btn" type="submit" disabled={!address.trim() || busy}>{busy ? t('Prüfe Server …') : t('Weiter')}</button>
+            <Missing text={address.trim() ? null : t('Bitte einen Einladungslink oder eine Serveradresse eingeben.')} shown={tried} />
+            <button className="btn" type="submit" disabled={busy}>{busy ? t('Prüfe Server …') : t('Weiter')}</button>
             {MOCK && <p className="muted small" style={{ margin: 0, textAlign: 'center' }}>{t('Testmodus: „/api/v1“ ist der eingebaute Testserver. Zum Ausprobieren eines zweiten Servers: https://nachbarverein.test/einladung/SALZ-2026')}</p>}
             {active.length > 0 && <button type="button" className="btn ghost small" onClick={() => navigate('/')}>{t('Abbrechen')}</button>}
           </form>
@@ -151,6 +171,15 @@ export function ConnectPage() {
         {!info && !params.get('invite') && (
           <>
             <Divider />
+            {active.length === 0 && (
+              <section className="card" aria-labelledby="lead-title">
+                <h2 id="lead-title">{t('Ich will selbst leiten')}</h2>
+                <p className="muted small" style={{ margin: 0 }}>
+                  {t('Jeder Verein und jede Gruppe hat einen eigenen Server. Frag in deinem Verein nach, oder richtet selbst einen ein. Wer ihn betreibt, schickt dir einen Link, danach legst du hier deine Kampagne an.')}
+                </p>
+                <a className="btn outline" href="https://taleward.org/" target="_blank" rel="noopener noreferrer">{t('So richtet ihr einen Server ein')}</a>
+              </section>
+            )}
             <MusterTry />
           </>
         )}
@@ -261,7 +290,8 @@ export function ConnectPage() {
                 </>
               )}
               <ErrorBox error={error} />
-              <button className="btn" type="submit" disabled={!ready || busy}>
+              <Missing text={missing} shown={tried} />
+              <button className="btn" type="submit" disabled={busy}>
                 {busy ? t('Einen Moment …') : mode === 'login' ? (code ? t('Anmelden und beitreten') : t('Anmelden')) : t('Konto anlegen und beitreten')}
               </button>
               {MOCK && <p className="muted small" style={{ margin: 0, textAlign: 'center' }}>{t('Testmodus: beliebiger Benutzername und beliebiges Passwort.')}</p>}
@@ -328,8 +358,16 @@ function RegisterWithProvider({ info, pending }: { info: ServerInfo; pending: Pe
   const [age, setAge] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [tried, setTried] = useState(false);
+  const missing = !code.trim() ? t('Bitte den Einladungscode eingeben.')
+    : !displayName.trim() ? t('Bitte deinen Namen eingeben.')
+    : !privacy ? t('Bitte bestätige, dass du die Datenschutzhinweise gelesen hast.')
+    : !age ? t('Bitte bestätige das Mindestalter.')
+    : null;
 
   const submit = async () => {
+    setTried(true);
+    if (missing) return;
     setBusy(true);
     setError(null);
     try {
@@ -376,7 +414,8 @@ function RegisterWithProvider({ info, pending }: { info: ServerInfo; pending: Pe
         <span>{t('Ich bin mindestens {n} Jahre alt – oder meine Eltern sind einverstanden.', { n: info.minAge })}</span>
       </label>
       <ErrorBox error={error} />
-      <button type="button" className="btn" disabled={busy || !code.trim() || !displayName.trim() || !privacy || !age} onClick={submit}>
+      <Missing text={missing} shown={tried} />
+      <button type="button" className="btn" disabled={busy} onClick={submit}>
         {busy ? t('Einen Moment …') : t('Konto anlegen und beitreten')}
       </button>
     </section>

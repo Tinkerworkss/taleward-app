@@ -1,7 +1,6 @@
 import { listCharacters } from '../characters/store';
 import { serverHasCharacters } from '../characters/sync';
 import { LinkInput } from '../components/LinkInput';
-import { ImportCampaign } from '../components/ImportCampaign';
 import { NotifyPrompt } from '../notify/NotifySettings';
 import { MusterNotice } from '../components/Muster';
 import { UpdateNotices } from '../components/UpdateNotices';
@@ -14,10 +13,11 @@ import { getLang, t, tn } from '../i18n';
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { apiFor, fetchServerInfo } from '../api/client';
-import { APP_VERSION, MIN_API_VERSION, apiAtLeast, hasValidToken, parseInvite, updateConnection, versionLess, type Connection } from '../api/connections';
+import { APP_VERSION, MIN_API_VERSION, hasValidToken, parseInvite, updateConnection, versionLess, type Connection } from '../api/connections';
 import { IconInfo } from '../components/Icons';
 import { useAuth } from '../auth/AuthContext';
 import { Divider, ErrorBox, Screen } from '../components/Screen';
+import { Missing } from '../components/Missing';
 import { formatDate, formatDateTime } from '../components/format';
 
 const newCount = (c: CampaignSummary) => (c.unread ? c.unread.recaps + c.unread.comments + c.unread.bible : 0);
@@ -42,14 +42,22 @@ export function Campaigns() {
   const navigate = useNavigate();
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [failed, setFailed] = useState<Connection[]>([]);
-  const [mode, setMode] = useState<'none' | 'new' | 'join' | 'import'>('none');
+  const [mode, setMode] = useState<'none' | 'new' | 'join'>('none');
   const [value, setValue] = useState('');
   const [serverId, setServerId] = useState<string>('');
   const [language, setLanguage] = useState<'de' | 'en'>(getLang());
   const [system, setSystem] = useState<GameSystem | null>(null);
   const [systemName, setSystemName] = useState('');
   const [actionError, setActionError] = useState<unknown>(null);
+  const [tried, setTried] = useState(false);
   const location = useLocation();
+  // Das Formular steht unter der Liste: beim Öffnen dorthin scrollen, damit man es auf dem Handy sieht
+  useEffect(() => {
+    setTried(false);
+    if (mode === 'none') return;
+    const id = window.setTimeout(() => document.getElementById('cval')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+    return () => window.clearTimeout(id);
+  }, [mode]);
   // Beitritt über einen Einladungslink ist gescheitert (z. B. Code abgelaufen, zu viele Versuche): Feld mit dem Link
   // öffnen und die Meldung des Servers zeigen, damit man es gleich oder später noch einmal versuchen kann
   useEffect(() => {
@@ -100,8 +108,17 @@ export function Campaigns() {
 
   const targetServer = () => active.find((c) => c.id === serverId) ?? active[0];
 
+  const missing = !value.trim()
+    ? (mode === 'new' ? t('Bitte einen Namen für die Kampagne eingeben.') : t('Bitte den Einladungslink oder -code einfügen.'))
+    : null;
+
   const submit = async () => {
     setActionError(null);
+    setTried(true);
+    if (missing) {
+      document.getElementById('cval')?.focus();
+      return;
+    }
     if (mode === 'join') {
       const invite = parseInvite(value);
       if (!invite) {
@@ -192,8 +209,8 @@ export function Campaigns() {
           ) : null}
           {(c.pendingReviewCount > 0 || c.datePollNeedsMyVote) && (
             <div className="row wrap" style={{ gap: 8 }}>
-              {c.pendingReviewCount > 0 && <span className="pill seal">{tn(c.pendingReviewCount, '{n} Kapitel zu prüfen', '{n} Kapitel zu prüfen')}</span>}
-              {c.datePollNeedsMyVote && <span className="pill seal">{t('Termin abstimmen')}</span>}
+              {c.pendingReviewCount > 0 && <span className="pill brass">{tn(c.pendingReviewCount, '{n} Kapitel zu prüfen', '{n} Kapitel zu prüfen')}</span>}
+              {c.datePollNeedsMyVote && <span className="pill brass">{t('Termin abstimmen')}</span>}
             </div>
           )}
         </Link>
@@ -202,7 +219,7 @@ export function Campaigns() {
       {/* Abgeschlossene Kampagnen eingeklappt darunter */}
       {(entries?.filter(({ c }) => c.archivedAt).length ?? 0) > 0 && (
         <details className="card" style={{ gap: 12 }}>
-          <summary style={{ cursor: 'pointer', fontWeight: 700, minHeight: 32 }}>
+          <summary style={{ fontWeight: 700 }}>
             {t('Abgeschlossen ({n})', { n: entries!.filter(({ c }) => c.archivedAt).length })}
           </summary>
           {entries!.filter(({ c }) => c.archivedAt).map(({ conn, c }) => (
@@ -225,14 +242,7 @@ export function Campaigns() {
           <button className="btn outline" type="button" onClick={() => { setMode('join'); setValue(''); }}>
             {t('Einladung annehmen')}
           </button>
-          {active.some((c) => apiAtLeast('0.4.8', c)) && (
-            <button className="btn ghost small" type="button" style={{ alignSelf: 'center' }} onClick={() => setMode('import')}>
-              {t('Kampagne aus Datei übernehmen')}
-            </button>
-          )}
         </>
-      ) : mode === 'import' ? (
-        <ImportCampaign servers={active.filter((c) => apiAtLeast('0.4.8', c))} onCancel={() => setMode('none')} />
       ) : (
         <div className="card">
           <div className="field">
@@ -263,8 +273,9 @@ export function Campaigns() {
             </div>
           )}
           <ErrorBox error={actionError} />
+          <Missing text={missing} shown={tried} />
           <div className="row">
-            <button className="btn small" type="button" disabled={!value.trim() || (mode === 'new' && active.length === 0)} onClick={submit}>
+            <button className="btn small" type="button" disabled={mode === 'new' && active.length === 0} onClick={submit}>
               {mode === 'new' ? t('Anlegen') : t('Beitreten')}
             </button>
             <button className="btn small ghost" type="button" onClick={() => setMode('none')}>

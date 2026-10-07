@@ -6,6 +6,7 @@ import { api, isApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { Campaign, DateOption, DatePoll, VoteAnswer } from '../api/types';
 import { ErrorBox, Screen, rememberCampaign } from '../components/Screen';
+import { Missing } from '../components/Missing';
 import { formatDateTime } from '../components/format';
 
 const ANSWERS: { value: VoteAnswer; label: string }[] = [
@@ -26,6 +27,7 @@ export function DatePollPage() {
   const [error, setError] = useState<unknown>(null);
   const [note, setNote] = useState('');
   const [newDate, setNewDate] = useState('');
+  const [triedDate, setTriedDate] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = async () => {
@@ -172,12 +174,14 @@ export function DatePollPage() {
               <input id="new-date" type="datetime-local" value={newDate} onChange={(e) => setNewDate(e.target.value)}
                 style={{ width: '100%', minHeight: 46, padding: '0 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--rule-strong)', background: 'var(--field)', color: 'var(--ink)', fontFamily: 'var(--text)', fontSize: 17 }} />
             </div>
-            <button type="button" className="btn small" disabled={!newDate || busy}
-              onClick={() => run(async () => {
+            <Missing text={newDate ? null : t('Bitte zuerst Datum und Uhrzeit wählen.')} shown={triedDate} />
+            <button type="button" className="btn small" disabled={busy}
+              onClick={() => { setTriedDate(true); if (newDate) run(async () => {
                 const p = await api.addDateOption(open.id, new Date(newDate).toISOString());
                 setNewDate('');
+                setTriedDate(false);
                 return p;
-              })}>
+              }); }}>
               {t('Vorschlagen')}
             </button>
           </section>

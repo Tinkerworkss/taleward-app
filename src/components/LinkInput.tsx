@@ -9,8 +9,10 @@ import { QrScanner } from './QrScanner';
  * Einfügen aus der Zwischenablage und QR-Code scannen. Die Hauptaktion („Weiter“, „Beitreten“) bleibt der
  * große Knopf darunter; die Symbole sollen nicht mit ihm verwechselt werden.
  */
-export function LinkInput({ id, value, onChange, placeholder, autoFocus }: {
+export function LinkInput({ id, value, onChange, placeholder, autoFocus, describedBy }: {
   id: string;
+  /** ids der Hinweise unter dem Feld, damit ein Screenreader sie beim Feld vorliest */
+  describedBy?: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
@@ -24,7 +26,7 @@ export function LinkInput({ id, value, onChange, placeholder, autoFocus }: {
   return (
     <div className="input-actions">
       <input id={id} type="text" autoCapitalize="none" autoCorrect="off" value={value} autoFocus={autoFocus}
-        placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+        placeholder={placeholder} aria-describedby={describedBy} onChange={(e) => onChange(e.target.value)} />
       <div className="input-actions-buttons">
         <button type="button" className="icon-btn" aria-label={t('Einfügen')} title={t('Einfügen')} onClick={async () => take(await readClipboard())}>
           <IconPaste size={20} />
