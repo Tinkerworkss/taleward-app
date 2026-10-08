@@ -226,6 +226,11 @@ Chapter 9: Sefa at the Hunger Stone. Chapter 10: the stairs behind the reading r
     names: ['Hunger Stone', 'Sefa Morr', 'Ohm Tessel', 'Rell'],
     documents: ['vorbereitung']
   },
+  links: [
+    { key: 'treffpunkt', label: `The group's voice channel`, url: 'https://treffpunkt.example/quiet-waters', shared: true },
+    { key: 'karte', label: `Map of the Senkmoor`, url: 'https://karten.example/senkmoor', shared: true },
+    { key: 'musik', label: `Music: moor at night`, url: 'https://klang.example/moor-at-night', shared: false }
+  ],
   newcomerNotice: `Sina joined in chapter 4 and can't see “Tower mark in the well shaft”, because it was already hidden from Tom before she joined and Juna wasn't there in chapter 2; reveal it to her once Juna learns about it.`,
   collections: {
     lea: [

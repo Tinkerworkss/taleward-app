@@ -181,8 +181,19 @@ export interface Unread {
   bible: number;
 }
 
+/** Verweis auf ein anderes Programm oder eine Seite (ab 0.4.13); öffnet sich außerhalb von Taleward */
+export interface Link {
+  id: string;
+  label: string;
+  url: string;
+  /** true = auch Spieler sehen den Link (nicht bei Szenen) */
+  shared?: boolean;
+}
+
 export interface Campaign extends CampaignSummary {
   description: string;
+  /** Links der Kampagne (ab 0.4.13); Spieler bekommen nur geteilte */
+  links?: Link[];
   /** Spielsystem; null wird wie 'other' behandelt (ab 0.3.3) */
   system?: GameSystem | null;
   /** Freier Name des Systems, v. a. bei 'other' (ab 0.3.3) */
@@ -393,6 +404,8 @@ export interface EntryInput {
    * Spieler bekommen das Feld nie; der Server liefert ihnen verborgene Einträge gar nicht aus (ab 0.3.6).
    */
   hiddenFromMemberIds?: string[];
+  /** Links am Eintrag (ab 0.4.13, höchstens 3); Spieler bekommen nur geteilte */
+  links?: Link[];
 }
 
 export interface Entry extends EntryInput {
@@ -489,6 +502,8 @@ export interface PlanScene {
   notes?: string | null;
   entryIds?: string[];
   state?: 'open' | 'played' | 'skipped';
+  /** Links an der Szene (ab 0.4.13, höchstens 3) */
+  links?: Link[];
 }
 
 export interface ChapterPlanInput {
@@ -499,6 +514,8 @@ export interface ChapterPlanInput {
   scenes?: PlanScene[];
   names?: string[];
   documentIds?: string[];
+  /** Notizen während der Runde (ab 0.4.13) */
+  tableNotes?: string | null;
 }
 
 /** Kapitelplan (ab 0.4.12) – nur für die SL, fließt nie in Kapitel oder Vorschläge (nur names als Schreibhilfe) */
@@ -512,6 +529,8 @@ export interface ChapterPlan {
   scenes: PlanScene[];
   names: string[];
   documentIds: string[];
+  /** Notizen während der Runde (ab 0.4.13; fehlt bei älteren Servern) */
+  tableNotes?: string | null;
   createdAt: string;
   updatedAt: string;
 }

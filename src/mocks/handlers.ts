@@ -3,7 +3,7 @@ import { DEMO_HOST, DEMO_USERS, musterProbe } from './muster/seed';
 
 /** Alle Titelbild-IDs (Schnittstelle 0.4.3) – wie der Server: neue Kampagnen bekommen eines zufällig */
 const COVER_IDS = ['meadow', 'forest', 'desert', 'city', 'cyber', 'mountains', 'coast', 'swamp', 'dungeon', 'space', 'castle', 'dark-fantasy', 'moonwood', 'ancient-ruins', 'tavern', 'battlefield', 'frozen-north', 'arcane-ruins', 'fairy-wilds', 'underworld', 'storm-coast', 'steampunk', 'post-apocalypse', 'western', 'noir', 'space-opera', 'orient', 'necropolis', 'manor', 'riverside-mystery'];
-import type { CampaignDocument, ChapterPlan, ChapterPlanInput, CampaignExport, CampaignSummary, Character, ImportStatus, Chronicle, Comment, Correction, WorldEntryIn, WorldEntryStatus, Entry, DatePoll, EntryInput, ProcessingStatus, Proposal, Recap, Session, UncertainTerm, VoteAnswer, VoiceProfile, Member } from '../api/types';
+import type { CampaignDocument, ChapterPlan, ChapterPlanInput, Link, CampaignExport, CampaignSummary, Character, ImportStatus, Chronicle, Comment, Correction, WorldEntryIn, WorldEntryStatus, Entry, DatePoll, EntryInput, ProcessingStatus, Proposal, Recap, Session, UncertainTerm, VoteAnswer, VoiceProfile, Member } from '../api/types';
 import {
   ME, NACHBAR_HOST, account, gmNotices, world, type WorldRecord, campaigns, comments, coverImages, datePolls, documentTexts, documents, plans, portraits, proposalsForDocument, seen, entries, gmNotes, proposals, proposalsFor, recaps, sessions, speakersFor, uploads, speakerLists, transcripts, uncertainTerms,
   type MockCampaign, type MockSession
@@ -399,6 +399,25 @@ function visibleTo(k: Comment, memberId: string): boolean {
   return k.recipientMemberId === null || k.authorMemberId === memberId || k.recipientMemberId === memberId;
 }
 
+/** Links prüfen wie der Server (ab 0.4.13): nur http(s), keine Zugangsdaten in der Adresse */
+function checkLinks(raw: unknown, max: number): Link[] | string {
+  if (!Array.isArray(raw) || raw.length > max) return `Höchstens ${max} Links.`;
+  const out: Link[] = [];
+  for (const l of raw as Partial<Link>[]) {
+    if (!l?.id || !l.label?.trim() || l.label.length > 60 || !l.url || l.url.length > 2000) return 'Link unvollständig.';
+    let u: URL;
+    try { u = new URL(l.url); } catch { return 'Keine gültige Adresse.'; }
+    if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) return 'Nur Adressen mit http:// oder https:// ohne Zugangsdaten.';
+    out.push({ id: l.id, label: l.label.trim(), url: l.url, shared: !!l.shared });
+  }
+  return out;
+}
+
+/** Spieler bekommen nur geteilte Links */
+function visibleLinks(links: Link[] | undefined, gm: boolean): Link[] {
+  return (links ?? []).filter((l) => gm || l.shared);
+}
+
 export const handlers = [
   http.post(`${B}/auth/login`, async ({ request }) => {
     await delay(300);
@@ -417,7 +436,7 @@ export const handlers = [
     const nachbar = new URL(request.url).hostname === NACHBAR_HOST;
     if (hostKey(request) === DEMO_HOST) {
       return HttpResponse.json({
-        name: 'Taleward', operator: 'Euer Verein e. V.', contact: null, apiVersion: '0.4.12', registration: 'invite_only',
+        name: 'Taleward', operator: 'Euer Verein e. V.', contact: null, apiVersion: '0.4.13', registration: 'invite_only',
         authMethods: ['password'], privacyPolicyUrl: null, minAge: 16, externalTranscription: null,
         minAppVersion: null, latestAppVersion: null, appDownloadUrl: null, releaseNotes: null
       });
@@ -427,7 +446,7 @@ export const handlers = [
       operator: nachbar ? 'Spielgemeinschaft Nachbarort e. V.' : 'Rollenspielverein (Testmodus)',
       contact: nachbar ? 'vorstand@nachbarverein.test' : null,
       // Eingebauter Testserver kann alles bis 0.4.7; der Nachbarverein bleibt alt (zeigt das Ausblenden neuer Funktionen)
-      apiVersion: nachbar ? '0.3.9' : '0.4.12',
+      apiVersion: nachbar ? '0.3.9' : '0.4.13',
       registration: 'invite_only',
       authMethods: ['password'],
       privacyPolicyUrl: null,
@@ -648,7 +667,7 @@ export const handlers = [
       members: [{ id: 'm-' + crypto.randomUUID().slice(0, 8), userId: ME.id, displayName: ME.displayName, characterName: null, role: 'gm' }]
     };
     campaigns.push(c);
-    return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, members: membersFor(c) }, { status: 201 });
+    return HttpResponse.json({ ...summary(c), links: visibleLinks(c.links, isGm(c.id)), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, members: membersFor(c) }, { status: 201 });
   }),
 
   http.post(`${B}/campaigns/join`, async ({ request }) => {
@@ -664,7 +683,7 @@ export const handlers = [
       Object.assign(m, { userId: ME.id, displayName: ME.displayName, openSeat: false, role: 'player' });
       if (body.character) applyCharacter(c, m, body.character);
       (gmNotices[c.id] ??= []).push({ id: 'gn-' + crypto.randomUUID().slice(0, 8), code: 'seat_claimed', memberId: m.id, entryIds: [], createdAt: new Date().toISOString() });
-      return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: false, allowCloudSummary: false, members: membersFor(c) });
+      return HttpResponse.json({ ...summary(c), links: visibleLinks(c.links, isGm(c.id)), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: false, allowCloudSummary: false, members: membersFor(c) });
     }
     const c = campaigns.find((x) => (x.host ?? 'local') === host && x.inviteCode.toUpperCase() === body.code.trim().toUpperCase());
     if (!c) return err(404, 'invite_invalid', 'Dieser Einladungscode ist ungültig oder abgelaufen. Frag deine Spielleitung nach einem neuen.');
@@ -682,13 +701,13 @@ export const handlers = [
       if (partly.length) (gmNotices[c.id] ??= []).push({ id: 'gn-' + crypto.randomUUID().slice(0, 8), code: 'hidden_entries_for_newcomer', memberId: m.id, entryIds: partly.map((e) => e.id), createdAt: new Date().toISOString() });
       seen.chronicle[c.id] = seen.bible[c.id] = new Date().toISOString();
     }
-    return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, members: membersFor(c) });
+    return HttpResponse.json({ ...summary(c), links: visibleLinks(c.links, isGm(c.id)), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, members: membersFor(c) });
   }),
 
   http.get(`${B}/campaigns/:id`, ({ params }) => {
     const c = campaigns.find((x) => x.id === params.id);
     if (!c || !myMember(c)) return err(404, 'not_found', 'Kampagne nicht gefunden.');
-    return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, ...(isGm(c.id) ? { hotwords: c.hotwords ?? [], gmNotices: gmNotices[c.id] ?? [] } : {}), members: membersFor(c) });
+    return HttpResponse.json({ ...summary(c), links: visibleLinks(c.links, isGm(c.id)), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, ...(isGm(c.id) ? { hotwords: c.hotwords ?? [], gmNotices: gmNotices[c.id] ?? [] } : {}), members: membersFor(c) });
   }),
 
   // ---------------- Charaktere (0.4.7)
@@ -830,13 +849,19 @@ export const handlers = [
       }
       c.hotwords = [...new Set((hotwords as string[]).map((w) => w.trim()).filter(Boolean))];
     }
+    const links = (body as { links?: unknown }).links;
+    if (links !== undefined) {
+      const ok = checkLinks(links, 20);
+      if (typeof ok === 'string') return err(400, 'invalid_input', ok);
+      c.links = ok;
+    }
     const archived = (body as { archived?: boolean }).archived;
     if (typeof archived === 'boolean') c.archivedAt = archived ? new Date().toISOString() : null;
     if (body.coverPreset !== undefined) {
       c.coverPreset = body.coverPreset;
       delete coverImages[c.id]; // Motiv gewählt: eigenes Bild entfällt
     }
-    return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, hotwords: c.hotwords ?? [], members: membersFor(c) });
+    return HttpResponse.json({ ...summary(c), links: visibleLinks(c.links, isGm(c.id)), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, hotwords: c.hotwords ?? [], members: membersFor(c) });
   }),
 
   http.patch(`${B}/campaigns/:id/members/:mid`, async ({ params, request }) => {
@@ -935,7 +960,7 @@ export const handlers = [
     if (!seat?.openSeat) return err(409, 'seat_not_open', 'Dieser Platz ist schon besetzt.');
     Object.assign(seat, { userId: ME.id, displayName: ME.displayName, openSeat: false, role: 'gm', recordingConsentAt: me.recordingConsentAt ?? null });
     c.members = c.members.filter((x) => x !== me);
-    return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: false, allowCloudSummary: false, gmNotices: gmNotices[c.id] ?? [], members: membersFor(c) });
+    return HttpResponse.json({ ...summary(c), links: visibleLinks(c.links, isGm(c.id)), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: false, allowCloudSummary: false, gmNotices: gmNotices[c.id] ?? [], members: membersFor(c) });
   }),
 
   http.post(`${B}/campaigns/:id/members/:mid/release`, ({ params }) => {
@@ -1155,6 +1180,13 @@ export const handlers = [
     if (body.title !== undefined && !body.title.trim()) return err(400, 'invalid_input', 'Titel fehlt.');
     const known = new Set(entries.filter((x) => x.campaignId === plan.campaignId).map((x) => x.id));
     if (body.scenes?.some((sc) => (sc.entryIds ?? []).some((id) => !known.has(id)))) return err(400, 'invalid_input', 'Unbekannter Eintrag.');
+    for (const sc of body.scenes ?? []) {
+      if (sc.links === undefined) continue;
+      const ok = checkLinks(sc.links, 3);
+      if (typeof ok === 'string') return err(400, 'invalid_input', ok);
+      sc.links = ok;
+    }
+    if (typeof body.tableNotes === 'string' && body.tableNotes.length > 20000) return err(400, 'invalid_input', 'Notizen zu lang.');
     const { ifUpdatedAt: _, ...change } = body;
     Object.assign(plan, change, { updatedAt: new Date().toISOString() });
     return HttpResponse.json(plan);
@@ -1284,7 +1316,7 @@ export const handlers = [
     if (data.byteLength > 5 * 1024 * 1024) return err(413, 'image_too_large', 'Das Bild ist zu groß (höchstens 5 MB).');
     coverImages[c.id] = { data, type, updatedAt: new Date().toISOString() };
     c.coverPreset = null;
-    return HttpResponse.json({ ...summary(c), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, members: membersFor(c) });
+    return HttpResponse.json({ ...summary(c), links: visibleLinks(c.links, isGm(c.id)), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, members: membersFor(c) });
   }),
 
   http.delete(`${B}/campaigns/:id/cover-image`, ({ params }) => {
@@ -1717,7 +1749,7 @@ export const handlers = [
         .filter((e) => e.campaignId === params.id)
         // Spoilerschutz serverseitig: geheim oder vor mir verborgen = gar nicht ausliefern
         .filter((e) => gm || (e.visibility === 'public' && !(e.hiddenFromMemberIds ?? []).includes(meId)))
-        .map((e) => (gm ? e : { ...e, gmNotes: undefined, hiddenFromMemberIds: undefined, formerHolderMemberId: undefined }))
+        .map((e) => (gm ? e : { ...e, gmNotes: undefined, hiddenFromMemberIds: undefined, formerHolderMemberId: undefined, links: visibleLinks(e.links, false) }))
         .filter((e) => !type || e.type === type)
         .filter((e) => !q || (e.name + ' ' + e.summary + ' ' + (gm ? e.gmNotes ?? '' : '')).toLowerCase().includes(q))
         .sort((a, b) => a.name.localeCompare(b.name, 'de'))
@@ -1731,7 +1763,12 @@ export const handlers = [
     if (body.visibility === 'public' && !(body.summary ?? e.summary)?.trim()) {
       return err(400, 'invalid_input', 'Zum Freigeben braucht der Eintrag einen Text für die Spieler.');
     }
-    Object.assign(e, Object.fromEntries(Object.entries(body).filter(([k]) => ['name', 'summary', 'gmNotes', 'visibility', 'status', 'holderMemberId', 'type', 'hiddenFromMemberIds'].includes(k))));
+    if (body.links !== undefined) {
+      const ok = checkLinks(body.links, 3);
+      if (typeof ok === 'string') return err(400, 'invalid_input', ok);
+      body.links = ok;
+    }
+    Object.assign(e, Object.fromEntries(Object.entries(body).filter(([k]) => ['name', 'summary', 'gmNotes', 'visibility', 'status', 'holderMemberId', 'type', 'hiddenFromMemberIds', 'links'].includes(k))));
     e.updatedAt = new Date().toISOString();
     return HttpResponse.json(e);
   }),

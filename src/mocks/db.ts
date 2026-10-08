@@ -1,4 +1,4 @@
-import type { CampaignDocument, ChapterPlan, Comment, DatePoll, Entry, GmNotice, Member, Proposal, Recap, Session, Speaker, TranscriptSegment, UncertainTerm } from '../api/types';
+import type { CampaignDocument, ChapterPlan, Comment, Link, DatePoll, Entry, GmNotice, Member, Proposal, Recap, Session, Speaker, TranscriptSegment, UncertainTerm } from '../api/types';
 
 // Testdaten, angelehnt an den Klick-Prototyp. Alles erfunden.
 
@@ -29,6 +29,8 @@ export interface MockCampaign {
   archivedAt?: string | null;
   /** Namenshilfe (ab 0.4.6, nur SL) */
   hotwords?: string[];
+  /** Links der Kampagne (ab 0.4.13) */
+  links?: Link[];
   coverPreset: string | null;
   /** Nur im Testmodus: auf welchem „Server“ die Kampagne liegt (fehlt = eingebauter Testserver) */
   host?: string;

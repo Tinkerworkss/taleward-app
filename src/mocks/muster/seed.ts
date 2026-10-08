@@ -68,6 +68,7 @@ export function seedMuster(lang: Lang): void {
     id: cid, host: MUSTER_HOST, title: x.title, description: x.description, worldInfo: x.worldInfo, language: lang,
     system: 'other', systemName: x.systemName, allowCloudSummary: false, allowExternalTranscription: false, hotwords: x.hotwords,
     coverPreset: 'swamp', inviteCode: 'NEBEL-2026', nextSessionAt: null,
+    links: x.links.map((l) => ({ id: `link-${cid}-${l.key}`, label: l.label, url: l.url, shared: l.shared })),
     members: [
       { id: m('anja'), userId: DEMO_USERS.anja.id, displayName: 'Anja', characterName: null, role: 'gm', recordingConsentAt: at(`${JOINED.anja}T18:00:00Z`) },
       ...PLAYERS.map((who) => {

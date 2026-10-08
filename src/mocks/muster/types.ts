@@ -166,6 +166,8 @@ export interface MusterText {
   newcomerNotice: string;
   /** Kapitelplan der SL für Kapitel 9 (ab Schnittstelle 0.4.12, nur SL) */
   plan: MusterPlan;
+  /** Links der Kampagne (ab Schnittstelle 0.4.13); erfundene Adressen unter .example */
+  links: { key: string; label: string; url: string; shared: boolean }[];
   collections: Record<Player, MusterCharacter[]>;
 }
 

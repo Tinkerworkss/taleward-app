@@ -24,6 +24,7 @@ import type { InvitePreview,
   CampaignDocument,
   ChapterPlan,
   ChapterPlanInput,
+  Link,
   DocumentText,
   DocumentKind,
   DatePoll,
@@ -228,6 +229,8 @@ function makeApi(conn: () => Connection) {
       allowCloudSummary?: boolean;
       /** Namenshilfe ganz ersetzen (nur SL, ab 0.4.6) */
       hotwords?: string[];
+      /** Links der Kampagne ganz ersetzen (nur SL, ab 0.4.13) */
+      links?: Link[];
     }
   ) =>
     request<Campaign>('PATCH', `/campaigns/${campaignId}`, { body: change }),
@@ -364,6 +367,7 @@ function makeApi(conn: () => Connection) {
   documentFile: (documentId: string) => request<Blob>('GET', `/documents/${documentId}/file`),
   // Kapitelpläne (ab 0.4.12, nur SL)
   plans: (campaignId: string) => request<ChapterPlan[]>('GET', `/campaigns/${campaignId}/plans`),
+  plan: (planId: string) => request<ChapterPlan>('GET', `/plans/${planId}`),
   createPlan: (campaignId: string, input: ChapterPlanInput) => request<ChapterPlan>('POST', `/campaigns/${campaignId}/plans`, { body: input }),
   updatePlan: (planId: string, change: ChapterPlanInput & { ifUpdatedAt?: string | null }) =>
     request<ChapterPlan>('PATCH', `/plans/${planId}`, { body: change }),

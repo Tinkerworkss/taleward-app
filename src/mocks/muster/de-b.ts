@@ -226,6 +226,11 @@ Kapitel 9: Sefa am Hungerstein. Kapitel 10: die Treppe hinter dem Lesesaal.`,
     names: ['Hungerstein', 'Sefa Morr', 'Ohm Tessel', 'Rell'],
     documents: ['vorbereitung']
   },
+  links: [
+    { key: 'treffpunkt', label: `Sprachkanal der Gruppe`, url: 'https://treffpunkt.example/leise-wasser', shared: true },
+    { key: 'karte', label: `Karte des Senkmoors`, url: 'https://karten.example/senkmoor', shared: true },
+    { key: 'musik', label: `Musik: Moor bei Nacht`, url: 'https://klang.example/moor-bei-nacht', shared: false }
+  ],
   newcomerNotice: `Sina ist seit Kapitel 4 dabei und sieht „Turmzeichen im Brunnenschacht“ nicht, weil der Eintrag schon vor ihrem Beitritt vor Tom verborgen war und Juna in Kapitel 2 nicht dabei war; gib ihn frei, sobald Juna davon erfährt.`,
   collections: {
     lea: [
