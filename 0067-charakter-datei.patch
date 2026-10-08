@@ -1,0 +1,276 @@
+From d71b3be099c8d3af36087632b8b30b556b948081 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 8 Oct 2026 14:58:48 +0200
+Subject: [PATCH] =?UTF-8?q?Meine=20Charaktere:=20einzelnen=20Charakter=20a?=
+ =?UTF-8?q?ls=20Datei=20weitergeben=20(taleward-charakter/1),=20Zusammenf?=
+ =?UTF-8?q?=C3=BChren=20beim=20Zur=C3=BCckholen?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ scripts/tests/character-merge.test.mjs | 48 +++++++++++++++++++++
+ src/characters/backup.ts               | 54 ++++++++++++++---------
+ src/characters/merge.ts                | 60 ++++++++++++++++++++++++++
+ src/i18n/en.ts                         |  6 ++-
+ src/pages/CharactersPage.tsx           |  1 +
+ src/pages/MyCharacterPage.tsx          | 13 ++++++
+ 6 files changed, 161 insertions(+), 21 deletions(-)
+ create mode 100644 scripts/tests/character-merge.test.mjs
+ create mode 100644 src/characters/merge.ts
+
+diff --git a/scripts/tests/character-merge.test.mjs b/scripts/tests/character-merge.test.mjs
+new file mode 100644
+index 0000000..a53a8a7
+--- /dev/null
++++ b/scripts/tests/character-merge.test.mjs
+@@ -0,0 +1,48 @@
++// Charakter-Datei und Sicherung: zwei Stände desselben Charakters zusammenführen
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { mergeCharacter } from '../../src/characters/merge.ts';
++
++const base = {
++  id: 'c1', version: 2, name: 'Litha', status: 'active', notes: 'alt', portrait: null,
++  world: [{ id: 'w1', version: 1, type: 'npc', name: 'Bruder', summary: '', secret: false }],
++  links: [{ connId: 'k1', serverName: 'A', campaignId: 'x', campaignTitle: 'X', memberId: 'm', linkedAt: '2026-01-01', syncedVersion: 2 }],
++  chronicles: { 'k1:x': { takenAt: '2026-05-01T00:00:00Z' } },
++  createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-06-01T00:00:00Z', owners: ['me']
++};
++const known = new Set(['k1', 'k2']);
++
++test('neuer Charakter kommt dazu, unbekannte Server fallen weg', () => {
++  const inc = { ...base, links: [...base.links, { ...base.links[0], connId: 'fremd' }] };
++  const { result, outcome } = mergeCharacter(undefined, inc, known);
++  assert.equal(outcome, 'added');
++  assert.deepEqual(result.links.map((l) => l.connId), ['k1']);
++});
++
++test('gleicher Stand bleibt unverändert', () => {
++  assert.equal(mergeCharacter(base, structuredClone(base), known).outcome, 'unchanged');
++});
++
++test('neuerer Stand gewinnt bei Stammdaten, Besitzer bleiben', () => {
++  const inc = { ...structuredClone(base), name: 'Litha vom Moor', notes: 'neu', version: 3, updatedAt: '2026-07-01T00:00:00Z', owners: undefined };
++  const { result, outcome } = mergeCharacter(base, inc, known);
++  assert.equal(outcome, 'updated');
++  assert.equal(result.name, 'Litha vom Moor');
++  assert.equal(result.notes, 'neu');
++  assert.equal(result.version, 3);
++  assert.deepEqual(result.owners, ['me']);
++});
++
++test('älterer Stand bringt trotzdem neue Abschriften und Einträge mit', () => {
++  const inc = {
++    ...structuredClone(base), name: 'Alt', updatedAt: '2026-02-01T00:00:00Z',
++    world: [{ ...base.world[0], version: 3, name: 'Bruder Tamo' }, { id: 'w2', version: 1, type: 'location', name: 'Dorf', summary: '', secret: true }],
++    chronicles: { 'k1:x': { takenAt: '2026-04-01T00:00:00Z' }, 'k2:y': { takenAt: '2026-03-01T00:00:00Z' } }
++  };
++  const { result, outcome } = mergeCharacter(base, inc, known);
++  assert.equal(outcome, 'updated');
++  assert.equal(result.name, 'Litha', 'Stammdaten vom neueren Stand');
++  assert.deepEqual(result.world.map((w) => [w.id, w.version]), [['w1', 3], ['w2', 1]]);
++  assert.equal(result.chronicles['k1:x'].takenAt, '2026-05-01T00:00:00Z', 'jüngere Abschrift bleibt');
++  assert.ok(result.chronicles['k2:y']);
++});
+diff --git a/src/characters/backup.ts b/src/characters/backup.ts
+index 70b217c..08debab 100644
+--- a/src/characters/backup.ts
++++ b/src/characters/backup.ts
+@@ -7,2 +7,3 @@ import { APP_VERSION, listConnections } from '../api/connections';
+ import { t } from '../i18n';
++import { mergeCharacter } from './merge';
+ import { allStoredCharacters, listCharacters, myAccountKeys, putCharacters, type StoredCharacter } from './store';
+@@ -10,2 +11,11 @@ import { allStoredCharacters, listCharacters, myAccountKeys, putCharacters, type
+ export const BACKUP_FORMAT = 'taleward-charaktere/1';
++/** Ein einzelner Charakter als Datei (zum Weitergeben an ein anderes Gerät) */
++export const CHARACTER_FORMAT = 'taleward-charakter/1';
++
++interface CharacterFileData {
++  format: typeof CHARACTER_FORMAT;
++  exportedAt: string;
++  appVersion: string;
++  character: StoredCharacter;
++}
+ 
+@@ -24,2 +34,10 @@ export function backupFile(now = new Date()): File {
+ 
++/** Datei mit einem Charakter: Stammdaten, Bild, mitgebrachte Welt, Abschriften und private Notizen */
++export function characterFile(c: StoredCharacter, now = new Date()): File {
++  const { owners: _owners, ...character } = c;
++  const data: CharacterFileData = { format: CHARACTER_FORMAT, exportedAt: now.toISOString(), appVersion: APP_VERSION, character: character as StoredCharacter };
++  const slug = c.name.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '').replace(/ß/g, 'ss').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'charakter';
++  return new File([JSON.stringify(data)], `taleward-charakter-${slug}.json`, { type: 'application/json' });
++}
++
+ /** Auf dem Handy über „Teilen“ (Speichern, Mail …), im Browser als Download */
+@@ -56,7 +74,9 @@ export interface RestoreResult { added: number; updated: number; unchanged: numb
+ /**
+- * Sicherung zurückholen. Neue Charaktere kommen dazu, vorhandene werden nur durch einen neueren Stand ersetzt.
+- * Verknüpfungen mit Servern, die dieses Gerät nicht kennt, fallen weg (dort muss man sich erst anmelden).
++ * Sicherung oder Charakter-Datei zurückholen. Neue Charaktere kommen dazu; bei vorhandenen gewinnt der neuere Stand,
++ * Abschriften und mitgebrachte Welt werden zusammengeführt (siehe merge.ts). Verknüpfungen mit Servern, die dieses
++ * Gerät nicht kennt, fallen weg (dort muss man sich erst anmelden).
+  */
+ export function restoreBackup(text: string): RestoreResult {
+-  let data: Partial<BackupFile>;
++  const wrong = () => new Error(t('Das ist weder eine Charakter-Datei noch eine Sicherung der Sammlung.'));
++  let data: { format?: string; characters?: unknown[]; character?: unknown } | null;
+   try {
+@@ -64,7 +84,8 @@ export function restoreBackup(text: string): RestoreResult {
+   } catch {
+-    throw new Error(t('Das ist keine Sicherung der Charakter-Sammlung.'));
+-  }
+-  if (data?.format !== BACKUP_FORMAT || !Array.isArray(data.characters)) {
+-    throw new Error(t('Das ist keine Sicherung der Charakter-Sammlung.'));
++    throw wrong();
+   }
++  let incoming: unknown[];
++  if (data?.format === BACKUP_FORMAT && Array.isArray(data.characters)) incoming = data.characters;
++  else if (data?.format === CHARACTER_FORMAT && data.character) incoming = [data.character];
++  else throw wrong();
+   const known = new Set(listConnections().map((c) => c.id));
+@@ -76,16 +97,9 @@ export function restoreBackup(text: string): RestoreResult {
+   const take: StoredCharacter[] = [];
+-  for (const c of data.characters.filter(valid)) {
++  for (const raw of incoming.filter(valid)) {
++    const c: StoredCharacter = { ...raw, notes: isText(raw.notes) ? raw.notes : '' };
+     const old = all.get(c.id);
+-    if (old && Date.parse(old.updatedAt) >= Date.parse(c.updatedAt)) {
+-      result.unchanged++;
+-      continue;
+-    }
+-    take.push({
+-      ...c,
+-      notes: isText(c.notes) ? c.notes : '',
+-      owners: [...new Set([...(old?.owners ?? []), ...mine])],
+-      links: c.links.filter((l) => l && known.has(l.connId))
+-    });
+-    if (old) result.updated++;
+-    else result.added++;
++    const { result: merged, outcome } = mergeCharacter(old, c, known);
++    result[outcome]++;
++    if (outcome === 'unchanged') continue;
++    take.push({ ...merged, owners: [...new Set([...(old?.owners ?? []), ...mine])] });
+   }
+diff --git a/src/characters/merge.ts b/src/characters/merge.ts
+new file mode 100644
+index 0000000..1237a58
+--- /dev/null
++++ b/src/characters/merge.ts
+@@ -0,0 +1,60 @@
++/*
++ * Zwei Stände desselben Charakters zusammenführen (Charakter-Datei, Sicherung). Ohne Laufzeit-Importe, damit der Test
++ * (scripts/tests/character-merge.test.mjs) die Datei direkt laden kann.
++ *
++ * - Stammdaten, Bild und private Notizen: der neuere Stand (updatedAt) gewinnt.
++ * - Mitgebrachte Welt: beide Listen vereinigt, je Eintrag gewinnt die höhere Version.
++ * - Abschriften: beide vereinigt, je Kampagne gewinnt die jüngere Abschrift.
++ * - Verknüpfungen mit Kampagnen: vereinigt, nur zu Servern, die dieses Gerät kennt.
++ */
++import type { CharacterLink, StoredCharacter } from './store';
++
++export type MergeOutcome = 'added' | 'updated' | 'unchanged';
++
++const time = (s: string | null | undefined) => (s ? Date.parse(s) || 0 : 0);
++
++export function mergeCharacter(
++  old: StoredCharacter | undefined,
++  incoming: StoredCharacter,
++  knownConnIds: Set<string>
++): { result: StoredCharacter; outcome: MergeOutcome } {
++  const links = (list: CharacterLink[]) => list.filter((l) => l && knownConnIds.has(l.connId));
++  if (!old) return { result: { ...incoming, links: links(incoming.links) }, outcome: 'added' };
++
++  const newer = time(incoming.updatedAt) > time(old.updatedAt);
++  const base = newer ? incoming : old;
++
++  const world = new Map(old.world.map((w) => [w.id, w]));
++  for (const w of incoming.world) {
++    const have = world.get(w.id);
++    if (!have || w.version > have.version) world.set(w.id, w);
++  }
++
++  const chronicles = { ...old.chronicles };
++  for (const [k, ch] of Object.entries(incoming.chronicles)) {
++    if (!chronicles[k] || time(ch.takenAt) > time(chronicles[k].takenAt)) chronicles[k] = ch;
++  }
++
++  const allLinks = [...old.links];
++  for (const l of links(incoming.links)) {
++    if (!allLinks.some((x) => x.connId === l.connId && x.campaignId === l.campaignId)) allLinks.push(l);
++  }
++
++  const result: StoredCharacter = {
++    ...base,
++    id: old.id,
++    version: Math.max(old.version, incoming.version),
++    world: [...world.values()],
++    chronicles,
++    links: allLinks,
++    createdAt: time(old.createdAt) && time(old.createdAt) <= time(incoming.createdAt) ? old.createdAt : incoming.createdAt,
++    owners: old.owners
++  };
++
++  const changed = newer
++    || result.world.length !== old.world.length
++    || result.world.some((w) => old.world.find((x) => x.id === w.id)?.version !== w.version)
++    || Object.keys(chronicles).some((k) => chronicles[k] !== old.chronicles[k])
++    || allLinks.length !== old.links.length;
++  return { result: changed ? result : old, outcome: changed ? 'updated' : 'unchanged' };
++}
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 5061154..0a19bdf 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -1013,3 +1013,2 @@ export const en: Record<string, string> = {
+   "Ausblenden": "Hide",
+-  "Das ist keine Sicherung der Charakter-Sammlung.": "This is not a backup of the character collection.",
+   "Melde dich erst bei einem Server an, dann kannst du die Sammlung zurückholen.": "Sign in to a server first, then you can restore the collection.",
+@@ -1149,2 +1148,7 @@ export const en: Record<string, string> = {
+   "Alles hier ist erfunden und bleibt auf diesem Gerät. Probier ruhig alles aus; nach einem Neustart der App ist es wieder wie vorher.": "Everything here is made up and stays on this device. Try whatever you like; after restarting the app it’s back to how it was.",
++  "Das ist weder eine Charakter-Datei noch eine Sicherung der Sammlung.": "This is neither a character file nor a backup of the collection.",
++  "Als Datei weitergeben": "Pass on as a file",
++  "Zum Beispiel auf dein Tablet oder ein neues Handy: Dort unter „Meine Charaktere“ → „Sammlung sichern“ → „Aus Datei zurückholen“. Die Datei enthält auch deine privaten Notizen und Abschriften.": "For example to your tablet or a new phone: there, go to “My characters” → “Back up collection” → “Restore from a file”. The file also contains your private notes and copies.",
++  "{name} als Datei speichern": "Save {name} as a file",
++  "„Aus Datei zurückholen“ nimmt auch einzelne Charakter-Dateien an. Gibt es den Charakter hier schon, gewinnt der neuere Stand; Abschriften und mitgebrachte Welt werden zusammengeführt.": "“Restore from a file” also accepts single character files. If the character already exists here, the newer version wins; copies and brought-in world are merged.",
+ };
+diff --git a/src/pages/CharactersPage.tsx b/src/pages/CharactersPage.tsx
+index 311dbfe..1816264 100644
+--- a/src/pages/CharactersPage.tsx
++++ b/src/pages/CharactersPage.tsx
+@@ -110,2 +110,3 @@ export function CharactersPage() {
+             <span className="small">{t('Sichere deine Charaktere ab und zu als Datei. Auf einem neuen Gerät holst du sie damit zurück. Die Datei enthält auch deine privaten Notizen – gib sie nicht weiter.')}</span>
++            <span className="muted small">{t('„Aus Datei zurückholen“ nimmt auch einzelne Charakter-Dateien an. Gibt es den Charakter hier schon, gewinnt der neuere Stand; Abschriften und mitgebrachte Welt werden zusammengeführt.')}</span>
+             <ErrorBox error={backupError} />
+diff --git a/src/pages/MyCharacterPage.tsx b/src/pages/MyCharacterPage.tsx
+index 3c5895b..8c459a2 100644
+--- a/src/pages/MyCharacterPage.tsx
++++ b/src/pages/MyCharacterPage.tsx
+@@ -5,2 +5,3 @@ import { activeConnections, type Connection } from '../api/connections';
+ import type { CampaignSummary, CharacterStatus } from '../api/types';
++import { characterFile, saveOrShare } from '../characters/backup';
+ import { CharacterEditor } from '../characters/CharacterEditor';
+@@ -29,2 +30,3 @@ export function MyCharacterPage() {
+   const [picking, setPicking] = useState(false);
++  const [fileError, setFileError] = useState<unknown>(null);
+ 
+@@ -68,2 +70,7 @@ export function MyCharacterPage() {
+ 
++  const shareFile = async () => {
++    setFileError(null);
++    try { await saveOrShare(characterFile(c), c.name); } catch (e) { setFileError(e); }
++  };
++
+   const remove = async () => {
+@@ -231,2 +238,8 @@ export function MyCharacterPage() {
+       <Divider />
++      <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
++        <h2>{t('Als Datei weitergeben')}</h2>
++        <span className="small">{t('Zum Beispiel auf dein Tablet oder ein neues Handy: Dort unter „Meine Charaktere“ → „Sammlung sichern“ → „Aus Datei zurückholen“. Die Datei enthält auch deine privaten Notizen und Abschriften.')}</span>
++        <ErrorBox error={fileError} />
++        <button type="button" className="btn outline" style={{ alignSelf: 'flex-start' }} onClick={shareFile}>{t('{name} als Datei speichern', { name: c.name })}</button>
++      </section>
+       <button type="button" className="btn danger outline" onClick={remove}>{t('Aus der Sammlung löschen')}</button>
