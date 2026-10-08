@@ -1,0 +1,201 @@
+From c252d67d179590a41887f995b95c0cc6b3927eb1 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 8 Oct 2026 09:15:22 +0200
+Subject: [PATCH 57/58] =?UTF-8?q?SL-Schirm:=20Kurzfassung=20f=C3=BCr=20kle?=
+ =?UTF-8?q?ine=20Karten?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ src/i18n/en.ts           |  7 +++++++
+ src/table/BiblePanel.tsx | 32 +++++++++++++++++++++++++++++---
+ src/table/DocsPanel.tsx  | 18 ++++++++++++------
+ src/table/GroupPanel.tsx | 26 +++++++++++++++++++++++++-
+ src/table/PlanPanel.tsx  | 30 +++++++++++++++++++++++++++++-
+ 5 files changed, 102 insertions(+), 11 deletions(-)
+
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 3b7b250..22741b3 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -1077,2 +1077,9 @@ export const en: Record<string, string> = {
+   "Die Gruppe": "The group",
++  "{n} von {total} haben der Aufnahme zugestimmt. Gruppe groß öffnen.": "{n} of {total} have agreed to the recording. Open the group large.",
++  "{n} von {total} haben der Aufnahme zugestimmt.": "{n} of {total} have agreed to the recording.",
++  "Noch kein Plan.": "No plan yet.",
++  "{n} von {total} Szenen erledigt": "{n} of {total} scenes done",
++  "Jetzt:": "Now:",
++  "Gespielt": "Played",
++  "Alle Szenen erledigt.": "All scenes done.",
+ };
+diff --git a/src/table/BiblePanel.tsx b/src/table/BiblePanel.tsx
+index 34bd3da..33d6342 100644
+--- a/src/table/BiblePanel.tsx
++++ b/src/table/BiblePanel.tsx
+@@ -15,3 +15,3 @@ const UNDO_SECONDS = 10;
+  */
+-export function BiblePanel({ campaignId, members, query, onQuery, focusEntryId }: {
++export function BiblePanel({ campaignId, members, query, onQuery, focusEntryId, compact, onEntry }: {
+   campaignId: string;
+@@ -22,2 +22,5 @@ export function BiblePanel({ campaignId, members, query, onQuery, focusEntryId }
+   focusEntryId: string | null;
++  /** Kleine Karte: nur Suchfeld und die besten Treffer; Tippen öffnet die Bibel groß */
++  compact?: boolean;
++  onEntry?: (entryId: string) => void;
+ }) {
+@@ -33,7 +36,8 @@ export function BiblePanel({ campaignId, members, query, onQuery, focusEntryId }
+ 
++  const loaded = entries !== null;
+   useEffect(() => {
+-    if (!focusEntryId) return;
++    if (!focusEntryId || !loaded) return;
+     setOpen(focusEntryId);
+     window.setTimeout(() => document.getElementById(`tb-${focusEntryId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+-  }, [focusEntryId]);
++  }, [focusEntryId, loaded]);
+ 
+@@ -78,2 +82,24 @@ export function BiblePanel({ campaignId, members, query, onQuery, focusEntryId }
+ 
++  if (compact) {
++    return (
++      <div className="table-panel-body">
++        <div className="field">
++          <label htmlFor="tbc-search">{t('Wer war das?')}</label>
++          <input id="tbc-search" type="search" value={query} placeholder={t('Name, Ort, Gegenstand …')} onChange={(ev) => onQuery(ev.target.value)} />
++        </div>
++        <ErrorBox error={error} />
++        {query.trim() && shown?.length === 0 && <span className="muted small">{t('Nichts gefunden für „{q}“.', { q: query })}</span>}
++        {query.trim() && (shown?.length ?? 0) > 0 && (
++          <div className="row wrap" style={{ gap: 6 }}>
++            {shown!.slice(0, 4).map((e) => (
++              <button key={e.id} type="button" className="btn small outline" onClick={() => onEntry?.(e.id)}>
++                {e.name}{e.visibility === 'gm_only' ? ' · ' + t('Nur SL') : ''}
++              </button>
++            ))}
++          </div>
++        )}
++      </div>
++    );
++  }
++
+   return (
+diff --git a/src/table/DocsPanel.tsx b/src/table/DocsPanel.tsx
+index cb38534..9e6d017 100644
+--- a/src/table/DocsPanel.tsx
++++ b/src/table/DocsPanel.tsx
+@@ -5,3 +5,3 @@ import type { CampaignDocument, DocumentText } from '../api/types';
+ import { ErrorBox } from '../components/Screen';
+-import { t } from '../i18n';
++import { t, tn } from '../i18n';
+ import { matchScore } from '../search/fuzzy';
+@@ -19,3 +19,9 @@ function Highlight({ text, query }: { text: string; query: string }) {
+  */
+-export function DocsPanel({ campaignId, docId, onDoc }: { campaignId: string; docId: string | null; onDoc: (id: string | null) => void }) {
++export function DocsPanel({ campaignId, docId, onDoc, compact }: {
++  campaignId: string;
++  docId: string | null;
++  onDoc: (id: string | null) => void;
++  /** Kleine Karte: nur die Titel; Tippen öffnet die Unterlage groß */
++  compact?: boolean;
++}) {
+   const [docs, setDocs] = useState<CampaignDocument[] | null>(null);
+@@ -32,5 +38,5 @@ export function DocsPanel({ campaignId, docId, onDoc }: { campaignId: string; do
+     setQuery('');
+-    if (!docId) return;
++    if (!docId || compact) return;
+     api.documentText(docId).then(setText).catch(setError);
+-  }, [docId]);
++  }, [docId, compact]);
+ 
+@@ -47,3 +53,3 @@ export function DocsPanel({ campaignId, docId, onDoc }: { campaignId: string; do
+ 
+-  const doc = docs?.find((d) => d.id === docId) ?? null;
++  const doc = compact ? null : docs?.find((d) => d.id === docId) ?? null;
+   const pages = text?.pages.filter((pg) => !query.trim() || matchScore(query, pg.text) > 0) ?? [];
+@@ -61,3 +67,3 @@ export function DocsPanel({ campaignId, docId, onDoc }: { campaignId: string; do
+                 <strong>{d.title}</strong>
+-                <span className="muted small">{d.pageCount ? ' · ' + t('{n} Seiten', { n: d.pageCount }) : ''}</span>
++                <span className="muted small">{d.pageCount ? ' · ' + tn(d.pageCount, '{n} Seite', '{n} Seiten') : ''}</span>
+               </span>
+diff --git a/src/table/GroupPanel.tsx b/src/table/GroupPanel.tsx
+index 194d8cb..68b3ab5 100644
+--- a/src/table/GroupPanel.tsx
++++ b/src/table/GroupPanel.tsx
+@@ -14,3 +14,9 @@ import { t, tn } from '../i18n';
+  */
+-export function GroupPanel({ campaign, onEntry }: { campaign: Campaign; onEntry: (entryId: string) => void }) {
++export function GroupPanel({ campaign, onEntry, compact, onExpand }: {
++  campaign: Campaign;
++  onEntry: (entryId: string) => void;
++  /** Kleine Karte: Wappen und Zustimmung; Tippen öffnet die Gruppe groß */
++  compact?: boolean;
++  onExpand?: () => void;
++}) {
+   const [brought, setBrought] = useState<Proposal[]>([]);
+@@ -34,2 +40,20 @@ export function GroupPanel({ campaign, onEntry }: { campaign: Campaign; onEntry:
+ 
++  if (compact) {
++    const agreed = players.filter((m) => m.recordingConsentAt).length;
++    return (
++      <div className="table-panel-body">
++        <button type="button" className="table-group-compact" onClick={onExpand}
++          aria-label={t('{n} von {total} haben der Aufnahme zugestimmt. Gruppe groß öffnen.', { n: agreed, total: players.length })}>
++          {players.map((m) => (
++            <span key={m.id} className="table-group-face" title={m.characterName ?? m.displayName}>
++              <Avatar campaignId={campaign.id} member={m} size={44} />
++              <span className={m.recordingConsentAt ? 'table-consent yes' : 'table-consent'} aria-hidden>{m.recordingConsentAt ? <IconCheck size={12} /> : '!'}</span>
++            </span>
++          ))}
++        </button>
++        <span className="small muted">{t('{n} von {total} haben der Aufnahme zugestimmt.', { n: agreed, total: players.length })}</span>
++      </div>
++    );
++  }
++
+   return (
+diff --git a/src/table/PlanPanel.tsx b/src/table/PlanPanel.tsx
+index bc8fc79..0e746c9 100644
+--- a/src/table/PlanPanel.tsx
++++ b/src/table/PlanPanel.tsx
+@@ -24,3 +24,3 @@ function pickPlan(plans: ChapterPlan[]): ChapterPlan | null {
+  */
+-export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc }: {
++export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc, compact }: {
+   campaignId: string;
+@@ -30,2 +30,4 @@ export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc }: {
+   onDoc: (docId: string) => void;
++  /** Kleine Karte: nur die nächste offene Szene zum Abhaken */
++  compact?: boolean;
+ }) {
+@@ -77,2 +79,28 @@ export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc }: {
+ 
++  if (compact) {
++    const current = plan?.scenes.find((sc) => (sc.state ?? 'open') === 'open');
++    const done = plan?.scenes.filter((sc) => sc.state === 'played' || sc.state === 'skipped').length ?? 0;
++    return (
++      <div className="table-panel-body">
++        <ErrorBox error={error} />
++        {!plans && !error && <div className="muted small">{t('Lade …')}</div>}
++        {plans && !plan && <span className="muted small">{t('Noch kein Plan.')}</span>}
++        {plan && (
++          <>
++            <span className="small"><strong>{plan.title}</strong> · {t('{n} von {total} Szenen erledigt', { n: done, total: plan.scenes.length })}</span>
++            {current ? (
++              <div className="row between" style={{ gap: 8, alignItems: 'center' }}>
++                <span style={{ flex: 1, minWidth: 0 }}>{t('Jetzt:')} <strong>{current.title}</strong></span>
++                <button type="button" className="btn small outline"
++                  onClick={() => save({ scenes: plan.scenes.map((x) => (x.id === current.id ? { ...x, state: 'played' } : x)) })}>
++                  {t('Gespielt')}
++                </button>
++              </div>
++            ) : plan.scenes.length > 0 && <span className="muted small">{t('Alle Szenen erledigt.')}</span>}
++          </>
++        )}
++      </div>
++    );
++  }
++
+   if (editing && plan) {
