@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 8 Oct 2026 20:12:00 +0200
+Subject: [PATCH] Fassung 0.18.2
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ package-lock.json | 4 ++--
+ package.json      | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/package-lock.json b/package-lock.json
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "taleward-app",
+-  "version": "0.18.1",
++  "version": "0.18.2",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "taleward-app",
+-      "version": "0.18.1",
++      "version": "0.18.2",
+       "dependencies": {
+         "@capacitor/android": "^8.5.2",
+         "@capacitor/app": "^8.1.1",
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "taleward-app",
+   "private": true,
+-  "version": "0.18.1",
++  "version": "0.18.2",
+   "type": "module",
+   "scripts": {
+     "dev": "vite",
