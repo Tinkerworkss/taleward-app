@@ -108,6 +108,7 @@ export function CharactersPage() {
           <details className="card" open={list.length === 0 || undefined}>
             <summary style={{ fontWeight: 700 }}>{t('Sammlung sichern')}</summary>
             <span className="small">{t('Sichere deine Charaktere ab und zu als Datei. Auf einem neuen Gerät holst du sie damit zurück. Die Datei enthält auch deine privaten Notizen – gib sie nicht weiter.')}</span>
+            <span className="muted small">{t('„Aus Datei zurückholen“ nimmt auch einzelne Charakter-Dateien an. Gibt es den Charakter hier schon, gewinnt der neuere Stand; Abschriften und mitgebrachte Welt werden zusammengeführt.')}</span>
             <ErrorBox error={backupError} />
             {restored && <span className="small" role="status">{restored}</span>}
             <div className="row wrap" style={{ gap: 8 }}>

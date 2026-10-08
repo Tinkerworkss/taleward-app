@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiFor } from '../api/client';
 import { activeConnections, type Connection } from '../api/connections';
 import type { CampaignSummary, CharacterStatus } from '../api/types';
+import { characterFile, saveOrShare } from '../characters/backup';
 import { CharacterEditor } from '../characters/CharacterEditor';
 import { STATUS_LABEL, worldState } from '../characters/labels';
 import { CharacterPortrait } from '../characters/Portrait';
@@ -27,6 +28,7 @@ export function MyCharacterPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [picking, setPicking] = useState(false);
+  const [fileError, setFileError] = useState<unknown>(null);
 
   useEffect(() => onCharactersChanged(() => setC(getCharacter(characterId))), [characterId]);
   // Stand der eingereichten Einträge still nachladen
@@ -64,6 +66,11 @@ export function MyCharacterPage() {
   const release = async (l: CharacterLink) => {
     if (!(await confirmDialog(t('{name} von „{campaign}“ lösen? Dort bleibt der bisherige Stand stehen, er wird nur nicht mehr abgeglichen.', { name: c.name, campaign: l.campaignTitle }), { confirmLabel: t('Lösen') }))) return;
     run('release:' + l.campaignId, () => releaseFromCampaign(c.id, l));
+  };
+
+  const shareFile = async () => {
+    setFileError(null);
+    try { await saveOrShare(characterFile(c), c.name); } catch (e) { setFileError(e); }
   };
 
   const remove = async () => {
@@ -229,6 +236,12 @@ export function MyCharacterPage() {
       )}
 
       <Divider />
+      <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <h2>{t('Als Datei weitergeben')}</h2>
+        <span className="small">{t('Zum Beispiel auf dein Tablet oder ein neues Handy: Dort unter „Meine Charaktere“ → „Sammlung sichern“ → „Aus Datei zurückholen“. Die Datei enthält auch deine privaten Notizen und Abschriften.')}</span>
+        <ErrorBox error={fileError} />
+        <button type="button" className="btn outline" style={{ alignSelf: 'flex-start' }} onClick={shareFile}>{t('{name} als Datei speichern', { name: c.name })}</button>
+      </section>
       <button type="button" className="btn danger outline" onClick={remove}>{t('Aus der Sammlung löschen')}</button>
 
       {worldItem !== undefined && <WorldItemDialog character={c} item={worldItem} onClose={() => setWorldItem(undefined)} />}

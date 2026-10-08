@@ -5,9 +5,19 @@
  */
 import { APP_VERSION, listConnections } from '../api/connections';
 import { t } from '../i18n';
+import { mergeCharacter } from './merge';
 import { allStoredCharacters, listCharacters, myAccountKeys, putCharacters, type StoredCharacter } from './store';
 
 export const BACKUP_FORMAT = 'taleward-charaktere/1';
+/** Ein einzelner Charakter als Datei (zum Weitergeben an ein anderes Gerät) */
+export const CHARACTER_FORMAT = 'taleward-charakter/1';
+
+interface CharacterFileData {
+  format: typeof CHARACTER_FORMAT;
+  exportedAt: string;
+  appVersion: string;
+  character: StoredCharacter;
+}
 
 interface BackupFile {
   format: typeof BACKUP_FORMAT;
@@ -20,6 +30,14 @@ interface BackupFile {
 export function backupFile(now = new Date()): File {
   const data: BackupFile = { format: BACKUP_FORMAT, exportedAt: now.toISOString(), appVersion: APP_VERSION, characters: listCharacters() };
   return new File([JSON.stringify(data)], `taleward-charaktere-${now.toISOString().slice(0, 10)}.json`, { type: 'application/json' });
+}
+
+/** Datei mit einem Charakter: Stammdaten, Bild, mitgebrachte Welt, Abschriften und private Notizen */
+export function characterFile(c: StoredCharacter, now = new Date()): File {
+  const { owners: _owners, ...character } = c;
+  const data: CharacterFileData = { format: CHARACTER_FORMAT, exportedAt: now.toISOString(), appVersion: APP_VERSION, character: character as StoredCharacter };
+  const slug = c.name.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '').replace(/ß/g, 'ss').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'charakter';
+  return new File([JSON.stringify(data)], `taleward-charakter-${slug}.json`, { type: 'application/json' });
 }
 
 /** Auf dem Handy über „Teilen“ (Speichern, Mail …), im Browser als Download */
@@ -54,19 +72,22 @@ function valid(c: unknown): c is StoredCharacter {
 export interface RestoreResult { added: number; updated: number; unchanged: number }
 
 /**
- * Sicherung zurückholen. Neue Charaktere kommen dazu, vorhandene werden nur durch einen neueren Stand ersetzt.
- * Verknüpfungen mit Servern, die dieses Gerät nicht kennt, fallen weg (dort muss man sich erst anmelden).
+ * Sicherung oder Charakter-Datei zurückholen. Neue Charaktere kommen dazu; bei vorhandenen gewinnt der neuere Stand,
+ * Abschriften und mitgebrachte Welt werden zusammengeführt (siehe merge.ts). Verknüpfungen mit Servern, die dieses
+ * Gerät nicht kennt, fallen weg (dort muss man sich erst anmelden).
  */
 export function restoreBackup(text: string): RestoreResult {
-  let data: Partial<BackupFile>;
+  const wrong = () => new Error(t('Das ist weder eine Charakter-Datei noch eine Sicherung der Sammlung.'));
+  let data: { format?: string; characters?: unknown[]; character?: unknown } | null;
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error(t('Das ist keine Sicherung der Charakter-Sammlung.'));
+    throw wrong();
   }
-  if (data?.format !== BACKUP_FORMAT || !Array.isArray(data.characters)) {
-    throw new Error(t('Das ist keine Sicherung der Charakter-Sammlung.'));
-  }
+  let incoming: unknown[];
+  if (data?.format === BACKUP_FORMAT && Array.isArray(data.characters)) incoming = data.characters;
+  else if (data?.format === CHARACTER_FORMAT && data.character) incoming = [data.character];
+  else throw wrong();
   const known = new Set(listConnections().map((c) => c.id));
   const mine = myAccountKeys();
   // Ohne Anmeldung gehörte der Charakter niemandem und bliebe unsichtbar
@@ -74,20 +95,13 @@ export function restoreBackup(text: string): RestoreResult {
   const all = new Map(allStoredCharacters().map((c) => [c.id, c]));
   const result: RestoreResult = { added: 0, updated: 0, unchanged: 0 };
   const take: StoredCharacter[] = [];
-  for (const c of data.characters.filter(valid)) {
+  for (const raw of incoming.filter(valid)) {
+    const c: StoredCharacter = { ...raw, notes: isText(raw.notes) ? raw.notes : '' };
     const old = all.get(c.id);
-    if (old && Date.parse(old.updatedAt) >= Date.parse(c.updatedAt)) {
-      result.unchanged++;
-      continue;
-    }
-    take.push({
-      ...c,
-      notes: isText(c.notes) ? c.notes : '',
-      owners: [...new Set([...(old?.owners ?? []), ...mine])],
-      links: c.links.filter((l) => l && known.has(l.connId))
-    });
-    if (old) result.updated++;
-    else result.added++;
+    const { result: merged, outcome } = mergeCharacter(old, c, known);
+    result[outcome]++;
+    if (outcome === 'unchanged') continue;
+    take.push({ ...merged, owners: [...new Set([...(old?.owners ?? []), ...mine])] });
   }
   if (take.length) putCharacters(take);
   return result;

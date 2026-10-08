@@ -1011,7 +1011,6 @@ export const en: Record<string, string> = {
   "Alles optional. Erledigtes bekommt einen Haken.": "All optional. Done steps get a tick.",
   "Los": "Go",
   "Ausblenden": "Hide",
-  "Das ist keine Sicherung der Charakter-Sammlung.": "This is not a backup of the character collection.",
   "Melde dich erst bei einem Server an, dann kannst du die Sammlung zurückholen.": "Sign in to a server first, then you can restore the collection.",
   "Zurückgeholt: {a} neu, {u} aktualisiert, {s} schon aktuell.": "Restored: {a} new, {u} updated, {s} already up to date.",
   "Sammlung sichern": "Back up collection",
@@ -1147,4 +1146,9 @@ export const en: Record<string, string> = {
   "Nur auf diesem Gerät gespeichert, bis dein Server Notizen kann.": "Only saved on this device until your server can store notes.",
   "Name in der Bibel suchen …": "Search the bible for a name …",
   "Alles hier ist erfunden und bleibt auf diesem Gerät. Probier ruhig alles aus; nach einem Neustart der App ist es wieder wie vorher.": "Everything here is made up and stays on this device. Try whatever you like; after restarting the app it’s back to how it was.",
+  "Das ist weder eine Charakter-Datei noch eine Sicherung der Sammlung.": "This is neither a character file nor a backup of the collection.",
+  "Als Datei weitergeben": "Pass on as a file",
+  "Zum Beispiel auf dein Tablet oder ein neues Handy: Dort unter „Meine Charaktere“ → „Sammlung sichern“ → „Aus Datei zurückholen“. Die Datei enthält auch deine privaten Notizen und Abschriften.": "For example to your tablet or a new phone: there, go to “My characters” → “Back up collection” → “Restore from a file”. The file also contains your private notes and copies.",
+  "{name} als Datei speichern": "Save {name} as a file",
+  "„Aus Datei zurückholen“ nimmt auch einzelne Charakter-Dateien an. Gibt es den Charakter hier schon, gewinnt der neuere Stand; Abschriften und mitgebrachte Welt werden zusammengeführt.": "“Restore from a file” also accepts single character files. If the character already exists here, the newer version wins; copies and brought-in world are merged.",
 };
