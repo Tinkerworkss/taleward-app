@@ -1,5 +1,0 @@
-- SL-Schirm: Neue Module finden immer Platz. Ist der Schirm voll, wird die größte Karte etwas kleiner.
-- SL-Schirm: Szenen überall gleich abhaken, mit „Gespielt“ und Haken. Verknüpfte Einträge sind schlanker.
-- Übersicht ruhiger: „Wer war das?“ als schmales Suchfeld oben, Links der Gruppe als kurze Zeile.
-- Der Knopf „SL-Schirm“ ist hervorgehoben, drängt sich aber nicht mehr vor.
-- Meine Charaktere: „Chronik sichern“ statt „Abschrift holen“, klarer „Von der Kampagne lösen“, Status jetzt unter „Charakter bearbeiten“.
