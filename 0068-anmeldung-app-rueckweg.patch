@@ -1,0 +1,213 @@
+From d933a4f01a4d101d820f310d4e63d923c0a99152 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 8 Oct 2026 14:58:48 +0200
+Subject: [PATCH] =?UTF-8?q?Schnittstelle=200.4.13:=20R=C3=BCckweg=20der=20?=
+ =?UTF-8?q?Anmeldung=20f=C3=BCr=20die=20Android-App?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ docs/session-chronik-api.yaml      |  7 ++++++-
+ public/.well-known/assetlinks.json | 12 ++++++++++++
+ public/auth/app/index.html         | 26 ++++++++++++++++++++++++++
+ public/auth/app/seite.css          | 10 ++++++++++
+ public/auth/app/weiter.js          | 15 +++++++++++++++
+ public/sw.js                       |  1 +
+ scripts/setup-android.mjs          | 10 ++++++++++
+ src/auth/oidc.ts                   | 23 ++++++++++++++++++++---
+ src/components/DeepLinks.tsx       |  4 ++--
+ 9 files changed, 102 insertions(+), 6 deletions(-)
+ create mode 100644 public/.well-known/assetlinks.json
+ create mode 100644 public/auth/app/index.html
+ create mode 100644 public/auth/app/seite.css
+ create mode 100644 public/auth/app/weiter.js
+
+diff --git a/docs/session-chronik-api.yaml b/docs/session-chronik-api.yaml
+index a89d862..4662902 100644
+--- a/docs/session-chronik-api.yaml
++++ b/docs/session-chronik-api.yaml
+@@ -173,2 +173,4 @@ info:
+     Kapitel, Vorschläge oder Schreibhilfe.
++    Außerdem (0.4.13): Rückweg der Android-App als App Link – `returnTo=https://app.taleward.org/auth/app` bei
++    /auth/oidc/{provider}/start (siehe dort). Die App nutzt ihn nur, wenn der Server 0.4.13 meldet.
+ 
+@@ -352,3 +354,3 @@ paths:
+           description: |
+-            Nur Web-Fassung (ab 0.4.2): Rückweg statt taleward://auth, z. B. `https://app.taleward.org/#/auth`. Der Server
++            Rückweg statt taleward://auth. Web-Fassung (ab 0.4.2), z. B. `https://app.taleward.org/#/auth`. Der Server
+             hängt `?ticket=…&serverId=…` bzw. `?error=…` wörtlich an den Wert an (auch hinter `#/auth`). Erlaubt sind nur
+@@ -356,2 +358,5 @@ paths:
+             error=return_to_not_allowed über taleward://auth.
++            Ab 0.4.13 zusätzlich für die Android-App das feste Ziel `https://app.taleward.org/auth/app` (App Link: Android
++            öffnet die Adresse in der Taleward-App, geprüft über `/.well-known/assetlinks.json`). Die Adresse ist fest und
++            hängt nicht von der zentralen Herkunft ab. Ohne returnTo bleibt es bei taleward://auth (ältere Apps).
+       responses:
+diff --git a/public/.well-known/assetlinks.json b/public/.well-known/assetlinks.json
+new file mode 100644
+index 0000000..e41b1d1
+--- /dev/null
++++ b/public/.well-known/assetlinks.json
+@@ -0,0 +1,12 @@
++[
++  {
++    "relation": ["delegate_permission/common.handle_all_urls"],
++    "target": {
++      "namespace": "android_app",
++      "package_name": "app.taleward",
++      "sha256_cert_fingerprints": [
++        "6A:3E:3E:F2:21:0C:19:D7:4E:A3:9E:37:2A:03:06:1F:50:96:ED:E1:B3:7A:94:3A:AA:01:21:43:8E:2B:F5:73"
++      ]
++    }
++  }
++]
+diff --git a/public/auth/app/index.html b/public/auth/app/index.html
+new file mode 100644
+index 0000000..2aba72e
+--- /dev/null
++++ b/public/auth/app/index.html
+@@ -0,0 +1,26 @@
++<!doctype html>
++<html lang="de">
++<head>
++  <meta charset="utf-8">
++  <meta name="viewport" content="width=device-width, initial-scale=1">
++  <meta name="robots" content="noindex">
++  <meta name="referrer" content="no-referrer">
++  <title>Taleward – Anmeldung</title>
++  <link rel="stylesheet" href="seite.css">
++</head>
++<body>
++  <!--
++    Rückweg der Anmeldung für die Android-App (App Link). Normalerweise öffnet Android diese Adresse gleich in der
++    Taleward-App und zeigt die Seite nie. Erscheint sie doch (App nicht installiert, Zuordnung noch nicht bestätigt),
++    geht es mit einem Tipp in der App weiter.
++  -->
++  <main>
++    <h1 data-de="Anmeldung abschließen" data-en="Finish signing in">Anmeldung abschließen</h1>
++    <p id="text" data-de="Tippe auf den Knopf, um die Anmeldung in der Taleward-App abzuschließen. Hast du die Anmeldung nicht selbst in der App begonnen, schließ diese Seite einfach."
++       data-en="Tap the button to finish signing in to the Taleward app. If you didn’t start signing in from the app yourself, just close this page.">Tippe auf den Knopf, um die Anmeldung in der Taleward-App abzuschließen. Hast du die Anmeldung nicht selbst in der App begonnen, schließ diese Seite einfach.</p>
++    <a id="weiter" class="knopf" href="taleward://auth" data-de="In der Taleward-App abschließen" data-en="Finish in the Taleward app">In der Taleward-App abschließen</a>
++    <p class="leise"><a href="/" data-de="Zur Web-Fassung von Taleward" data-en="Go to the Taleward web app">Zur Web-Fassung von Taleward</a></p>
++  </main>
++  <script src="weiter.js"></script>
++</body>
++</html>
+diff --git a/public/auth/app/seite.css b/public/auth/app/seite.css
+new file mode 100644
+index 0000000..46c38b7
+--- /dev/null
++++ b/public/auth/app/seite.css
+@@ -0,0 +1,10 @@
++:root { color-scheme: light dark; --papier: #f6efe2; --tinte: #17313b; --text: #2a2118; --leise: #5c5145; }
++@media (prefers-color-scheme: dark) { :root { --papier: #14232a; --text: #efe6d6; --leise: #c2b6a3; --tinte: #e9dcc4; } }
++body { margin: 0; background: var(--papier); color: var(--text); font: 17px/1.5 "Alegreya Sans", system-ui, sans-serif; }
++main { max-width: 34rem; margin: 0 auto; padding: 48px 16px; display: flex; flex-direction: column; gap: 16px; }
++h1 { font: 700 28px/1.2 "Alegreya", Georgia, serif; margin: 0; }
++p { margin: 0; }
++.knopf { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 20px; border-radius: 999px;
++  background: var(--tinte); color: var(--papier); font-weight: 700; text-decoration: none; align-self: flex-start; }
++.knopf:focus-visible, a:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
++.leise, .leise a { color: var(--leise); font-size: 15px; }
+diff --git a/public/auth/app/weiter.js b/public/auth/app/weiter.js
+new file mode 100644
+index 0000000..596f179
+--- /dev/null
++++ b/public/auth/app/weiter.js
+@@ -0,0 +1,15 @@
++// Sprache wählen und die Antwort des Servers (ticket, serverId oder error) an taleward://auth weiterreichen
++(function () {
++  var en = !/^de\b/i.test(navigator.language || 'de');
++  if (en) {
++    document.documentElement.lang = 'en';
++    document.querySelectorAll('[data-en]').forEach(function (el) { el.textContent = el.getAttribute('data-en'); });
++    document.title = 'Taleward – Sign in';
++  }
++  var params = new URLSearchParams(location.search);
++  var keep = new URLSearchParams();
++  ['ticket', 'serverId', 'error'].forEach(function (k) { var v = params.get(k); if (v) keep.set(k, v); });
++  document.getElementById('weiter').setAttribute('href', 'taleward://auth?' + keep.toString());
++  // Ticket nicht in der Adresszeile oder im Verlauf stehen lassen
++  history.replaceState(null, '', location.pathname);
++})();
+diff --git a/public/sw.js b/public/sw.js
+index 7ead02d..3d672e7 100644
+--- a/public/sw.js
++++ b/public/sw.js
+@@ -15,2 +15,3 @@ self.addEventListener('fetch', (e) => {
+   if (req.method !== 'GET' || url.origin !== self.location.origin) return; // Server-Anfragen unberührt lassen
++  if (url.pathname.includes('/auth/app')) return; // Rückweg der Anmeldung (Ticket in der Adresse): nie speichern
+   if (req.mode === 'navigate') {
+diff --git a/scripts/setup-android.mjs b/scripts/setup-android.mjs
+index 37c452b..79da1ba 100644
+--- a/scripts/setup-android.mjs
++++ b/scripts/setup-android.mjs
+@@ -152,2 +152,12 @@ if (!manifest.includes('android:scheme="taleward"')) {
+ 
++// Rückweg der Anmeldung als App Link (ab Schnittstelle 0.4.13): https://app.taleward.org/auth/app öffnet nur diese App,
++// weil Android die Zuordnung über https://app.taleward.org/.well-known/assetlinks.json prüft (public/.well-known)
++if (!manifest.includes('android:host="app.taleward.org"')) {
++  manifest = manifest.replace(
++    /(<activity[^>]*android:name="\.MainActivity"[\s\S]*?)(<\/activity>)/,
++    `$1    <intent-filter android:autoVerify="true">\n                <action android:name="android.intent.action.VIEW" />\n                <category android:name="android.intent.category.DEFAULT" />\n                <category android:name="android.intent.category.BROWSABLE" />\n                <data android:scheme="https" android:host="app.taleward.org" android:pathPrefix="/auth/app" />\n            </intent-filter>\n        $2`
++  );
++  console.log('App Link https://app.taleward.org/auth/app eingetragen');
++}
++
+ // Keine Sicherung der App-Daten: Anmeldungen (Tokens) sollen nicht in Geräte- oder Cloud-Sicherungen landen
+diff --git a/src/auth/oidc.ts b/src/auth/oidc.ts
+index fda39a8..28f27fb 100644
+--- a/src/auth/oidc.ts
++++ b/src/auth/oidc.ts
+@@ -2,3 +2,3 @@ import { Capacitor } from '@capacitor/core';
+ import { apiFor, fetchServerInfo } from '../api/client';
+-import { activeConnections, getConnection, saveConnection, type Connection } from '../api/connections';
++import { activeConnections, getConnection, saveConnection, versionLess, type Connection } from '../api/connections';
+ import type { AuthProviderId } from '../api/types';
+@@ -9,4 +9,16 @@ import type { AuthProviderId } from '../api/types';
+  * taleward://auth?ticket=… zurück; das Ticket tauscht nur diese App ein, weil nur sie den verifier kennt (PKCE).
++ *
++ * Ab Schnittstelle 0.4.13 führt der Rückweg der Android-App über APP_LINK_RETURN: eine https-Adresse, die Android
++ * dieser App zuordnet (App Link, bestätigt über /.well-known/assetlinks.json).
+  */
+ 
++/** Rückweg der Android-App ab Schnittstelle 0.4.13 (App Link); muss zu setup-android.mjs und public/.well-known passen */
++export const APP_LINK_RETURN = 'https://app.taleward.org/auth/app';
++
++/** Ist das eine Rückkehr vom Anmeldedienst (eigenes Schema oder App Link)? */
++export function isAuthReturnUrl(url: string): boolean {
++  const u = url.toLowerCase();
++  return u.startsWith('taleward://auth') || u === APP_LINK_RETURN || u.startsWith(APP_LINK_RETURN + '?') || u.startsWith(APP_LINK_RETURN + '/');
++}
++
+ const PENDING = 'taleward.oidcPending';
+@@ -64,3 +76,8 @@ export async function startProviderLogin(opts: {
+   const path = window.location.pathname.replace(/index\.html$/, '');
+-  const returnTo = web ? `${window.location.origin}${path}#/auth` : null;
++  let returnTo = web ? `${window.location.origin}${path}#/auth` : null;
++  // Android-App: App Link statt taleward://, sobald der Server ihn kennt (ab 0.4.13); ältere Server bleiben beim alten Weg
++  if (Capacitor.isNativePlatform() && !MOCK) {
++    const apiVersion = await fetchServerInfo(opts.baseUrl).then((i) => i.apiVersion).catch(() => null);
++    if (apiVersion && !versionLess(apiVersion, '0.4.13')) returnTo = APP_LINK_RETURN;
++  }
+   const q = new URLSearchParams({ challenge, purpose: opts.purpose, ...(linkToken ? { linkToken } : {}), ...(returnTo ? { returnTo } : {}) });
+@@ -95,3 +112,3 @@ export function clearPendingRegister(): void {
+ 
+-/** taleward://auth?… verarbeiten; liefert das Ziel, zu dem die App springen soll */
++/** taleward://auth?… bzw. APP_LINK_RETURN?… verarbeiten; liefert das Ziel, zu dem die App springen soll */
+ export async function handleAuthUrl(url: string): Promise<string> {
+diff --git a/src/components/DeepLinks.tsx b/src/components/DeepLinks.tsx
+index 74fa942..037f11e 100644
+--- a/src/components/DeepLinks.tsx
++++ b/src/components/DeepLinks.tsx
+@@ -1,2 +1,2 @@
+-import { handleAuthUrl } from '../auth/oidc';
++import { handleAuthUrl, isAuthReturnUrl } from '../auth/oidc';
+ import { useEffect } from 'react';
+@@ -44,3 +44,3 @@ export function DeepLinks() {
+       // Rückkehr vom Anmeldedienst
+-      if (url.toLowerCase().startsWith('taleward://auth')) {
++      if (isAuthReturnUrl(url)) {
+         navigate(await handleAuthUrl(url), { replace: true });
