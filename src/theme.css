@@ -1333,8 +1333,17 @@ details.card[open] { padding-bottom: var(--space-4); }
   min-height: 0;
 }
 
+/* Eine Spalte: Karten teilen sich die Höhe */
+.table-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  min-width: 0;
+}
+
 .table-panel {
-  display: none;
+  display: flex;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
@@ -1343,14 +1352,18 @@ details.card[open] { padding-bottom: var(--space-4); }
   border-radius: 14px;
 }
 
-.table-panel.active {
+.table-panel-head {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px 0 14px;
+  min-height: 48px;
 }
 
 .table-panel-title {
   font-size: 19px;
   line-height: 24px;
-  padding: 12px 14px 0;
 }
 
 .table-panel-body {
@@ -1446,23 +1459,19 @@ details.card[open] { padding-bottom: var(--space-4); }
   padding: 0 2px;
 }
 
-/* Breit genug: alle Spalten zugleich, Umschalter weg, jede Spalte scrollt für sich */
+/* Breit genug: Spalten nebeneinander, Karten teilen sich die Höhe, jede scrollt für sich */
 @media (min-width: 900px) {
   .table-screen {
     height: 100dvh;
     overflow: hidden;
   }
 
-  .table-switch {
-    display: none;
-  }
-
   .table-grid {
     grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
   }
 
-  .table-panel {
-    display: flex;
+  .table-col > .table-panel {
+    flex: 1 1 0;
   }
 }
 
@@ -1471,4 +1480,92 @@ details.card[open] { padding-bottom: var(--space-4); }
     height: auto;
     overflow: visible;
   }
+}
+
+/* Kurzfassung der Gruppe: Wappen mit Zustimmung */
+.table-group-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 4px;
+  background: none;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  min-height: 48px;
+}
+
+.table-group-face {
+  position: relative;
+  display: inline-flex;
+}
+
+.table-consent {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 700 12px/1 var(--font-sans);
+  background: var(--siegel);
+  color: var(--on-siegel);
+  border: 2px solid var(--paper-sunken);
+}
+
+.table-consent.yes {
+  background: var(--salbei);
+  color: var(--on-salbei);
+}
+
+/* Ein Modul groß über dem Schirm */
+.table-popup-shade {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--safe-top) + 12px) 12px calc(var(--safe-bottom) + 12px);
+  background: rgba(20, 15, 10, 0.55);
+}
+
+.table-popup {
+  width: 100%;
+  max-width: 860px;
+  height: 100%;
+  max-height: 900px;
+  box-shadow: var(--shadow-card);
+}
+
+/* Schirm einrichten */
+.table-chooser {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.table-chooser-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.table-chooser-col legend {
+  font: 700 14px/20px var(--font-sans);
+  padding: 0 4px;
+}
+
+.table-chooser-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--line);
 }
