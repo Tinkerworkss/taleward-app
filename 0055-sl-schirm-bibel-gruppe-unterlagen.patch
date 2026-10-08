@@ -1,0 +1,515 @@
+From 5c2c33686190b4e1424f0c2e8332decdadbed338 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 8 Oct 2026 07:53:39 +0200
+Subject: [PATCH 55/56] SL-Schirm: Bibel mit fehlertoleranter Suche, Gruppe,
+ Unterlagen
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ scripts/tests/fuzzy.test.mjs |  34 ++++++++++
+ src/i18n/en.ts               |  21 ++++++
+ src/search/fuzzy.ts          |  71 ++++++++++++++++++++
+ src/table/BiblePanel.tsx     | 124 +++++++++++++++++++++++++++++++++++
+ src/table/DocsPanel.tsx      |  92 ++++++++++++++++++++++++++
+ src/table/GroupPanel.tsx     |  77 ++++++++++++++++++++++
+ src/table/layout.ts          |  29 ++++++++
+ 7 files changed, 448 insertions(+)
+ create mode 100644 scripts/tests/fuzzy.test.mjs
+ create mode 100644 src/search/fuzzy.ts
+ create mode 100644 src/table/BiblePanel.tsx
+ create mode 100644 src/table/DocsPanel.tsx
+ create mode 100644 src/table/GroupPanel.tsx
+ create mode 100644 src/table/layout.ts
+
+diff --git a/scripts/tests/fuzzy.test.mjs b/scripts/tests/fuzzy.test.mjs
+new file mode 100644
+index 0000000..1abae20
+--- /dev/null
++++ b/scripts/tests/fuzzy.test.mjs
+@@ -0,0 +1,34 @@
++// Fehlertolerante Namenssuche „Wer war das?“
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { fuzzyFilter, matchScore } from '../../src/search/fuzzy.ts';
++
++const names = ['Kasmyrin', 'Oren Silt', 'Ohm Tessel', 'Sefa Morr', 'Grauwehr', 'Hohenwacht'];
++const find = (q) => fuzzyFilter(names, q, (n) => [n]);
++
++test('wörtlich und unabhängig von Groß- und Kleinschreibung', () => {
++  assert.deepEqual(find('oren'), ['Oren Silt']);
++  assert.deepEqual(find('wacht'), ['Hohenwacht']);
++});
++
++test('Umlaute und y/i werden gleich behandelt', () => {
++  assert.deepEqual(find('Kasmürin'), ['Kasmyrin']);
++  assert.deepEqual(find('kasmirin'), ['Kasmyrin']);
++});
++
++test('leicht verschrieben findet trotzdem', () => {
++  assert.deepEqual(find('Tesel'), ['Ohm Tessel']);
++  assert.deepEqual(find('Grauwer'), ['Grauwehr']);
++  assert.deepEqual(find('Hohenwach'), ['Hohenwacht']);
++});
++
++test('zu weit weg findet nichts', () => {
++  assert.deepEqual(find('Drache'), []);
++  assert.equal(matchScore('xy', 'Oren Silt'), 0);
++});
++
++test('wörtliche Treffer stehen vorn', () => {
++  const list = fuzzyFilter(['Sefa Morr', 'Morra', 'Mor'], 'Morr', (n) => [n]);
++  assert.equal(list[0] === 'Sefa Morr' || list[0] === 'Morra', true);
++  assert.equal(list.includes('Mor'), true);
++});
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index ba09e34..41ff311 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -1020,2 +1020,23 @@ export const en: Record<string, string> = {
+   "Aus Datei zurückholen": "Restore from a file",
++  "Wer war das?": "Who was that?",
++  "„{name}“ ist aufgedeckt.": "“{name}” is revealed.",
++  "Zurücknehmen ({n})": "Undo ({n})",
++  "Die Bibel ist noch leer.": "The bible is still empty.",
++  "Aufdecken": "Reveal",
++  "Für alle aufdecken": "Reveal to everyone",
++  "Noch keine Unterlagen. Hochladen kannst du sie in der Bibel unter „Unterlagen hochladen und auswerten“.": "No documents yet. You can add them in the bible under “Upload and analyse documents”.",
++  "Alle Unterlagen": "All documents",
++  "Original öffnen": "Open original",
++  "In der Unterlage suchen": "Search in this document",
++  "Für diese Unterlage gibt es noch keinen Text. Läuft die Auswertung noch, schau später wieder rein.": "There’s no text for this document yet. If it’s still being analysed, check back later.",
++  "Seite {n}": "Page {n}",
++  "Noch niemand am Tisch. Lade Mitspielende über die Übersicht ein.": "Nobody at the table yet. Invite players from the overview.",
++  "Noch ohne Charakter": "No character yet",
++  "Ohne Zustimmung": "No consent",
++  "Hintergrund zeigen": "Show background",
++  "Mitgebracht, kam noch in keinem Kapitel vor:": "Brought along, not in any chapter yet:",
++  "{n} mitgebrachter Eintrag wartet auf dich": "{n} brought-along entry is waiting for you",
++  "{n} mitgebrachte Einträge warten auf dich": "{n} brought-along entries are waiting for you",
++  "Kapitelplan": "Chapter plan",
++  "Die Gruppe": "The group",
+ };
+diff --git a/src/search/fuzzy.ts b/src/search/fuzzy.ts
+new file mode 100644
+index 0000000..ac63a31
+--- /dev/null
++++ b/src/search/fuzzy.ts
+@@ -0,0 +1,71 @@
++/*
++ * Fehlertolerante Namenssuche „Wer war das?“: findet „Kasmyrin“ auch bei „Kasmürin“ oder „kasmirin“.
++ * Läuft nur über das, was die App ohnehin hat (die Liste, die der Server dieser Person zeigt) – kein Spoiler.
++ */
++
++/** Kleinbuchstaben, Umlaute und Akzente vereinfacht, y/i und ph/f gleichgesetzt */
++export function fold(s: string): string {
++  return s
++    .toLowerCase()
++    .replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss')
++    .normalize('NFD').replace(/\p{M}/gu, '')
++    .replace(/y/g, 'i').replace(/ph/g, 'f').replace(/th/g, 't')
++    .replace(/[^a-z0-9 ]+/g, ' ')
++    .replace(/\s+/g, ' ')
++    .trim();
++}
++
++/** Bearbeitungsabstand (Levenshtein), bricht ab, sobald er größer als max wird */
++export function distance(a: string, b: string, max: number): number {
++  if (Math.abs(a.length - b.length) > max) return max + 1;
++  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
++  for (let i = 1; i <= a.length; i++) {
++    const cur = [i];
++    let best = i;
++    for (let j = 1; j <= b.length; j++) {
++      const v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
++      cur.push(v);
++      if (v < best) best = v;
++    }
++    if (best > max) return max + 1;
++    prev = cur;
++  }
++  return prev[b.length];
++}
++
++/**
++ * Wie gut passt die Suche zu einem Text? 0 = gar nicht, 3 = enthält die Suche wörtlich, 2 = nach Vereinfachung,
++ * 1 = ein Wort ist nur leicht verschrieben (bis 1 Fehler bei kurzen, bis 2 bei längeren Wörtern).
++ */
++export function matchScore(query: string, text: string): number {
++  const q = query.trim().toLowerCase();
++  if (!q) return 0;
++  if (text.toLowerCase().includes(q)) return 3;
++  const fq = fold(q);
++  const ft = fold(text);
++  if (!fq) return 0;
++  if (ft.includes(fq)) return 2;
++  const words = ft.split(' ');
++  const parts = fq.split(' ').filter((w) => w.length >= 3);
++  if (!parts.length) return 0;
++  const ok = parts.every((p) => {
++    const max = p.length >= 7 ? 2 : 1;
++    return words.some((w) => distance(p, w, max) <= max || (w.length > p.length && distance(p, w.slice(0, p.length), 1) <= 1));
++  });
++  return ok ? 1 : 0;
++}
++
++/** Filtert und sortiert: wörtliche Treffer zuerst, dann vereinfachte, dann leicht verschriebene */
++export function fuzzyFilter<T>(items: T[], query: string, fields: (item: T) => string[]): T[] {
++  if (!query.trim()) return items;
++  return items
++    .map((item) => {
++      const [name, ...rest] = fields(item);
++      // Treffer im Namen zählen mehr als in Beschreibung oder Notizen
++      const s = Math.max(matchScore(query, name ?? '') * 2, ...rest.map((r) => matchScore(query, r ?? '')));
++      return { item, s };
++    })
++    .filter((x) => x.s > 0)
++    .sort((a, b) => b.s - a.s)
++    .map((x) => x.item);
++}
+diff --git a/src/table/BiblePanel.tsx b/src/table/BiblePanel.tsx
+new file mode 100644
+index 0000000..34bd3da
+--- /dev/null
++++ b/src/table/BiblePanel.tsx
+@@ -0,0 +1,124 @@
++import { useEffect, useRef, useState } from 'react';
++import { api } from '../api/client';
++import type { Entry, EntryInput, Member } from '../api/types';
++import { ENTRY_KIND } from '../components/ProposalCard';
++import { ErrorBox } from '../components/Screen';
++import { SecretBox, VisTag } from '../components/VisTag';
++import { t } from '../i18n';
++import { fuzzyFilter } from '../search/fuzzy';
++
++const UNDO_SECONDS = 10;
++
++/**
++ * Bibel am Tisch: Suche „Wer war das?“ (fehlertolerant), alles mit Geheimem und SL-Notizen, Aufdecken mit ein paar
++ * Sekunden zum Zurücknehmen.
++ */
++export function BiblePanel({ campaignId, members, query, onQuery, focusEntryId }: {
++  campaignId: string;
++  members: Member[];
++  query: string;
++  onQuery: (q: string) => void;
++  /** Von außen (Kapitelplan) gewählter Eintrag: aufklappen und hinscrollen */
++  focusEntryId: string | null;
++}) {
++  const [entries, setEntries] = useState<Entry[] | null>(null);
++  const [open, setOpen] = useState<string | null>(null);
++  const [error, setError] = useState<unknown>(null);
++  const [undo, setUndo] = useState<{ entry: Entry; before: Partial<EntryInput>; left: number } | null>(null);
++  const timer = useRef<number | null>(null);
++
++  useEffect(() => {
++    api.entries(campaignId).then(setEntries).catch(setError);
++  }, [campaignId]);
++
++  useEffect(() => {
++    if (!focusEntryId) return;
++    setOpen(focusEntryId);
++    window.setTimeout(() => document.getElementById(`tb-${focusEntryId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
++  }, [focusEntryId]);
++
++  // Rückweg-Uhr
++  useEffect(() => {
++    if (!undo) return;
++    if (undo.left <= 0) { setUndo(null); return; }
++    timer.current = window.setTimeout(() => setUndo((u) => (u ? { ...u, left: u.left - 1 } : u)), 1000);
++    return () => { if (timer.current) window.clearTimeout(timer.current); };
++  }, [undo]);
++
++  const replace = (e: Entry) => setEntries((list) => list?.map((x) => (x.id === e.id ? e : x)) ?? null);
++
++  const reveal = async (e: Entry) => {
++    setError(null);
++    const before = { visibility: e.visibility, hiddenFromMemberIds: e.hiddenFromMemberIds ?? [] };
++    try {
++      const u = await api.updateEntry(e.id, { visibility: 'public', hiddenFromMemberIds: [] });
++      replace(u);
++      setUndo({ entry: u, before, left: UNDO_SECONDS });
++    } catch (err) {
++      setError(err);
++    }
++  };
++
++  const takeBack = async () => {
++    if (!undo) return;
++    const { entry, before } = undo;
++    setUndo(null);
++    try {
++      replace(await api.updateEntry(entry.id, before));
++    } catch (err) {
++      setError(err);
++    }
++  };
++
++  const shown = entries ? fuzzyFilter(entries, query, (e) => [e.name, e.summary ?? '', e.gmNotes ?? '']) : null;
++  const hiddenNames = (e: Entry) => (e.hiddenFromMemberIds ?? [])
++    .map((id) => members.find((m) => m.id === id))
++    .filter((m): m is Member => !!m)
++    .map((m) => m.characterName ?? m.displayName);
++
++  return (
++    <div className="table-panel-body">
++      <div className="field table-sticky">
++        <label htmlFor="tb-search">{t('Wer war das?')}</label>
++        <input id="tb-search" type="search" value={query} placeholder={t('Name, Ort, Gegenstand …')} onChange={(ev) => onQuery(ev.target.value)} />
++      </div>
++      <ErrorBox error={error} />
++      {undo && (
++        <div className="notice" role="status" style={{ alignItems: 'center' }}>
++          <span style={{ flex: 1 }}>{t('„{name}“ ist aufgedeckt.', { name: undo.entry.name })}</span>
++          <button type="button" className="btn small outline" onClick={takeBack}>{t('Zurücknehmen ({n})', { n: undo.left })}</button>
++        </div>
++      )}
++      {!entries && !error && <div className="empty">{t('Lade …')}</div>}
++      {shown?.length === 0 && <div className="empty">{query ? t('Nichts gefunden für „{q}“.', { q: query }) : t('Die Bibel ist noch leer.')}</div>}
++      {shown?.map((e) => {
++        const secret = e.visibility === 'gm_only';
++        const partly = !secret && (e.hiddenFromMemberIds?.length ?? 0) > 0;
++        const isOpen = open === e.id;
++        return (
++          <section key={e.id} id={`tb-${e.id}`} className={isOpen ? 'table-entry open' : 'table-entry'}>
++            <button type="button" className="table-entry-head" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : e.id)}>
++              <span style={{ flex: 1, minWidth: 0 }}>
++                <strong>{e.name}</strong>
++                <span className="muted small"> · {t(ENTRY_KIND[e.type])}{e.lastSessionNumber ? ' · ' + t('zuletzt in Kapitel {n}', { n: e.lastSessionNumber }) : ''}</span>
++              </span>
++              <VisTag gm={secret} />
++            </button>
++            {isOpen && (
++              <div className="table-entry-body">
++                {e.summary && <p className="small" style={{ margin: 0 }}>{e.summary}</p>}
++                {e.gmNotes && <SecretBox>{e.gmNotes}</SecretBox>}
++                {partly && <span className="small" style={{ color: 'var(--siegel-text)' }}>{t('nicht für {names}', { names: hiddenNames(e).join(', ') })}</span>}
++                {(secret || partly) && (
++                  <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start' }} onClick={() => reveal(e)}>
++                    {secret ? t('Aufdecken') : t('Für alle aufdecken')}
++                  </button>
++                )}
++              </div>
++            )}
++          </section>
++        );
++      })}
++    </div>
++  );
++}
+diff --git a/src/table/DocsPanel.tsx b/src/table/DocsPanel.tsx
+new file mode 100644
+index 0000000..cb38534
+--- /dev/null
++++ b/src/table/DocsPanel.tsx
+@@ -0,0 +1,92 @@
++import { Capacitor } from '@capacitor/core';
++import { useEffect, useState } from 'react';
++import { api } from '../api/client';
++import type { CampaignDocument, DocumentText } from '../api/types';
++import { ErrorBox } from '../components/Screen';
++import { t } from '../i18n';
++import { matchScore } from '../search/fuzzy';
++
++/** Text mit hervorgehobenen Treffern der Suche */
++function Highlight({ text, query }: { text: string; query: string }) {
++  const q = query.trim();
++  if (q.length < 2) return <>{text}</>;
++  const parts = text.split(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
++  return <>{parts.map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part))}</>;
++}
++
++/**
++ * SL-Unterlagen am Tisch nachlesen: Text je Seite, durchsuchbar; im Browser auf Wunsch das Original.
++ */
++export function DocsPanel({ campaignId, docId, onDoc }: { campaignId: string; docId: string | null; onDoc: (id: string | null) => void }) {
++  const [docs, setDocs] = useState<CampaignDocument[] | null>(null);
++  const [text, setText] = useState<DocumentText | null>(null);
++  const [query, setQuery] = useState('');
++  const [error, setError] = useState<unknown>(null);
++
++  useEffect(() => {
++    api.documents(campaignId).then((list) => setDocs(list.filter((d) => d.kind !== 'character_sheet'))).catch(setError);
++  }, [campaignId]);
++
++  useEffect(() => {
++    setText(null);
++    setQuery('');
++    if (!docId) return;
++    api.documentText(docId).then(setText).catch(setError);
++  }, [docId]);
++
++  const openOriginal = async (d: CampaignDocument) => {
++    try {
++      const blob = await api.documentFile(d.id);
++      const url = URL.createObjectURL(blob);
++      window.open(url, '_blank', 'noopener');
++      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
++    } catch (e) {
++      setError(e);
++    }
++  };
++
++  const doc = docs?.find((d) => d.id === docId) ?? null;
++  const pages = text?.pages.filter((pg) => !query.trim() || matchScore(query, pg.text) > 0) ?? [];
++
++  return (
++    <div className="table-panel-body">
++      <ErrorBox error={error} />
++      {!doc ? (
++        <>
++          {!docs && !error && <div className="empty">{t('Lade …')}</div>}
++          {docs?.length === 0 && <div className="empty">{t('Noch keine Unterlagen. Hochladen kannst du sie in der Bibel unter „Unterlagen hochladen und auswerten“.')}</div>}
++          {docs?.map((d) => (
++            <button key={d.id} type="button" className="table-entry-head card-like" onClick={() => onDoc(d.id)}>
++              <span style={{ flex: 1, minWidth: 0 }}>
++                <strong>{d.title}</strong>
++                <span className="muted small">{d.pageCount ? ' · ' + t('{n} Seiten', { n: d.pageCount }) : ''}</span>
++              </span>
++              <span aria-hidden style={{ color: 'var(--ink-muted)' }}>›</span>
++            </button>
++          ))}
++        </>
++      ) : (
++        <>
++          <div className="row wrap" style={{ gap: 8 }}>
++            <button type="button" className="btn small ghost" onClick={() => onDoc(null)}>{t('Alle Unterlagen')}</button>
++            {!Capacitor.isNativePlatform() && <button type="button" className="btn small outline" onClick={() => openOriginal(doc)}>{t('Original öffnen')}</button>}
++          </div>
++          <h3 style={{ margin: 0 }}>{doc.title}</h3>
++          <div className="field">
++            <label htmlFor="td-search">{t('In der Unterlage suchen')}</label>
++            <input id="td-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
++          </div>
++          {!text && !error && <div className="empty">{t('Lade …')}</div>}
++          {text && text.pages.length === 0 && <div className="empty">{t('Für diese Unterlage gibt es noch keinen Text. Läuft die Auswertung noch, schau später wieder rein.')}</div>}
++          {text && text.pages.length > 0 && pages.length === 0 && <div className="empty">{t('Nichts gefunden für „{q}“.', { q: query })}</div>}
++          {pages.map((pg) => (
++            <section key={pg.page} className="table-doc-page">
++              <span className="overline">{t('Seite {n}', { n: pg.page })}</span>
++              <p className="small" style={{ margin: 0, whiteSpace: 'pre-wrap' }}><Highlight text={pg.text} query={query} /></p>
++            </section>
++          ))}
++        </>
++      )}
++    </div>
++  );
++}
+diff --git a/src/table/GroupPanel.tsx b/src/table/GroupPanel.tsx
+new file mode 100644
+index 0000000..194d8cb
+--- /dev/null
++++ b/src/table/GroupPanel.tsx
+@@ -0,0 +1,77 @@
++import { useEffect, useState } from 'react';
++import { Link } from 'react-router-dom';
++import { api } from '../api/client';
++import { apiAtLeast, p } from '../api/connections';
++import { isDeletedMember, type Campaign, type Entry, type Proposal } from '../api/types';
++import { Avatar } from '../components/Avatar';
++import { IconCheck } from '../components/Icons';
++import { SecretBox } from '../components/VisTag';
++import { t, tn } from '../i18n';
++
++/**
++ * Die Gruppe am Tisch: wer spielt wen, Kurzbeschreibung, Hintergrund (nur SL), Zustimmung zur Aufnahme und
++ * mitgebrachte Welt, die noch in keinem Kapitel vorkam (Aufhänger).
++ */
++export function GroupPanel({ campaign, onEntry }: { campaign: Campaign; onEntry: (entryId: string) => void }) {
++  const [brought, setBrought] = useState<Proposal[]>([]);
++  const [entries, setEntries] = useState<Entry[]>([]);
++  const [open, setOpen] = useState<string | null>(null);
++
++  useEffect(() => {
++    if (!apiAtLeast('0.4.7')) return;
++    api.characterProposals(campaign.id).then(setBrought).catch(() => setBrought([]));
++    api.entries(campaign.id).then(setEntries).catch(() => setEntries([]));
++  }, [campaign.id]);
++
++  const players = campaign.members.filter((m) => m.role === 'player' && !isDeletedMember(m));
++  const unused = (memberId: string) => brought
++    .filter((b) => b.submittedByMemberId === memberId && b.decision === 'accepted' && b.targetEntryId)
++    .map((b) => entries.find((e) => e.id === b.targetEntryId))
++    .filter((e): e is Entry => !!e && !e.firstSessionNumber);
++  const pending = (memberId: string) => brought.filter((b) => b.submittedByMemberId === memberId && b.decision === 'open').length;
++
++  if (!players.length) return <div className="table-panel-body"><div className="empty">{t('Noch niemand am Tisch. Lade Mitspielende über die Übersicht ein.')}</div></div>;
++
++  return (
++    <div className="table-panel-body">
++      {players.map((m) => {
++        const isOpen = open === m.id;
++        const hooks = unused(m.id);
++        const waiting = pending(m.id);
++        return (
++          <section key={m.id} className="table-entry open">
++            <div className="row" style={{ gap: 10, alignItems: 'flex-start' }}>
++              <Avatar campaignId={campaign.id} member={m} size={48} />
++              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
++                <strong>{m.characterName ?? t('Noch ohne Charakter')}</strong>
++                <span className="muted small">{m.displayName}</span>
++              </div>
++              {m.recordingConsentAt
++                ? <span className="pill moss"><IconCheck /> {t('Zugestimmt')}</span>
++                : <span className="pill">{t('Ohne Zustimmung')}</span>}
++            </div>
++            {m.characterSummary && <p className="small" style={{ margin: 0 }}>{m.characterSummary}</p>}
++            {m.characterBackstory && (
++              isOpen
++                ? <SecretBox><span style={{ whiteSpace: 'pre-wrap' }}>{m.characterBackstory}</span></SecretBox>
++                : <button type="button" className="btn small ghost" style={{ alignSelf: 'flex-start' }} onClick={() => setOpen(m.id)}>{t('Hintergrund zeigen')}</button>
++            )}
++            {hooks.length > 0 && (
++              <div className="small" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
++                <span className="muted">{t('Mitgebracht, kam noch in keinem Kapitel vor:')}</span>
++                <div className="row wrap" style={{ gap: 6 }}>
++                  {hooks.map((e) => <button key={e.id} type="button" className="btn small outline" onClick={() => onEntry(e.id)}>{e.name}</button>)}
++                </div>
++              </div>
++            )}
++            {waiting > 0 && (
++              <Link className="small" to={p(`/k/${campaign.id}/mitgebracht`)}>
++                {tn(waiting, '{n} mitgebrachter Eintrag wartet auf dich', '{n} mitgebrachte Einträge warten auf dich')}
++              </Link>
++            )}
++          </section>
++        );
++      })}
++    </div>
++  );
++}
+diff --git a/src/table/layout.ts b/src/table/layout.ts
+new file mode 100644
+index 0000000..2c05768
+--- /dev/null
++++ b/src/table/layout.ts
+@@ -0,0 +1,29 @@
++/*
++ * SL-Schirm: Welche Spalten mit welchem Inhalt. Gilt je Gerät (Tablet und Laptop wollen oft Verschiedenes) und bleibt
++ * nur im Speicher dieses Geräts.
++ */
++import { tk } from '../i18n';
++
++export type PanelId = 'plan' | 'docs' | 'bible' | 'group';
++
++export const PANELS: { id: PanelId; label: string }[] = [
++  { id: 'plan', label: tk('Kapitelplan') },
++  { id: 'docs', label: tk('Unterlagen') },
++  { id: 'bible', label: tk('Bibel') },
++  { id: 'group', label: tk('Die Gruppe') }
++];
++
++const KEY = 'taleward.slSchirm';
++const DEFAULT: PanelId[] = ['plan', 'bible', 'group'];
++
++export function loadLayout(): PanelId[] {
++  try {
++    const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null');
++    if (Array.isArray(raw) && raw.length >= 1 && raw.length <= 3 && raw.every((x) => PANELS.some((p) => p.id === x))) return raw;
++  } catch { /* Standard */ }
++  return DEFAULT;
++}
++
++export function saveLayout(layout: PanelId[]): void {
++  try { localStorage.setItem(KEY, JSON.stringify(layout)); } catch { /* egal */ }
++}
