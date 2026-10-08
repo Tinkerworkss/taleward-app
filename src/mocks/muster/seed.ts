@@ -7,7 +7,7 @@ import type { Comment, DatePoll, Entry, Proposal, Recap, Speaker, TranscriptSegm
 import type { StoredCharacter } from '../../characters/store';
 import { MUSTER_HOST, musterCampaignId } from '../../api/muster';
 import {
-  campaigns, comments, datePolls, documents, entries, gmNotes, gmNotices, portraits, proposals, recaps, seen, sessions, speakerLists,
+  campaigns, comments, datePolls, documentTexts, documents, entries, gmNotes, gmNotices, plans, portraits, proposals, recaps, seen, sessions, speakerLists,
   transcripts, uncertainTerms, world, type MockSession
 } from '../db';
 import { emblemBuffer, emblemDataUrl } from './emblems';
@@ -210,7 +210,18 @@ export function seedMuster(lang: Lang): void {
       uploadedByMemberId: m('anja'), createdAt: at(`${d.createdAt}T16:00:00Z`), phaseStartedAt: 0
     });
     proposals.push(...d.proposals.map((p) => proposal(p, { documentId: did, source: 'document' })));
+    // Zeilen „Seite n“ trennen die Seiten; was davor steht (Titel), gehört zu Seite 1
+    const [head, ...pages] = d.text.split(/\n?(?:Seite|Page) \d+\n/);
+    documentTexts[did] = (pages.length ? [`${head.trim()}\n\n${pages[0]}`.trim(), ...pages.slice(1)] : [head]).join('\f');
   }
+
+  // ---- Kapitelplan der SL für Kapitel 9 (ab 0.4.12)
+  plans.push({
+    id: `plan-${cid}-9`, campaignId: cid, title: x.plan.title, sessionNumber: 9, state: 'ready', notes: x.plan.notes,
+    scenes: x.plan.scenes.map((sc) => ({ id: `scene-${cid}-${sc.key}`, title: sc.title, notes: sc.notes, entryIds: sc.entries.map(e), state: sc.state ?? 'open' })),
+    names: x.plan.names, documentIds: x.plan.documents.map((k) => `doc-${cid}-${k}`),
+    createdAt: at('2026-10-02T18:00:00Z'), updatedAt: at('2026-10-02T18:00:00Z')
+  });
 
   // ---- Mitgebrachte Welt: Vorschläge der Spielerinnen und übernommene Einträge
   for (const who of PLAYERS) {

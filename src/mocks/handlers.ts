@@ -3,9 +3,9 @@ import { DEMO_HOST, DEMO_USERS, musterProbe } from './muster/seed';
 
 /** Alle Titelbild-IDs (Schnittstelle 0.4.3) – wie der Server: neue Kampagnen bekommen eines zufällig */
 const COVER_IDS = ['meadow', 'forest', 'desert', 'city', 'cyber', 'mountains', 'coast', 'swamp', 'dungeon', 'space', 'castle', 'dark-fantasy', 'moonwood', 'ancient-ruins', 'tavern', 'battlefield', 'frozen-north', 'arcane-ruins', 'fairy-wilds', 'underworld', 'storm-coast', 'steampunk', 'post-apocalypse', 'western', 'noir', 'space-opera', 'orient', 'necropolis', 'manor', 'riverside-mystery'];
-import type { CampaignDocument, CampaignExport, CampaignSummary, Character, ImportStatus, Chronicle, Comment, Correction, WorldEntryIn, WorldEntryStatus, Entry, DatePoll, EntryInput, ProcessingStatus, Proposal, Recap, Session, UncertainTerm, VoteAnswer, VoiceProfile, Member } from '../api/types';
+import type { CampaignDocument, ChapterPlan, ChapterPlanInput, CampaignExport, CampaignSummary, Character, ImportStatus, Chronicle, Comment, Correction, WorldEntryIn, WorldEntryStatus, Entry, DatePoll, EntryInput, ProcessingStatus, Proposal, Recap, Session, UncertainTerm, VoteAnswer, VoiceProfile, Member } from '../api/types';
 import {
-  ME, NACHBAR_HOST, account, gmNotices, world, type WorldRecord, campaigns, comments, coverImages, datePolls, documents, portraits, proposalsForDocument, seen, entries, gmNotes, proposals, proposalsFor, recaps, sessions, speakersFor, uploads, speakerLists, transcripts, uncertainTerms,
+  ME, NACHBAR_HOST, account, gmNotices, world, type WorldRecord, campaigns, comments, coverImages, datePolls, documentTexts, documents, plans, portraits, proposalsForDocument, seen, entries, gmNotes, proposals, proposalsFor, recaps, sessions, speakersFor, uploads, speakerLists, transcripts, uncertainTerms,
   type MockCampaign, type MockSession
 } from './db';
 
@@ -417,7 +417,7 @@ export const handlers = [
     const nachbar = new URL(request.url).hostname === NACHBAR_HOST;
     if (hostKey(request) === DEMO_HOST) {
       return HttpResponse.json({
-        name: 'Taleward', operator: 'Euer Verein e. V.', contact: null, apiVersion: '0.4.10', registration: 'invite_only',
+        name: 'Taleward', operator: 'Euer Verein e. V.', contact: null, apiVersion: '0.4.12', registration: 'invite_only',
         authMethods: ['password'], privacyPolicyUrl: null, minAge: 16, externalTranscription: null,
         minAppVersion: null, latestAppVersion: null, appDownloadUrl: null, releaseNotes: null
       });
@@ -427,7 +427,7 @@ export const handlers = [
       operator: nachbar ? 'Spielgemeinschaft Nachbarort e. V.' : 'Rollenspielverein (Testmodus)',
       contact: nachbar ? 'vorstand@nachbarverein.test' : null,
       // Eingebauter Testserver kann alles bis 0.4.7; der Nachbarverein bleibt alt (zeigt das Ausblenden neuer Funktionen)
-      apiVersion: nachbar ? '0.3.9' : '0.4.11',
+      apiVersion: nachbar ? '0.3.9' : '0.4.12',
       registration: 'invite_only',
       authMethods: ['password'],
       privacyPolicyUrl: null,
@@ -1100,6 +1100,71 @@ export const handlers = [
     const d = documents.find((x) => x.id === params.did);
     if (!d || !isGm(d.campaignId)) return err(404, 'not_found', 'Unterlage nicht gefunden.');
     return HttpResponse.json(advanceDoc(d));
+  }),
+
+  // Ab 0.4.12: Unterlagen am Tisch nachlesen (nur SL)
+  http.get(`${B}/documents/:did/text`, ({ params }) => {
+    const d = documents.find((x) => x.id === params.did);
+    if (!d || !isGm(d.campaignId)) return err(404, 'not_found', 'Unterlage nicht gefunden.');
+    const text = documentTexts[d.id] ?? '';
+    return HttpResponse.json({ pages: text ? text.split('\f').map((t, i) => ({ page: i + 1, text: t.trim() })) : [] });
+  }),
+
+  http.get(`${B}/documents/:did/file`, ({ params }) => {
+    const d = documents.find((x) => x.id === params.did);
+    if (!d || !isGm(d.campaignId)) return err(404, 'not_found', 'Unterlage nicht gefunden.');
+    // Testmodus: statt der Originaldatei der erkannte Text
+    return new HttpResponse((documentTexts[d.id] ?? '').replace(/\f/g, '\n\n'), {
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }
+    });
+  }),
+
+  // Ab 0.4.12: Kapitelpläne (nur SL; für alle anderen 404, auch keine Anzahl)
+  http.get(`${B}/campaigns/:id/plans`, ({ params }) => {
+    if (!isGm(params.id as string)) return err(404, 'not_found', 'Nicht gefunden.');
+    const order = (n: number | null) => n ?? Number.MAX_SAFE_INTEGER;
+    return HttpResponse.json(plans.filter((p) => p.campaignId === params.id)
+      .sort((a, b) => order(a.sessionNumber) - order(b.sessionNumber) || a.createdAt.localeCompare(b.createdAt)));
+  }),
+
+  http.post(`${B}/campaigns/:id/plans`, async ({ params, request }) => {
+    if (!isGm(params.id as string)) return err(404, 'not_found', 'Nicht gefunden.');
+    const body = (await request.json()) as ChapterPlanInput;
+    if (!body.title?.trim()) return err(400, 'invalid_input', 'Titel fehlt.');
+    const now = new Date().toISOString();
+    const plan: ChapterPlan = {
+      id: 'plan-' + crypto.randomUUID().slice(0, 8), campaignId: params.id as string, title: body.title.trim(),
+      sessionNumber: body.sessionNumber ?? null, state: body.state ?? 'draft', notes: body.notes ?? null,
+      scenes: body.scenes ?? [], names: body.names ?? [], documentIds: body.documentIds ?? [], createdAt: now, updatedAt: now
+    };
+    plans.push(plan);
+    return HttpResponse.json(plan, { status: 201 });
+  }),
+
+  http.get(`${B}/plans/:pid`, ({ params }) => {
+    const plan = plans.find((p) => p.id === params.pid);
+    if (!plan || !isGm(plan.campaignId)) return err(404, 'not_found', 'Nicht gefunden.');
+    return HttpResponse.json(plan);
+  }),
+
+  http.patch(`${B}/plans/:pid`, async ({ params, request }) => {
+    const plan = plans.find((p) => p.id === params.pid);
+    if (!plan || !isGm(plan.campaignId)) return err(404, 'not_found', 'Nicht gefunden.');
+    const body = (await request.json()) as ChapterPlanInput & { ifUpdatedAt?: string | null };
+    if (body.ifUpdatedAt && body.ifUpdatedAt !== plan.updatedAt) return err(409, 'conflict', 'Der Plan wurde inzwischen auf einem anderen Gerät geändert.');
+    if (body.title !== undefined && !body.title.trim()) return err(400, 'invalid_input', 'Titel fehlt.');
+    const known = new Set(entries.filter((x) => x.campaignId === plan.campaignId).map((x) => x.id));
+    if (body.scenes?.some((sc) => (sc.entryIds ?? []).some((id) => !known.has(id)))) return err(400, 'invalid_input', 'Unbekannter Eintrag.');
+    const { ifUpdatedAt: _, ...change } = body;
+    Object.assign(plan, change, { updatedAt: new Date().toISOString() });
+    return HttpResponse.json(plan);
+  }),
+
+  http.delete(`${B}/plans/:pid`, ({ params }) => {
+    const i = plans.findIndex((p) => p.id === params.pid);
+    if (i < 0 || !isGm(plans[i].campaignId)) return err(404, 'not_found', 'Nicht gefunden.');
+    plans.splice(i, 1);
+    return new HttpResponse(null, { status: 204 });
   }),
 
   http.get(`${B}/documents/:did/proposals`, ({ params }) => {

@@ -215,6 +215,17 @@ Chapter 9: Sefa at the Hunger Stone. Chapter 10: the stairs behind the reading r
           gmNotes: `Reachable only by the stairs behind the reading room; keys held by Quell and the night watchman. Liv Venn is held here.`, confidence: 0.88, evidence: [[2, `Vault beneath the archive where the old registers are kept.`]], decision: 'open' },
       ] },
   ],
+  plan: {
+    title: `At the Hunger Stone`,
+    notes: `Don't reveal Liv Venn before chapter 10. Mara may suspect. If they head straight for Hohenwacht: bring scene 3 forward, the Hunger Stone on the way back.`,
+    scenes: [
+      { key: 'laterne', title: `The lantern crosses`, notes: `Sefa Morr comes over the Ennel, with or without Oren. She doesn't ask about the group, only about a woman with ink on her fingers.`, entries: ['sefa', 'oren'] },
+      { key: 'hungerstein', title: `At the Hunger Stone`, notes: `Ohm Tessel shows them the top mark. The Reedwalkers know it's false; a council surveyor carved it in the summer. Tessel asks whether the group would bear witness in Hohenwacht.`, entries: ['tessel', 'schilfgaenger', 'senkmoor'] },
+      { key: 'sefa', title: `What Sefa is after`, notes: `Sefa wants Iria Sehl. What the group gives away is up to them. She notices lies but doesn't let it show.`, entries: ['sefa', 'iria'] }
+    ],
+    names: ['Hunger Stone', 'Sefa Morr', 'Ohm Tessel', 'Rell'],
+    documents: ['vorbereitung']
+  },
   newcomerNotice: `Sina joined in chapter 4 and can't see “Tower mark in the well shaft”, because it was already hidden from Tom before she joined and Juna wasn't there in chapter 2; reveal it to her once Juna learns about it.`,
   collections: {
     lea: [

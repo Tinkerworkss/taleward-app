@@ -22,6 +22,9 @@ import type { InvitePreview,
   ServerInfo,
   Usage,
   CampaignDocument,
+  ChapterPlan,
+  ChapterPlanInput,
+  DocumentText,
   DocumentKind,
   DatePoll,
   Comment,
@@ -356,6 +359,15 @@ function makeApi(conn: () => Connection) {
   applyDocument: (documentId: string, applyWorldInfo: boolean) =>
     request<CampaignDocument>('POST', `/documents/${documentId}/apply`, { body: { applyWorldInfo } }),
   retryDocument: (documentId: string) => request<CampaignDocument>('POST', `/documents/${documentId}/retry`),
+  // Nachlesen am Tisch (ab 0.4.12, nur SL)
+  documentText: (documentId: string) => request<DocumentText>('GET', `/documents/${documentId}/text`),
+  documentFile: (documentId: string) => request<Blob>('GET', `/documents/${documentId}/file`),
+  // Kapitelpläne (ab 0.4.12, nur SL)
+  plans: (campaignId: string) => request<ChapterPlan[]>('GET', `/campaigns/${campaignId}/plans`),
+  createPlan: (campaignId: string, input: ChapterPlanInput) => request<ChapterPlan>('POST', `/campaigns/${campaignId}/plans`, { body: input }),
+  updatePlan: (planId: string, change: ChapterPlanInput & { ifUpdatedAt?: string | null }) =>
+    request<ChapterPlan>('PATCH', `/plans/${planId}`, { body: change }),
+  deletePlan: (planId: string) => request<void>('DELETE', `/plans/${planId}`),
   deleteDocument: (documentId: string) => request<void>('DELETE', `/documents/${documentId}`),
 
   recap: (sessionId: string) => request<Recap>('GET', `/sessions/${sessionId}/recap`),

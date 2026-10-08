@@ -215,6 +215,17 @@ Kapitel 9: Sefa am Hungerstein. Kapitel 10: die Treppe hinter dem Lesesaal.`,
           gmNotes: `Nur über die Treppe hinter dem Lesesaal erreichbar; Schlüssel bei Quell und dem Nachtwächter. Hier wird Liv Venn festgehalten.`, confidence: 0.88, evidence: [[2, `Gewölbe unter dem Archiv, in dem die alten Register lagern.`]], decision: 'open' },
       ] },
   ],
+  plan: {
+    title: `Am Hungerstein`,
+    notes: `Liv Venn nicht vor Kapitel 10 auflösen. Mara darf es ahnen. Wollen sie direkt nach Hohenwacht: Szene 3 vorziehen, den Hungerstein auf dem Rückweg.`,
+    scenes: [
+      { key: 'laterne', title: `Die Laterne setzt über`, notes: `Sefa Morr kommt über die Ennel, mit oder ohne Oren. Sie fragt nicht nach der Gruppe, nur nach einer Frau mit Tinte an den Fingern.`, entries: ['sefa', 'oren'] },
+      { key: 'hungerstein', title: `Am Hungerstein`, notes: `Ohm Tessel zeigt die oberste Marke. Die Schilfgänger wissen, dass sie falsch ist; ein Vermesser des Rates hat sie im Sommer eingeritzt. Tessel fragt, ob die Gruppe es in Hohenwacht bezeugen würde.`, entries: ['tessel', 'schilfgaenger', 'senkmoor'] },
+      { key: 'sefa', title: `Was Sefa sucht`, notes: `Sefa will Iria Sehl. Was die Gruppe verrät, entscheidet sie selbst. Lügen fallen ihr auf, aber sie lässt es sich nicht anmerken.`, entries: ['sefa', 'iria'] }
+    ],
+    names: ['Hungerstein', 'Sefa Morr', 'Ohm Tessel', 'Rell'],
+    documents: ['vorbereitung']
+  },
   newcomerNotice: `Sina ist seit Kapitel 4 dabei und sieht „Turmzeichen im Brunnenschacht“ nicht, weil der Eintrag schon vor ihrem Beitritt vor Tom verborgen war und Juna in Kapitel 2 nicht dabei war; gib ihn frei, sobald Juna davon erfährt.`,
   collections: {
     lea: [

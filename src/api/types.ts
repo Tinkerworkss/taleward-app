@@ -477,6 +477,45 @@ export interface CampaignDocument {
   createdAt: string;
 }
 
+/** Text einer Unterlage je Seite (ab 0.4.12) */
+export interface DocumentText {
+  pages: { page: number; text: string }[];
+}
+
+/** Szene eines Kapitelplans (ab 0.4.12) */
+export interface PlanScene {
+  id: string;
+  title: string;
+  notes?: string | null;
+  entryIds?: string[];
+  state?: 'open' | 'played' | 'skipped';
+}
+
+export interface ChapterPlanInput {
+  title?: string;
+  sessionNumber?: number | null;
+  state?: 'draft' | 'ready' | 'played';
+  notes?: string | null;
+  scenes?: PlanScene[];
+  names?: string[];
+  documentIds?: string[];
+}
+
+/** Kapitelplan (ab 0.4.12) – nur für die SL, fließt nie in Kapitel oder Vorschläge (nur names als Schreibhilfe) */
+export interface ChapterPlan {
+  id: string;
+  campaignId: string;
+  title: string;
+  sessionNumber: number | null;
+  state: 'draft' | 'ready' | 'played';
+  notes: string | null;
+  scenes: PlanScene[];
+  names: string[];
+  documentIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** Angaben zu einem Cloud-Anbieter, für alle am Tisch sichtbar (ab 0.4.11) */
 export interface CloudProviderInfo {
   /** Kennung wie in cloudSummary bzw. externalTranscription, z. B. "mistral" */

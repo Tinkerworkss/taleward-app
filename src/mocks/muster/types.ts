@@ -127,6 +127,15 @@ export interface MusterCharacter {
   inCampaign?: boolean;
 }
 
+export interface MusterPlan {
+  title: string;
+  notes: string;
+  scenes: { key: string; title: string; notes: string; entries: string[]; state?: 'open' | 'played' | 'skipped' }[];
+  names: string[];
+  /** Schlüssel der Unterlagen */
+  documents: string[];
+}
+
 export interface MusterText {
   title: string;
   description: string;
@@ -155,6 +164,8 @@ export interface MusterText {
   documents: MusterDocument[];
   /** Hinweis an die SL: Sina ist neu und sieht einen verborgenen Eintrag nicht */
   newcomerNotice: string;
+  /** Kapitelplan der SL für Kapitel 9 (ab Schnittstelle 0.4.12, nur SL) */
+  plan: MusterPlan;
   collections: Record<Player, MusterCharacter[]>;
 }
 

@@ -1,4 +1,4 @@
-import type { CampaignDocument, Comment, DatePoll, Entry, GmNotice, Member, Proposal, Recap, Session, Speaker, TranscriptSegment, UncertainTerm } from '../api/types';
+import type { CampaignDocument, ChapterPlan, Comment, DatePoll, Entry, GmNotice, Member, Proposal, Recap, Session, Speaker, TranscriptSegment, UncertainTerm } from '../api/types';
 
 // Testdaten, angelehnt an den Klick-Prototyp. Alles erfunden.
 
@@ -310,6 +310,10 @@ portraits['m-jonas'] = { data: face('#8a6423', '#e0b48c', '#b5562e', true), type
 portraits['m-lea'] = { data: face('#3f5e3a', '#f1cfb0', '#2a2118', false), type: 'image/svg+xml', updatedAt: '2026-09-01T10:00:00Z' };
 
 export const documents: (CampaignDocument & { phaseStartedAt: number; failNext?: boolean })[] = [];
+/** Erkannter Text der Unterlagen (Seiten durch \f getrennt), ab 0.4.12 */
+export const documentTexts: Record<string, string> = {};
+/** Kapitelpläne der SL, ab 0.4.12 */
+export const plans: ChapterPlan[] = [];
 
 /** Beispielhafte Vorschläge aus einer Unterlage – der echte Server lässt hier die KI arbeiten */
 export function proposalsForDocument(doc: CampaignDocument): Proposal[] {
