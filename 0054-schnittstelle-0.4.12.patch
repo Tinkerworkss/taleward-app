@@ -1,0 +1,516 @@
+From f49ec236a8549c807aae6413eb4190a2cf8d02eb Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 8 Oct 2026 07:53:30 +0200
+Subject: [PATCH 54/56] Schnittstelle 0.4.12: Kapitelplan, Unterlagen als Text
+ und Original; Testmodus mit Plan
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ docs/session-chronik-api.yaml | 206 +++++++++++++++++++++++++++++++++-
+ src/api/client.ts             |  12 ++
+ src/api/musterRuntime.ts      |   2 +-
+ src/api/types.ts              |  39 +++++++
+ src/mocks/db.ts               |   6 +-
+ src/mocks/handlers.ts         |  73 +++++++++++-
+ src/mocks/muster/de-b.ts      |  11 ++
+ src/mocks/muster/en-b.ts      |  11 ++
+ src/mocks/muster/seed.ts      |  13 ++-
+ src/mocks/muster/types.ts     |  11 ++
+ 10 files changed, 376 insertions(+), 8 deletions(-)
+
+diff --git a/docs/session-chronik-api.yaml b/docs/session-chronik-api.yaml
+index 5665367..bd4df9d 100644
+--- a/docs/session-chronik-api.yaml
++++ b/docs/session-chronik-api.yaml
+@@ -3,3 +3,3 @@ info:
+   title: Taleward API
+-  version: 0.4.11
++  version: 0.4.12
+   description: |
+@@ -163,2 +163,7 @@ info:
+     und nennt es im Einwilligungstext. Fehlen die Felder (ältere Server), zeigt die App nur die Kennung.
++    Änderungen in 0.4.12 (Kapitelplan und SL-Schirm): Die SL legt Kapitelpläne an (GET/POST /campaigns/{id}/plans,
++    GET/PATCH/DELETE /plans/{planId}) – Szenenkarten mit Notiz, verknüpften Bibel-Einträgen und Zustand, dazu Namen als
++    Schreibhilfe und verknüpfte Unterlagen. Pläne sind nur für die SL und fließen nie in Kapitel oder Vorschläge (nur
++    `names` als Schreibhilfe der Transkription). Unterlagen lassen sich während der Runde nachlesen:
++    GET /documents/{id}/file (Originaldatei) und GET /documents/{id}/text (Text je Seite).
+ 
+@@ -186,2 +191,3 @@ tags:
+   - name: Unterlagen
++  - name: Kapitelplan
+   - name: Charaktere
+@@ -2475,2 +2481,134 @@ paths:
+ 
++  /documents/{documentId}/file:
++    parameters: [{ $ref: "#/components/parameters/documentId" }]
++    get:
++      tags: [Unterlagen]
++      summary: Originaldatei einer Unterlage (ab 0.4.12; nur SL, bei character_sheet auch die Urheberin, sonst 404)
++      description: |
++        Zum Nachlesen während der Runde (SL-Schirm). Antwortet mit dem gespeicherten Inhalt und passendem Content-Type,
++        `Content-Disposition: inline; filename="…"` und `Cache-Control: no-store`. Unterlagen bleiben auf dem Server
++        der Kampagne; die App speichert sie nicht dauerhaft.
++      responses:
++        "200":
++          description: Datei
++          content:
++            application/pdf: { schema: { type: string, format: binary } }
++            application/octet-stream: { schema: { type: string, format: binary } }
++        "401": { $ref: "#/components/responses/Unauthorized" }
++        "404": { $ref: "#/components/responses/NotFound" }
++
++  /documents/{documentId}/text:
++    parameters: [{ $ref: "#/components/parameters/documentId" }]
++    get:
++      tags: [Unterlagen]
++      summary: Erkannter Text einer Unterlage, je Seite (ab 0.4.12; Rechte wie …/file)
++      description: |
++        Der Text, den der Server bei der Auswertung ohnehin gewinnt, mit Seitenzahlen. Die App zeigt ihn lesbar in einer
++        Spalte und durchsucht ihn. Ist (noch) kein Text vorhanden (Auswertung läuft, eingescannte Seiten ohne
++        Textebene), ist `pages` leer.
++      responses:
++        "200":
++          description: OK
++          content:
++            application/json:
++              schema:
++                type: object
++                required: [pages]
++                properties:
++                  pages:
++                    type: array
++                    items:
++                      type: object
++                      required: [page, text]
++                      properties:
++                        page: { type: integer, minimum: 1, description: "Seite; bei .txt/.md/.docx fortlaufende Abschnitte" }
++                        text: { type: string }
++        "401": { $ref: "#/components/responses/Unauthorized" }
++        "404": { $ref: "#/components/responses/NotFound" }
++
++  /campaigns/{campaignId}/plans:
++    parameters: [{ $ref: "#/components/parameters/campaignId" }]
++    get:
++      tags: [Kapitelplan]
++      summary: Kapitelpläne der Kampagne (ab 0.4.12; nur SL – für alle anderen 404)
++      description: |
++        Sortiert nach sessionNumber (ohne Nummer zuletzt), dann nach createdAt. Spieler erfahren nie, ob es Pläne gibt
++        (404 statt 403, keine Anzahl, keine Ungelesen-Zähler).
++      responses:
++        "200":
++          description: OK
++          content:
++            application/json:
++              schema:
++                type: array
++                items: { $ref: "#/components/schemas/ChapterPlan" }
++        "401": { $ref: "#/components/responses/Unauthorized" }
++        "404": { $ref: "#/components/responses/NotFound" }
++    post:
++      tags: [Kapitelplan]
++      summary: Kapitelplan anlegen (nur SL)
++      requestBody:
++        required: true
++        content:
++          application/json:
++            schema: { $ref: "#/components/schemas/ChapterPlanInput" }
++      responses:
++        "201":
++          description: Angelegt
++          content:
++            application/json:
++              schema: { $ref: "#/components/schemas/ChapterPlan" }
++        "400": { $ref: "#/components/responses/BadRequest" }
++        "401": { $ref: "#/components/responses/Unauthorized" }
++        "404": { $ref: "#/components/responses/NotFound" }
++
++  /plans/{planId}:
++    parameters: [{ $ref: "#/components/parameters/planId" }]
++    get:
++      tags: [Kapitelplan]
++      summary: Ein Kapitelplan (nur SL, sonst 404)
++      responses:
++        "200":
++          description: OK
++          content:
++            application/json:
++              schema: { $ref: "#/components/schemas/ChapterPlan" }
++        "401": { $ref: "#/components/responses/Unauthorized" }
++        "404": { $ref: "#/components/responses/NotFound" }
++    patch:
++      tags: [Kapitelplan]
++      summary: Kapitelplan ändern (nur SL)
++      description: |
++        Nur mitgeschickte Felder ändern sich; `scenes`, `names` und `documentIds` werden jeweils als ganze Liste ersetzt
++        (Reihenfolge der Szenen = Reihenfolge der Liste). Neue Szenen schickt die App mit eigener UUID.
++        Gleichzeitige Änderung auf zwei Geräten: Mit `ifUpdatedAt` antwortet der Server 409 `conflict`, wenn der Plan
++        inzwischen geändert wurde; die App lädt dann neu.
++      requestBody:
++        required: true
++        content:
++          application/json:
++            schema:
++              allOf:
++                - $ref: "#/components/schemas/ChapterPlanInput"
++                - type: object
++                  properties:
++                    ifUpdatedAt: { type: [string, "null"], format: date-time }
++      responses:
++        "200":
++          description: OK
++          content:
++            application/json:
++              schema: { $ref: "#/components/schemas/ChapterPlan" }
++        "400": { $ref: "#/components/responses/BadRequest" }
++        "401": { $ref: "#/components/responses/Unauthorized" }
++        "404": { $ref: "#/components/responses/NotFound" }
++        "409": { $ref: "#/components/responses/Conflict" }
++    delete:
++      tags: [Kapitelplan]
++      summary: Kapitelplan löschen (nur SL; verknüpfte Einträge und Unterlagen bleiben)
++      responses:
++        "204": { description: Gelöscht }
++        "401": { $ref: "#/components/responses/Unauthorized" }
++        "404": { $ref: "#/components/responses/NotFound" }
++
+   /campaigns/{campaignId}/entries:
+@@ -2631,2 +2769,3 @@ components:
+     documentId: { name: documentId, in: path, required: true, schema: { type: string } }
++    planId: { name: planId, in: path, required: true, schema: { type: string } }
+ 
+@@ -2796,2 +2935,67 @@ components:
+ 
++    ChapterPlanInput:
++      type: object
++      properties:
++        title: { type: string, minLength: 1, maxLength: 120 }
++        sessionNumber:
++          type: [integer, "null"]
++          minimum: 1
++          description: Für welches Kapitel (Nummer der Session). null = noch keinem Kapitel zugeordnet.
++        state:
++          type: string
++          enum: [draft, ready, played]
++          description: |
++            Nur Anzeige für die SL. Wird eine Session mit derselben Nummer veröffentlicht, setzt der Server `played`
++            (die SL kann es zurücksetzen).
++        notes: { type: [string, "null"], maxLength: 20000, description: Freie Notiz der SL zum ganzen Kapitel }
++        scenes:
++          type: array
++          maxItems: 50
++          items: { $ref: "#/components/schemas/PlanScene" }
++        names:
++          type: array
++          maxItems: 100
++          items: { type: string, maxLength: 40 }
++          description: |
++            Namen, die in diesem Kapitel vorkommen werden. Einzige Verbindung des Plans zur KI: Bei der Transkription der
++            Session mit derselben sessionNumber kommen sie zusätzlich zu Campaign.hotwords in die Schreibhilfe – nur die
++            Wörter, nie Inhalte des Plans.
++        documentIds:
++          type: array
++          maxItems: 20
++          items: { type: string }
++          description: Verknüpfte SL-Unterlagen dieser Kampagne (unbekannte IDs → 400 invalid_input; gelöschte fallen heraus)
++
++    ChapterPlan:
++      description: |
++        Kapitelplan (ab 0.4.12). Verbindlich:
++        - Nur für die SL. Für Spieler gibt es keinen Weg dorthin (404), keine Anzahl, keinen Hinweis.
++        - Der Plan fließt nie in Kapitel, Vorschläge, Gegenprüfung oder Probelauf. Ausnahme nur `names` (Schreibhilfe).
++        - Verknüpfte Bibel-Einträge ändern ihre Sichtbarkeit dadurch nicht; aufgedeckt wird wie bisher über
++          PATCH /entries/{id} (visibility).
++        - Beim Umzug gehen Pläne mit (wie SL-Unterlagen); entryIds und documentIds werden übersetzt.
++      allOf:
++        - $ref: "#/components/schemas/ChapterPlanInput"
++        - type: object
++          required: [id, campaignId, title, state, scenes, names, documentIds, createdAt, updatedAt]
++          properties:
++            id: { type: string }
++            campaignId: { type: string }
++            createdAt: { type: string, format: date-time }
++            updatedAt: { type: string, format: date-time }
++
++    PlanScene:
++      type: object
++      required: [id, title]
++      properties:
++        id: { type: string, description: UUID; neue Szenen bringt die App mit eigener ID }
++        title: { type: string, minLength: 1, maxLength: 120 }
++        notes: { type: [string, "null"], maxLength: 4000 }
++        entryIds:
++          type: array
++          maxItems: 30
++          items: { type: string }
++          description: Bibel-Einträge dieser Kampagne, die in der Szene eine Rolle spielen (gelöschte fallen heraus)
++        state: { type: string, enum: [open, played, skipped], default: open }
++
+     CoverPreset:
+diff --git a/src/api/client.ts b/src/api/client.ts
+index 8aa53df..0752452 100644
+--- a/src/api/client.ts
++++ b/src/api/client.ts
+@@ -24,2 +24,5 @@ import type { InvitePreview,
+   CampaignDocument,
++  ChapterPlan,
++  ChapterPlanInput,
++  DocumentText,
+   DocumentKind,
+@@ -358,2 +361,11 @@ function makeApi(conn: () => Connection) {
+   retryDocument: (documentId: string) => request<CampaignDocument>('POST', `/documents/${documentId}/retry`),
++  // Nachlesen am Tisch (ab 0.4.12, nur SL)
++  documentText: (documentId: string) => request<DocumentText>('GET', `/documents/${documentId}/text`),
++  documentFile: (documentId: string) => request<Blob>('GET', `/documents/${documentId}/file`),
++  // Kapitelpläne (ab 0.4.12, nur SL)
++  plans: (campaignId: string) => request<ChapterPlan[]>('GET', `/campaigns/${campaignId}/plans`),
++  createPlan: (campaignId: string, input: ChapterPlanInput) => request<ChapterPlan>('POST', `/campaigns/${campaignId}/plans`, { body: input }),
++  updatePlan: (planId: string, change: ChapterPlanInput & { ifUpdatedAt?: string | null }) =>
++    request<ChapterPlan>('PATCH', `/plans/${planId}`, { body: change }),
++  deletePlan: (planId: string) => request<void>('DELETE', `/plans/${planId}`),
+   deleteDocument: (documentId: string) => request<void>('DELETE', `/documents/${documentId}`),
+diff --git a/src/api/musterRuntime.ts b/src/api/musterRuntime.ts
+index 9dc7645..1e49d09 100644
+--- a/src/api/musterRuntime.ts
++++ b/src/api/musterRuntime.ts
+@@ -50,3 +50,3 @@ export async function startMuster(role: MusterRole): Promise<Connection> {
+   await install(lang);
+-  const probe = saveConnection({ baseUrl: MUSTER_BASE_URL, name: t('Musterkampagne'), operator: null, apiVersion: '0.4.10', token: null, expiresAt: null, user: null });
++  const probe = saveConnection({ baseUrl: MUSTER_BASE_URL, name: t('Musterkampagne'), operator: null, apiVersion: '0.4.12', token: null, expiresAt: null, user: null });
+   const res = await apiFor(probe).login(role, 'muster');
+diff --git a/src/api/types.ts b/src/api/types.ts
+index 3f4f266..022773d 100644
+--- a/src/api/types.ts
++++ b/src/api/types.ts
+@@ -479,2 +479,41 @@ export interface CampaignDocument {
+ 
++/** Text einer Unterlage je Seite (ab 0.4.12) */
++export interface DocumentText {
++  pages: { page: number; text: string }[];
++}
++
++/** Szene eines Kapitelplans (ab 0.4.12) */
++export interface PlanScene {
++  id: string;
++  title: string;
++  notes?: string | null;
++  entryIds?: string[];
++  state?: 'open' | 'played' | 'skipped';
++}
++
++export interface ChapterPlanInput {
++  title?: string;
++  sessionNumber?: number | null;
++  state?: 'draft' | 'ready' | 'played';
++  notes?: string | null;
++  scenes?: PlanScene[];
++  names?: string[];
++  documentIds?: string[];
++}
++
++/** Kapitelplan (ab 0.4.12) – nur für die SL, fließt nie in Kapitel oder Vorschläge (nur names als Schreibhilfe) */
++export interface ChapterPlan {
++  id: string;
++  campaignId: string;
++  title: string;
++  sessionNumber: number | null;
++  state: 'draft' | 'ready' | 'played';
++  notes: string | null;
++  scenes: PlanScene[];
++  names: string[];
++  documentIds: string[];
++  createdAt: string;
++  updatedAt: string;
++}
++
+ /** Angaben zu einem Cloud-Anbieter, für alle am Tisch sichtbar (ab 0.4.11) */
+diff --git a/src/mocks/db.ts b/src/mocks/db.ts
+index 5b3e9d7..ee731be 100644
+--- a/src/mocks/db.ts
++++ b/src/mocks/db.ts
+@@ -1,2 +1,2 @@
+-import type { CampaignDocument, Comment, DatePoll, Entry, GmNotice, Member, Proposal, Recap, Session, Speaker, TranscriptSegment, UncertainTerm } from '../api/types';
++import type { CampaignDocument, ChapterPlan, Comment, DatePoll, Entry, GmNotice, Member, Proposal, Recap, Session, Speaker, TranscriptSegment, UncertainTerm } from '../api/types';
+ 
+@@ -312,2 +312,6 @@ portraits['m-lea'] = { data: face('#3f5e3a', '#f1cfb0', '#2a2118', false), type:
+ export const documents: (CampaignDocument & { phaseStartedAt: number; failNext?: boolean })[] = [];
++/** Erkannter Text der Unterlagen (Seiten durch \f getrennt), ab 0.4.12 */
++export const documentTexts: Record<string, string> = {};
++/** Kapitelpläne der SL, ab 0.4.12 */
++export const plans: ChapterPlan[] = [];
+ 
+diff --git a/src/mocks/handlers.ts b/src/mocks/handlers.ts
+index 380c16c..357f1e7 100644
+--- a/src/mocks/handlers.ts
++++ b/src/mocks/handlers.ts
+@@ -5,5 +5,5 @@ import { DEMO_HOST, DEMO_USERS, musterProbe } from './muster/seed';
+ const COVER_IDS = ['meadow', 'forest', 'desert', 'city', 'cyber', 'mountains', 'coast', 'swamp', 'dungeon', 'space', 'castle', 'dark-fantasy', 'moonwood', 'ancient-ruins', 'tavern', 'battlefield', 'frozen-north', 'arcane-ruins', 'fairy-wilds', 'underworld', 'storm-coast', 'steampunk', 'post-apocalypse', 'western', 'noir', 'space-opera', 'orient', 'necropolis', 'manor', 'riverside-mystery'];
+-import type { CampaignDocument, CampaignExport, CampaignSummary, Character, ImportStatus, Chronicle, Comment, Correction, WorldEntryIn, WorldEntryStatus, Entry, DatePoll, EntryInput, ProcessingStatus, Proposal, Recap, Session, UncertainTerm, VoteAnswer, VoiceProfile, Member } from '../api/types';
++import type { CampaignDocument, ChapterPlan, ChapterPlanInput, CampaignExport, CampaignSummary, Character, ImportStatus, Chronicle, Comment, Correction, WorldEntryIn, WorldEntryStatus, Entry, DatePoll, EntryInput, ProcessingStatus, Proposal, Recap, Session, UncertainTerm, VoteAnswer, VoiceProfile, Member } from '../api/types';
+ import {
+-  ME, NACHBAR_HOST, account, gmNotices, world, type WorldRecord, campaigns, comments, coverImages, datePolls, documents, portraits, proposalsForDocument, seen, entries, gmNotes, proposals, proposalsFor, recaps, sessions, speakersFor, uploads, speakerLists, transcripts, uncertainTerms,
++  ME, NACHBAR_HOST, account, gmNotices, world, type WorldRecord, campaigns, comments, coverImages, datePolls, documentTexts, documents, plans, portraits, proposalsForDocument, seen, entries, gmNotes, proposals, proposalsFor, recaps, sessions, speakersFor, uploads, speakerLists, transcripts, uncertainTerms,
+   type MockCampaign, type MockSession
+@@ -419,3 +419,3 @@ export const handlers = [
+       return HttpResponse.json({
+-        name: 'Taleward', operator: 'Euer Verein e. V.', contact: null, apiVersion: '0.4.10', registration: 'invite_only',
++        name: 'Taleward', operator: 'Euer Verein e. V.', contact: null, apiVersion: '0.4.12', registration: 'invite_only',
+         authMethods: ['password'], privacyPolicyUrl: null, minAge: 16, externalTranscription: null,
+@@ -429,3 +429,3 @@ export const handlers = [
+       // Eingebauter Testserver kann alles bis 0.4.7; der Nachbarverein bleibt alt (zeigt das Ausblenden neuer Funktionen)
+-      apiVersion: nachbar ? '0.3.9' : '0.4.11',
++      apiVersion: nachbar ? '0.3.9' : '0.4.12',
+       registration: 'invite_only',
+@@ -1104,2 +1104,67 @@ export const handlers = [
+ 
++  // Ab 0.4.12: Unterlagen am Tisch nachlesen (nur SL)
++  http.get(`${B}/documents/:did/text`, ({ params }) => {
++    const d = documents.find((x) => x.id === params.did);
++    if (!d || !isGm(d.campaignId)) return err(404, 'not_found', 'Unterlage nicht gefunden.');
++    const text = documentTexts[d.id] ?? '';
++    return HttpResponse.json({ pages: text ? text.split('\f').map((t, i) => ({ page: i + 1, text: t.trim() })) : [] });
++  }),
++
++  http.get(`${B}/documents/:did/file`, ({ params }) => {
++    const d = documents.find((x) => x.id === params.did);
++    if (!d || !isGm(d.campaignId)) return err(404, 'not_found', 'Unterlage nicht gefunden.');
++    // Testmodus: statt der Originaldatei der erkannte Text
++    return new HttpResponse((documentTexts[d.id] ?? '').replace(/\f/g, '\n\n'), {
++      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }
++    });
++  }),
++
++  // Ab 0.4.12: Kapitelpläne (nur SL; für alle anderen 404, auch keine Anzahl)
++  http.get(`${B}/campaigns/:id/plans`, ({ params }) => {
++    if (!isGm(params.id as string)) return err(404, 'not_found', 'Nicht gefunden.');
++    const order = (n: number | null) => n ?? Number.MAX_SAFE_INTEGER;
++    return HttpResponse.json(plans.filter((p) => p.campaignId === params.id)
++      .sort((a, b) => order(a.sessionNumber) - order(b.sessionNumber) || a.createdAt.localeCompare(b.createdAt)));
++  }),
++
++  http.post(`${B}/campaigns/:id/plans`, async ({ params, request }) => {
++    if (!isGm(params.id as string)) return err(404, 'not_found', 'Nicht gefunden.');
++    const body = (await request.json()) as ChapterPlanInput;
++    if (!body.title?.trim()) return err(400, 'invalid_input', 'Titel fehlt.');
++    const now = new Date().toISOString();
++    const plan: ChapterPlan = {
++      id: 'plan-' + crypto.randomUUID().slice(0, 8), campaignId: params.id as string, title: body.title.trim(),
++      sessionNumber: body.sessionNumber ?? null, state: body.state ?? 'draft', notes: body.notes ?? null,
++      scenes: body.scenes ?? [], names: body.names ?? [], documentIds: body.documentIds ?? [], createdAt: now, updatedAt: now
++    };
++    plans.push(plan);
++    return HttpResponse.json(plan, { status: 201 });
++  }),
++
++  http.get(`${B}/plans/:pid`, ({ params }) => {
++    const plan = plans.find((p) => p.id === params.pid);
++    if (!plan || !isGm(plan.campaignId)) return err(404, 'not_found', 'Nicht gefunden.');
++    return HttpResponse.json(plan);
++  }),
++
++  http.patch(`${B}/plans/:pid`, async ({ params, request }) => {
++    const plan = plans.find((p) => p.id === params.pid);
++    if (!plan || !isGm(plan.campaignId)) return err(404, 'not_found', 'Nicht gefunden.');
++    const body = (await request.json()) as ChapterPlanInput & { ifUpdatedAt?: string | null };
++    if (body.ifUpdatedAt && body.ifUpdatedAt !== plan.updatedAt) return err(409, 'conflict', 'Der Plan wurde inzwischen auf einem anderen Gerät geändert.');
++    if (body.title !== undefined && !body.title.trim()) return err(400, 'invalid_input', 'Titel fehlt.');
++    const known = new Set(entries.filter((x) => x.campaignId === plan.campaignId).map((x) => x.id));
++    if (body.scenes?.some((sc) => (sc.entryIds ?? []).some((id) => !known.has(id)))) return err(400, 'invalid_input', 'Unbekannter Eintrag.');
++    const { ifUpdatedAt: _, ...change } = body;
++    Object.assign(plan, change, { updatedAt: new Date().toISOString() });
++    return HttpResponse.json(plan);
++  }),
++
++  http.delete(`${B}/plans/:pid`, ({ params }) => {
++    const i = plans.findIndex((p) => p.id === params.pid);
++    if (i < 0 || !isGm(plans[i].campaignId)) return err(404, 'not_found', 'Nicht gefunden.');
++    plans.splice(i, 1);
++    return new HttpResponse(null, { status: 204 });
++  }),
++
+   http.get(`${B}/documents/:did/proposals`, ({ params }) => {
+diff --git a/src/mocks/muster/de-b.ts b/src/mocks/muster/de-b.ts
+index 6464a29..712eb9f 100644
+--- a/src/mocks/muster/de-b.ts
++++ b/src/mocks/muster/de-b.ts
+@@ -217,2 +217,13 @@ Kapitel 9: Sefa am Hungerstein. Kapitel 10: die Treppe hinter dem Lesesaal.`,
+   ],
++  plan: {
++    title: `Am Hungerstein`,
++    notes: `Liv Venn nicht vor Kapitel 10 auflösen. Mara darf es ahnen. Wollen sie direkt nach Hohenwacht: Szene 3 vorziehen, den Hungerstein auf dem Rückweg.`,
++    scenes: [
++      { key: 'laterne', title: `Die Laterne setzt über`, notes: `Sefa Morr kommt über die Ennel, mit oder ohne Oren. Sie fragt nicht nach der Gruppe, nur nach einer Frau mit Tinte an den Fingern.`, entries: ['sefa', 'oren'] },
++      { key: 'hungerstein', title: `Am Hungerstein`, notes: `Ohm Tessel zeigt die oberste Marke. Die Schilfgänger wissen, dass sie falsch ist; ein Vermesser des Rates hat sie im Sommer eingeritzt. Tessel fragt, ob die Gruppe es in Hohenwacht bezeugen würde.`, entries: ['tessel', 'schilfgaenger', 'senkmoor'] },
++      { key: 'sefa', title: `Was Sefa sucht`, notes: `Sefa will Iria Sehl. Was die Gruppe verrät, entscheidet sie selbst. Lügen fallen ihr auf, aber sie lässt es sich nicht anmerken.`, entries: ['sefa', 'iria'] }
++    ],
++    names: ['Hungerstein', 'Sefa Morr', 'Ohm Tessel', 'Rell'],
++    documents: ['vorbereitung']
++  },
+   newcomerNotice: `Sina ist seit Kapitel 4 dabei und sieht „Turmzeichen im Brunnenschacht“ nicht, weil der Eintrag schon vor ihrem Beitritt vor Tom verborgen war und Juna in Kapitel 2 nicht dabei war; gib ihn frei, sobald Juna davon erfährt.`,
+diff --git a/src/mocks/muster/en-b.ts b/src/mocks/muster/en-b.ts
+index dc34d7e..66210ed 100644
+--- a/src/mocks/muster/en-b.ts
++++ b/src/mocks/muster/en-b.ts
+@@ -217,2 +217,13 @@ Chapter 9: Sefa at the Hunger Stone. Chapter 10: the stairs behind the reading r
+   ],
++  plan: {
++    title: `At the Hunger Stone`,
++    notes: `Don't reveal Liv Venn before chapter 10. Mara may suspect. If they head straight for Hohenwacht: bring scene 3 forward, the Hunger Stone on the way back.`,
++    scenes: [
++      { key: 'laterne', title: `The lantern crosses`, notes: `Sefa Morr comes over the Ennel, with or without Oren. She doesn't ask about the group, only about a woman with ink on her fingers.`, entries: ['sefa', 'oren'] },
++      { key: 'hungerstein', title: `At the Hunger Stone`, notes: `Ohm Tessel shows them the top mark. The Reedwalkers know it's false; a council surveyor carved it in the summer. Tessel asks whether the group would bear witness in Hohenwacht.`, entries: ['tessel', 'schilfgaenger', 'senkmoor'] },
++      { key: 'sefa', title: `What Sefa is after`, notes: `Sefa wants Iria Sehl. What the group gives away is up to them. She notices lies but doesn't let it show.`, entries: ['sefa', 'iria'] }
++    ],
++    names: ['Hunger Stone', 'Sefa Morr', 'Ohm Tessel', 'Rell'],
++    documents: ['vorbereitung']
++  },
+   newcomerNotice: `Sina joined in chapter 4 and can't see “Tower mark in the well shaft”, because it was already hidden from Tom before she joined and Juna wasn't there in chapter 2; reveal it to her once Juna learns about it.`,
+diff --git a/src/mocks/muster/seed.ts b/src/mocks/muster/seed.ts
+index 9475eff..ba03baa 100644
+--- a/src/mocks/muster/seed.ts
++++ b/src/mocks/muster/seed.ts
+@@ -9,3 +9,3 @@ import { MUSTER_HOST, musterCampaignId } from '../../api/muster';
+ import {
+-  campaigns, comments, datePolls, documents, entries, gmNotes, gmNotices, portraits, proposals, recaps, seen, sessions, speakerLists,
++  campaigns, comments, datePolls, documentTexts, documents, entries, gmNotes, gmNotices, plans, portraits, proposals, recaps, seen, sessions, speakerLists,
+   transcripts, uncertainTerms, world, type MockSession
+@@ -212,4 +212,15 @@ export function seedMuster(lang: Lang): void {
+     proposals.push(...d.proposals.map((p) => proposal(p, { documentId: did, source: 'document' })));
++    // Zeilen „Seite n“ trennen die Seiten; was davor steht (Titel), gehört zu Seite 1
++    const [head, ...pages] = d.text.split(/\n?(?:Seite|Page) \d+\n/);
++    documentTexts[did] = (pages.length ? [`${head.trim()}\n\n${pages[0]}`.trim(), ...pages.slice(1)] : [head]).join('\f');
+   }
+ 
++  // ---- Kapitelplan der SL für Kapitel 9 (ab 0.4.12)
++  plans.push({
++    id: `plan-${cid}-9`, campaignId: cid, title: x.plan.title, sessionNumber: 9, state: 'ready', notes: x.plan.notes,
++    scenes: x.plan.scenes.map((sc) => ({ id: `scene-${cid}-${sc.key}`, title: sc.title, notes: sc.notes, entryIds: sc.entries.map(e), state: sc.state ?? 'open' })),
++    names: x.plan.names, documentIds: x.plan.documents.map((k) => `doc-${cid}-${k}`),
++    createdAt: at('2026-10-02T18:00:00Z'), updatedAt: at('2026-10-02T18:00:00Z')
++  });
++
+   // ---- Mitgebrachte Welt: Vorschläge der Spielerinnen und übernommene Einträge
+diff --git a/src/mocks/muster/types.ts b/src/mocks/muster/types.ts
+index 695c434..b7dca09 100644
+--- a/src/mocks/muster/types.ts
++++ b/src/mocks/muster/types.ts
+@@ -129,2 +129,11 @@ export interface MusterCharacter {
+ 
++export interface MusterPlan {
++  title: string;
++  notes: string;
++  scenes: { key: string; title: string; notes: string; entries: string[]; state?: 'open' | 'played' | 'skipped' }[];
++  names: string[];
++  /** Schlüssel der Unterlagen */
++  documents: string[];
++}
++
+ export interface MusterText {
+@@ -157,2 +166,4 @@ export interface MusterText {
+   newcomerNotice: string;
++  /** Kapitelplan der SL für Kapitel 9 (ab Schnittstelle 0.4.12, nur SL) */
++  plan: MusterPlan;
+   collections: Record<Player, MusterCharacter[]>;
+-- 
+2.43.0
+
