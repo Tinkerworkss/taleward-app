@@ -162,12 +162,14 @@ export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc, compact }: {
         <>
           <div className="row between" style={{ alignItems: 'flex-start', gap: 8 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-              {plan.sessionNumber && <span className="overline">{t('Kapitel {n}', { n: plan.sessionNumber })}</span>}
+              {/* Heißt der Plan schon „Kapitel n“, nicht doppelt anzeigen */}
+              {plan.sessionNumber && plan.title !== t('Kapitel {n}', { n: plan.sessionNumber }) && <span className="overline">{t('Kapitel {n}', { n: plan.sessionNumber })}</span>}
               <h3 style={{ margin: 0 }}>{plan.title}</h3>
             </div>
             <button type="button" className="btn small outline" onClick={() => setEditing(true)}>{t('Bearbeiten')}</button>
           </div>
           {plan.notes && <p className="small" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{plan.notes}</p>}
+          {plan.scenes.length === 0 && <span className="muted small">{t('Noch keine Szenen. Unter „Bearbeiten“ legst du welche an.')}</span>}
           {plan.scenes.map((sc, i) => {
             const state = sc.state ?? 'open';
             return (

@@ -97,25 +97,47 @@ export function ClockPanel({ campaignId, compact }: { campaignId: string; compac
   }
   const left = end ? end.getTime() - now.getTime() : null;
 
+  const elapsed = start ? now.getTime() - start.getTime() : null;
+  // Anteil des Abends, der schon vorbei ist (nur mit Beginn und Ende)
+  const share = start && end ? Math.min(1, Math.max(0, (now.getTime() - start.getTime()) / Math.max(1, end.getTime() - start.getTime()))) : null;
+  const over = left !== null && left < 0;
+  const startNow = () => update({ start: new Date().toISOString() });
+
   return (
-    <div className="table-panel-body">
-      <div className="table-clock" aria-live="off">{hm(now)}</div>
-      <div className="small" role="status">
-        {start && <span>{t('Runde läuft seit {t} h', { t: span(now.getTime() - start.getTime()) })}</span>}
-        {start && left !== null && ' · '}
-        {left !== null && (left >= 0
-          ? <span>{t('noch {t} h bis {end}', { t: span(left), end: ev.end! })}</span>
-          : <strong style={{ color: 'var(--siegel-text)' }}>{t('{t} h über der Zeit', { t: span(-left) })}</strong>)}
+    <div className="table-panel-body table-clock-body">
+      <div className="table-clock-stats">
+        <div className="table-clock-stat">
+          <span className="overline">{t('Jetzt')}</span>
+          <span className="table-clock" aria-live="off">{hm(now)}</span>
+        </div>
+        {!start && (
+          <div className="table-clock-stat" style={{ alignSelf: 'center', alignItems: 'flex-start' }}>
+            <button type="button" className="btn small outline" onClick={startNow}>{t('Runde beginnt jetzt')}</button>
+          </div>
+        )}
+        {elapsed !== null && (
+          <div className="table-clock-stat">
+            <span className="overline">{t('Runde läuft seit')}</span>
+            <span className="table-clock-value">{t('{t} h', { t: span(elapsed) })}</span>
+          </div>
+        )}
+        {left !== null && (
+          <div className={over ? 'table-clock-stat over' : 'table-clock-stat'}>
+            <span className="overline">{over ? t('Über der Zeit') : t('Noch bis {end}', { end: ev.end! })}</span>
+            <span className="table-clock-value">{t('{t} h', { t: span(Math.abs(left)) })}</span>
+          </div>
+        )}
       </div>
-      {compact && !start && (
-        <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start' }} onClick={() => update({ start: new Date().toISOString() })}>{t('Runde beginnt jetzt')}</button>
+      {share !== null && (
+        <div className={over ? 'table-clock-bar over' : 'table-clock-bar'} role="progressbar" aria-label={t('Verlauf des Abends')}
+          aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(share * 100)}>
+          <span style={{ width: `${share * 100}%` }} />
+        </div>
       )}
       {!compact && (
         <>
           <div className="row wrap" style={{ gap: 8, alignItems: 'flex-end' }}>
-            {!start
-              ? <button type="button" className="btn small outline" onClick={() => update({ start: new Date().toISOString() })}>{t('Runde beginnt jetzt')}</button>
-              : <button type="button" className="btn small ghost" onClick={() => update({ start: null })}>{t('Beginn zurücksetzen')}</button>}
+            {start && <button type="button" className="btn small ghost" onClick={() => update({ start: null })}>{t('Beginn zurücksetzen')}</button>}
             <div className="field" style={{ margin: 0 }}>
               <label htmlFor={`clock-end-${campaignId}`}>{t('Geplantes Ende')}</label>
               <input id={`clock-end-${campaignId}`} type="time" value={ev.end ?? ''} onChange={(e) => update({ end: e.target.value || null })} />

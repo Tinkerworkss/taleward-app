@@ -553,6 +553,7 @@ input[type='text'],
 input[type='password'],
 input[type='search'],
 input[type='datetime-local'],
+input[type='time'],
 select,
 textarea {
   width: 100%;
@@ -1763,9 +1764,69 @@ button.table-group-face {
 }
 
 /* Uhr und Notizzettel */
+/* Uhr: drei Werte nebeneinander (jetzt, seit, noch), darunter der Verlauf des Abends */
+.table-clock-body {
+  gap: 10px;
+}
+
+/* Kleine Karte: Werte mittig in der Höhe */
+.table-panel.compact .table-clock-body {
+  justify-content: center;
+}
+
+.table-clock-body input[type='time'] {
+  width: auto;
+  min-width: 140px;
+}
+
+.table-clock-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px 20px;
+  align-items: start;
+}
+
+.table-clock-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .table-clock {
-  font: 700 40px/44px var(--font-serif);
+  font: 700 32px/36px var(--font-serif);
+  font-variant-numeric: tabular-nums;
   color: var(--ink);
+}
+
+.table-clock-value {
+  font: 700 32px/36px var(--font-serif);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.table-clock-stat.over .table-clock-value,
+.table-clock-stat.over .overline {
+  color: var(--siegel-text);
+}
+
+.table-clock-bar {
+  flex-shrink: 0;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--line-strong) 45%, transparent);
+  overflow: hidden;
+}
+
+.table-clock-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ink);
+}
+
+.table-clock-bar.over span {
+  background: var(--siegel);
 }
 
 .table-notes {
