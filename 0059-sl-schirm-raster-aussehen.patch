@@ -1,0 +1,197 @@
+From 7c3b0b907bb5f4ca9774194e07fbd2942a002f8c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 8 Oct 2026 10:20:49 +0200
+Subject: [PATCH 59/60] =?UTF-8?q?SL-Schirm:=20Aussehen=20f=C3=BCr=20das=20?=
+ =?UTF-8?q?Raster=20und=20den=20Bearbeitungsmodus?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ src/i18n/en.ts |  16 +++++++
+ src/theme.css  | 125 +++++++++++++++++++++++++++++++++++--------------
+ 2 files changed, 105 insertions(+), 36 deletions(-)
+
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 5f640de..be47422 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -1091,2 +1091,18 @@ export const en: Record<string, string> = {
+   "Alle Szenen erledigt.": "All scenes done.",
++  "{w} breit, {h} hoch": "{w} wide, {h} high",
++  "{n} Zeile": "{n} row",
++  "{n} Zeilen": "{n} rows",
++  "Verschieben": "Move",
++  "{name} nach links": "Move {name} left",
++  "{name} nach rechts": "Move {name} right",
++  "Schmaler": "Narrower",
++  "Breiter": "Wider",
++  "Niedriger": "Shorter",
++  "Höher": "Taller",
++  "Vom Schirm nehmen": "Take off the screen",
++  "Tippe eine Karte an, um sie zu verschieben oder ihre Größe zu ändern.": "Tap a card to move it or change its size.",
++  "{name} dazulegen": "Add {name}",
++  "Kein Platz frei. Mach eine Karte kleiner.": "No room left. Make a card smaller.",
++  "Zurücksetzen": "Reset",
++  "Karte ziehen zum Verschieben, an der Ecke ziehen für die Größe. Gilt nur auf diesem Gerät.": "Drag a card to move it, drag its corner to resize. Only applies to this device.",
+ };
+diff --git a/src/theme.css b/src/theme.css
+index 9ab54c1..dcb348f 100644
+--- a/src/theme.css
++++ b/src/theme.css
+@@ -1329,4 +1329,5 @@ details.card[open] { padding-bottom: var(--space-4); }
+   display: grid;
+-  gap: 14px;
+-  grid-template-columns: minmax(0, 1fr);
++  gap: 12px;
++  grid-template-columns: repeat(6, minmax(0, 1fr));
++  grid-template-rows: repeat(5, minmax(0, 1fr));
+   flex: 1;
+@@ -1335,9 +1336,7 @@ details.card[open] { padding-bottom: var(--space-4); }
+ 
+-/* Eine Spalte: Karten teilen sich die Höhe */
+-.table-col {
++/* Schmal: Karten untereinander */
++.table-stack {
+   display: flex;
+   flex-direction: column;
+-  gap: 14px;
+-  min-height: 0;
+-  min-width: 0;
++  gap: 12px;
+ }
+@@ -1461,4 +1460,4 @@ details.card[open] { padding-bottom: var(--space-4); }
+ 
+-/* Breit genug: Spalten nebeneinander, Karten teilen sich die Höhe, jede scrollt für sich */
+-@media (min-width: 900px) {
++/* Breit genug: das Raster füllt den Bildschirm, jede Karte scrollt für sich */
++@media (min-width: 700px) {
+   .table-screen {
+@@ -1467,13 +1466,5 @@ details.card[open] { padding-bottom: var(--space-4); }
+   }
+-
+-  .table-grid {
+-    grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+-  }
+-
+-  .table-col > .table-panel {
+-    flex: 1 1 0;
+-  }
+ }
+ 
+-@media (min-width: 900px) and (max-height: 520px) {
++@media (min-width: 700px) and (max-height: 520px) {
+   .table-screen {
+@@ -1542,16 +1533,26 @@ details.card[open] { padding-bottom: var(--space-4); }
+ 
+-/* Schirm einrichten */
+-.table-chooser {
+-  display: grid;
+-  gap: 12px;
+-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+-}
+-
+-.table-chooser-col {
++/* Schirm einrichten: Raster sichtbar, Karten ziehen und an der Ecke vergrößern */
++.table-edit-bar {
+   display: flex;
+-  flex-direction: column;
++  flex-wrap: wrap;
++  align-items: center;
+   gap: 8px;
+-  margin: 0;
+-  padding: 10px;
+-  border: 1px solid var(--line);
++}
++
++.table-edit-name {
++  font: 700 15px/20px var(--font-sans);
++}
++
++.table-edit-group {
++  display: inline-flex;
++  gap: 4px;
++}
++
++.table-grid.editing {
++  touch-action: none;
++  user-select: none;
++}
++
++.table-cell {
++  border: 1px dashed var(--line);
+   border-radius: 10px;
+@@ -1559,13 +1560,65 @@ details.card[open] { padding-bottom: var(--space-4); }
+ 
+-.table-chooser-col legend {
+-  font: 700 14px/20px var(--font-sans);
+-  padding: 0 4px;
++.table-edit-card {
++  position: relative;
++  z-index: 1;
++  display: flex;
++  min-width: 0;
++  min-height: 0;
++  background: var(--paper-raised);
++  border: 1.5px solid var(--line-strong);
++  border-radius: 12px;
++  box-shadow: var(--shadow-card);
++  cursor: grab;
+ }
+ 
+-.table-chooser-card {
++.table-edit-card.selected {
++  border: 3px solid var(--tinte);
++}
++
++.table-edit-card.dragging {
++  z-index: 2;
++  opacity: 0.9;
++  cursor: grabbing;
++}
++
++.table-edit-card.blocked {
++  border: 3px dashed var(--siegel);
++}
++
++.table-edit-select {
++  flex: 1;
+   display: flex;
+   flex-direction: column;
++  align-items: center;
++  justify-content: center;
+   gap: 4px;
+-  padding-bottom: 6px;
+-  border-bottom: 1px dashed var(--line);
++  min-height: 48px;
++  padding: 8px;
++  background: none;
++  border: 0;
++  color: var(--ink);
++  font: inherit;
++  cursor: inherit;
++}
++
++.table-edit-resize {
++  position: absolute;
++  right: 0;
++  bottom: 0;
++  width: 48px;
++  height: 48px;
++  cursor: nwse-resize;
++  background:
++    linear-gradient(135deg, transparent 0 55%, var(--line-strong) 55% 60%, transparent 60% 70%, var(--line-strong) 70% 75%, transparent 75%);
++  border-bottom-right-radius: 12px;
++}
++
++[data-theme='dark'] .table-edit-card.selected {
++  border-color: var(--on-tinte);
++}
++
++@media (prefers-color-scheme: dark) {
++  :root:not([data-theme='light']) .table-edit-card.selected {
++    border-color: var(--on-tinte);
++  }
+ }
