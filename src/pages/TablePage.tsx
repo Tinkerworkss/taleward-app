@@ -320,7 +320,7 @@ export function TablePage() {
         return <BiblePanel campaignId={campaign.id} members={campaign.members} query={bibleQuery} onQuery={setBibleQuery}
           focusEntryId={focusEntryId} compact={compact} onEntry={openEntry} />;
       case 'group':
-        return <GroupPanel campaign={campaign} onEntry={openEntry} compact={compact} onExpand={() => setPopup('group')} />;
+        return <GroupPanel campaign={campaign} onEntry={openEntry} compact={compact} />;
     }
   };
 

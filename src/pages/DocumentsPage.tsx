@@ -15,7 +15,7 @@ const KINDS: { value: DocumentKind; label: string; hint: string }[] = [
   { value: 'handout', label: tk('Spielerhandout'), hint: tk('Karten, Briefe, Gerüchte: alles ist für die Spieler gedacht.') }
 ];
 
-const STATE: Record<CampaignDocument['state'], string> = {
+export const DOC_STATE: Record<CampaignDocument['state'], string> = {
   queued: tk('Wartet auf den Server'),
   processing: tk('Wird ausgewertet'),
   awaiting_review: tk('Vorschläge prüfen'),
@@ -23,7 +23,7 @@ const STATE: Record<CampaignDocument['state'], string> = {
   failed: tk('Fehlgeschlagen')
 };
 
-const MAX_MB = 50;
+export const MAX_MB = 50;
 
 /** SL-Unterlagen hochladen und auswerten lassen (nur SL). */
 export function DocumentsPage() {
@@ -136,7 +136,7 @@ export function DocumentsPage() {
           <div className="muted small">
             {d.fileName} · {d.sizeBytes < 1e5 ? `${Math.max(1, Math.round(d.sizeBytes / 1e3))} kB` : `${(d.sizeBytes / 1e6).toFixed(1)} MB`}{d.pageCount ? ' · ' + tn(d.pageCount, '{n} Seite', '{n} Seiten') : ''} · {formatDate(d.createdAt)}
           </div>
-          <div className="small"><strong>{t(STATE[d.state])}</strong>{d.state === 'failed' && d.message ? ` – ${d.message}` : ''}</div>
+          <div className="small"><strong>{t(DOC_STATE[d.state])}</strong>{d.state === 'failed' && d.message ? ` – ${d.message}` : ''}</div>
           {/* Hinweis des Servers beim Warten, z. B. „Die SL hat das für diese Kampagne noch nicht erlaubt …“ */}
           {d.message && (d.state === 'queued' || d.state === 'processing') && <div className="muted small">{d.message}</div>}
           {d.progress !== null && (d.state === 'processing' || d.state === 'queued') && (

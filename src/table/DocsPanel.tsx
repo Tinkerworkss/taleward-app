@@ -1,5 +1,8 @@
 import { Capacitor } from '@capacitor/core';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
+import { Link } from 'react-router-dom';
+import { p } from '../api/connections';
+import { DOC_STATE, MAX_MB } from '../pages/DocumentsPage';
 import { api } from '../api/client';
 import type { CampaignDocument, DocumentText } from '../api/types';
 import { ErrorBox } from '../components/Screen';
@@ -28,10 +31,53 @@ export function DocsPanel({ campaignId, docId, onDoc, compact }: {
   const [text, setText] = useState<DocumentText | null>(null);
   const [query, setQuery] = useState('');
   const [error, setError] = useState<unknown>(null);
+  const [uploading, setUploading] = useState<string[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
 
+  const load = () => api.documents(campaignId).then((list) => setDocs(list.filter((d) => d.kind !== 'character_sheet'))).catch(setError);
   useEffect(() => {
-    api.documents(campaignId).then((list) => setDocs(list.filter((d) => d.kind !== 'character_sheet'))).catch(setError);
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
+
+  // Solange der Server auswertet, regelmäßig nachfragen
+  const running = docs?.some((d) => d.state === 'queued' || d.state === 'processing');
+  useEffect(() => {
+    if (!running) return;
+    const id = window.setInterval(load, 3000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running]);
+
+  /** Hochladen und auswerten lassen – als SL-Unterlage, also erst einmal alles geheim */
+  const upload = async (files: File[]) => {
+    setError(null);
+    for (const file of files) {
+      if (!/\.(pdf|docx|txt|md)$/i.test(file.name)) {
+        setError(new Error(t('„{name}“ geht nicht. Möglich sind PDF, Word (.docx) und Text.', { name: file.name })));
+        continue;
+      }
+      if (file.size > MAX_MB * 1024 * 1024) {
+        setError(new Error(t('Die Datei ist zu groß (höchstens {n} MB).', { n: MAX_MB })));
+        continue;
+      }
+      setUploading((u) => [...u, file.name]);
+      try {
+        await api.uploadDocument(campaignId, file, 'gm', file.name.replace(/\.[^.]+$/, ''));
+      } catch (e) {
+        setError(e);
+      } finally {
+        setUploading((u) => u.filter((n) => n !== file.name));
+      }
+    }
+    load();
+  };
+  const drop = {
+    onDragOver: (e: DragEvent) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true); } },
+    onDragLeave: (e: DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false); },
+    onDrop: (e: DragEvent) => { e.preventDefault(); setDragging(false); upload([...e.dataTransfer.files]); }
+  };
 
   useEffect(() => {
     setText(null);
@@ -55,21 +101,33 @@ export function DocsPanel({ campaignId, docId, onDoc, compact }: {
   const pages = text?.pages.filter((pg) => !query.trim() || matchScore(query, pg.text) > 0) ?? [];
 
   return (
-    <div className="table-panel-body">
+    <div className={dragging ? 'table-panel-body table-drop active' : 'table-panel-body table-drop'} {...drop}>
+      {dragging && <div className="table-drop-hint" aria-hidden>{t('Loslassen zum Hochladen und Auswerten')}</div>}
       <ErrorBox error={error} />
       {!doc ? (
         <>
           {!docs && !error && <div className="empty">{t('Lade …')}</div>}
-          {docs?.length === 0 && <div className="empty">{t('Noch keine Unterlagen. Hochladen kannst du sie in der Bibel unter „Unterlagen hochladen und auswerten“.')}</div>}
+          {docs?.length === 0 && !uploading.length && <div className="muted small">{t('Noch keine Unterlagen. Zieh eine Datei hierher oder tippe auf „Unterlage hinzufügen“.')}</div>}
+          {uploading.map((n) => <div key={n} className="muted small" role="status">{t('„{name}“ wird hochgeladen …', { name: n })}</div>)}
           {docs?.map((d) => (
-            <button key={d.id} type="button" className="table-entry-head card-like" onClick={() => onDoc(d.id)}>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <strong>{d.title}</strong>
-                <span className="muted small">{d.pageCount ? ' · ' + tn(d.pageCount, '{n} Seite', '{n} Seiten') : ''}</span>
-              </span>
-              <span aria-hidden style={{ color: 'var(--ink-muted)' }}>›</span>
-            </button>
+            <div key={d.id} className="table-doc-row">
+              <button type="button" className="table-entry-head card-like" onClick={() => onDoc(d.id)}>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <strong>{d.title}</strong>
+                  <span className="muted small">{d.pageCount ? ' · ' + tn(d.pageCount, '{n} Seite', '{n} Seiten') : ''}</span>
+                </span>
+                {d.state !== 'done' && <span className={d.state === 'failed' ? 'pill seal' : 'pill'}>{t(DOC_STATE[d.state])}</span>}
+                <span aria-hidden style={{ color: 'var(--ink-muted)' }}>›</span>
+              </button>
+              {d.state === 'awaiting_review' && !compact && (
+                <Link className="small" to={p(`/k/${campaignId}/unterlagen/${d.id}`)}>{tn(d.proposalCount, '{n} Vorschlag für die Bibel prüfen', '{n} Vorschläge für die Bibel prüfen')}</Link>
+              )}
+            </div>
           ))}
+          <input ref={picker} type="file" multiple hidden accept=".pdf,.docx,.txt,.md,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            onChange={(e) => { upload([...(e.target.files ?? [])]); e.target.value = ''; }} />
+          <button type="button" className="btn small dashed" onClick={() => picker.current?.click()}>{t('Unterlage hinzufügen')}</button>
+          {!compact && <span className="muted small">{t('Neue Unterlagen werden als SL-Unterlage ausgewertet: alles bleibt geheim, bis du Vorschläge in die Bibel übernimmst.')}</span>}
         </>
       ) : (
         <>
