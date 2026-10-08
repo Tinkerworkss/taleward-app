@@ -1,0 +1,329 @@
+From 5e6f05ea86605d13bb27e97869ec8faebc86dc06 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 8 Oct 2026 14:14:32 +0200
+Subject: [PATCH 64/65] SL-Schirm: Charakter antippen, Unterlagen hineinziehen
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ src/i18n/en.ts              |  18 +++++-
+ src/pages/DocumentsPage.tsx |   6 +-
+ src/pages/TablePage.tsx     |   2 +-
+ src/table/DocsPanel.tsx     |  80 +++++++++++++++++++++----
+ src/table/GroupPanel.tsx    | 114 ++++++++++++++++++++++++++++++------
+ 5 files changed, 186 insertions(+), 34 deletions(-)
+
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 7ae14db..ab1d959 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -1031,3 +1031,2 @@ export const en: Record<string, string> = {
+   "Für alle aufdecken": "Reveal to everyone",
+-  "Noch keine Unterlagen. Hochladen kannst du sie in der Bibel unter „Unterlagen hochladen und auswerten“.": "No documents yet. You can add them in the bible under “Upload and analyse documents”.",
+   "Alle Unterlagen": "All documents",
+@@ -1075,3 +1074,2 @@ export const en: Record<string, string> = {
+   "Schirm einrichten": "Set up screen",
+-  "{n} von {total} haben der Aufnahme zugestimmt. Gruppe groß öffnen.": "{n} of {total} have agreed to the recording. Open the group large.",
+   "{n} von {total} haben der Aufnahme zugestimmt.": "{n} of {total} have agreed to the recording.",
+@@ -1113,2 +1111,18 @@ export const en: Record<string, string> = {
+   "Link hinzufügen": "Add link",
++  "„{name}“ geht nicht. Möglich sind PDF, Word (.docx) und Text.": "“{name}” won’t work. PDF, Word (.docx) and text are possible.",
++  "Loslassen zum Hochladen und Auswerten": "Drop to add and analyse",
++  "Noch keine Unterlagen. Zieh eine Datei hierher oder tippe auf „Unterlage hinzufügen“.": "No documents yet. Drag a file here or tap “Add document”.",
++  "„{name}“ wird hochgeladen …": "Adding “{name}” …",
++  "{n} Vorschlag für die Bibel prüfen": "Review {n} suggestion for the bible",
++  "{n} Vorschläge für die Bibel prüfen": "Review {n} suggestions for the bible",
++  "Unterlage hinzufügen": "Add document",
++  "Neue Unterlagen werden als SL-Unterlage ausgewertet: alles bleibt geheim, bis du Vorschläge in die Bibel übernimmst.": "New documents are analysed as GM documents: everything stays secret until you take suggestions into the bible.",
++  "im Ruhestand": "retired",
++  "verstorben": "deceased",
++  "{name} ({player}), {consent}. Charakter ansehen.": "{name} ({player}), {consent}. View character.",
++  "Charakter {name} ansehen": "View character {name}",
++  "In den Kapiteln": "In the chapters",
++  "Trägt bei sich:": "Carries:",
++  "noch nicht vorgekommen": "not appeared yet",
++  "Zur Charakterseite": "To the character page",
+ };
+diff --git a/src/pages/DocumentsPage.tsx b/src/pages/DocumentsPage.tsx
+index 6e9a4a1..6b86d60 100644
+--- a/src/pages/DocumentsPage.tsx
++++ b/src/pages/DocumentsPage.tsx
+@@ -17,3 +17,3 @@ const KINDS: { value: DocumentKind; label: string; hint: string }[] = [
+ 
+-const STATE: Record<CampaignDocument['state'], string> = {
++export const DOC_STATE: Record<CampaignDocument['state'], string> = {
+   queued: tk('Wartet auf den Server'),
+@@ -25,3 +25,3 @@ const STATE: Record<CampaignDocument['state'], string> = {
+ 
+-const MAX_MB = 50;
++export const MAX_MB = 50;
+ 
+@@ -138,3 +138,3 @@ export function DocumentsPage() {
+           </div>
+-          <div className="small"><strong>{t(STATE[d.state])}</strong>{d.state === 'failed' && d.message ? ` – ${d.message}` : ''}</div>
++          <div className="small"><strong>{t(DOC_STATE[d.state])}</strong>{d.state === 'failed' && d.message ? ` – ${d.message}` : ''}</div>
+           {/* Hinweis des Servers beim Warten, z. B. „Die SL hat das für diese Kampagne noch nicht erlaubt …“ */}
+diff --git a/src/pages/TablePage.tsx b/src/pages/TablePage.tsx
+index 433f146..30c0f13 100644
+--- a/src/pages/TablePage.tsx
++++ b/src/pages/TablePage.tsx
+@@ -322,3 +322,3 @@ export function TablePage() {
+       case 'group':
+-        return <GroupPanel campaign={campaign} onEntry={openEntry} compact={compact} onExpand={() => setPopup('group')} />;
++        return <GroupPanel campaign={campaign} onEntry={openEntry} compact={compact} />;
+     }
+diff --git a/src/table/DocsPanel.tsx b/src/table/DocsPanel.tsx
+index 9e6d017..cb9816a 100644
+--- a/src/table/DocsPanel.tsx
++++ b/src/table/DocsPanel.tsx
+@@ -1,3 +1,6 @@
+ import { Capacitor } from '@capacitor/core';
+-import { useEffect, useState } from 'react';
++import { useEffect, useRef, useState, type DragEvent } from 'react';
++import { Link } from 'react-router-dom';
++import { p } from '../api/connections';
++import { DOC_STATE, MAX_MB } from '../pages/DocumentsPage';
+ import { api } from '../api/client';
+@@ -30,7 +33,50 @@ export function DocsPanel({ campaignId, docId, onDoc, compact }: {
+   const [error, setError] = useState<unknown>(null);
++  const [uploading, setUploading] = useState<string[]>([]);
++  const [dragging, setDragging] = useState(false);
++  const picker = useRef<HTMLInputElement>(null);
+ 
++  const load = () => api.documents(campaignId).then((list) => setDocs(list.filter((d) => d.kind !== 'character_sheet'))).catch(setError);
+   useEffect(() => {
+-    api.documents(campaignId).then((list) => setDocs(list.filter((d) => d.kind !== 'character_sheet'))).catch(setError);
++    load();
++    // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [campaignId]);
+ 
++  // Solange der Server auswertet, regelmäßig nachfragen
++  const running = docs?.some((d) => d.state === 'queued' || d.state === 'processing');
++  useEffect(() => {
++    if (!running) return;
++    const id = window.setInterval(load, 3000);
++    return () => window.clearInterval(id);
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [running]);
++
++  /** Hochladen und auswerten lassen – als SL-Unterlage, also erst einmal alles geheim */
++  const upload = async (files: File[]) => {
++    setError(null);
++    for (const file of files) {
++      if (!/\.(pdf|docx|txt|md)$/i.test(file.name)) {
++        setError(new Error(t('„{name}“ geht nicht. Möglich sind PDF, Word (.docx) und Text.', { name: file.name })));
++        continue;
++      }
++      if (file.size > MAX_MB * 1024 * 1024) {
++        setError(new Error(t('Die Datei ist zu groß (höchstens {n} MB).', { n: MAX_MB })));
++        continue;
++      }
++      setUploading((u) => [...u, file.name]);
++      try {
++        await api.uploadDocument(campaignId, file, 'gm', file.name.replace(/\.[^.]+$/, ''));
++      } catch (e) {
++        setError(e);
++      } finally {
++        setUploading((u) => u.filter((n) => n !== file.name));
++      }
++    }
++    load();
++  };
++  const drop = {
++    onDragOver: (e: DragEvent) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true); } },
++    onDragLeave: (e: DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false); },
++    onDrop: (e: DragEvent) => { e.preventDefault(); setDragging(false); upload([...e.dataTransfer.files]); }
++  };
++
+   useEffect(() => {
+@@ -57,3 +103,4 @@ export function DocsPanel({ campaignId, docId, onDoc, compact }: {
+   return (
+-    <div className="table-panel-body">
++    <div className={dragging ? 'table-panel-body table-drop active' : 'table-panel-body table-drop'} {...drop}>
++      {dragging && <div className="table-drop-hint" aria-hidden>{t('Loslassen zum Hochladen und Auswerten')}</div>}
+       <ErrorBox error={error} />
+@@ -62,12 +109,23 @@ export function DocsPanel({ campaignId, docId, onDoc, compact }: {
+           {!docs && !error && <div className="empty">{t('Lade …')}</div>}
+-          {docs?.length === 0 && <div className="empty">{t('Noch keine Unterlagen. Hochladen kannst du sie in der Bibel unter „Unterlagen hochladen und auswerten“.')}</div>}
++          {docs?.length === 0 && !uploading.length && <div className="muted small">{t('Noch keine Unterlagen. Zieh eine Datei hierher oder tippe auf „Unterlage hinzufügen“.')}</div>}
++          {uploading.map((n) => <div key={n} className="muted small" role="status">{t('„{name}“ wird hochgeladen …', { name: n })}</div>)}
+           {docs?.map((d) => (
+-            <button key={d.id} type="button" className="table-entry-head card-like" onClick={() => onDoc(d.id)}>
+-              <span style={{ flex: 1, minWidth: 0 }}>
+-                <strong>{d.title}</strong>
+-                <span className="muted small">{d.pageCount ? ' · ' + tn(d.pageCount, '{n} Seite', '{n} Seiten') : ''}</span>
+-              </span>
+-              <span aria-hidden style={{ color: 'var(--ink-muted)' }}>›</span>
+-            </button>
++            <div key={d.id} className="table-doc-row">
++              <button type="button" className="table-entry-head card-like" onClick={() => onDoc(d.id)}>
++                <span style={{ flex: 1, minWidth: 0 }}>
++                  <strong>{d.title}</strong>
++                  <span className="muted small">{d.pageCount ? ' · ' + tn(d.pageCount, '{n} Seite', '{n} Seiten') : ''}</span>
++                </span>
++                {d.state !== 'done' && <span className={d.state === 'failed' ? 'pill seal' : 'pill'}>{t(DOC_STATE[d.state])}</span>}
++                <span aria-hidden style={{ color: 'var(--ink-muted)' }}>›</span>
++              </button>
++              {d.state === 'awaiting_review' && !compact && (
++                <Link className="small" to={p(`/k/${campaignId}/unterlagen/${d.id}`)}>{tn(d.proposalCount, '{n} Vorschlag für die Bibel prüfen', '{n} Vorschläge für die Bibel prüfen')}</Link>
++              )}
++            </div>
+           ))}
++          <input ref={picker} type="file" multiple hidden accept=".pdf,.docx,.txt,.md,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
++            onChange={(e) => { upload([...(e.target.files ?? [])]); e.target.value = ''; }} />
++          <button type="button" className="btn small dashed" onClick={() => picker.current?.click()}>{t('Unterlage hinzufügen')}</button>
++          {!compact && <span className="muted small">{t('Neue Unterlagen werden als SL-Unterlage ausgewertet: alles bleibt geheim, bis du Vorschläge in die Bibel übernimmst.')}</span>}
+         </>
+diff --git a/src/table/GroupPanel.tsx b/src/table/GroupPanel.tsx
+index 68b3ab5..93eff4e 100644
+--- a/src/table/GroupPanel.tsx
++++ b/src/table/GroupPanel.tsx
+@@ -1,2 +1,2 @@
+-import { useEffect, useState } from 'react';
++import { useCallback, useEffect, useState } from 'react';
+ import { Link } from 'react-router-dom';
+@@ -4,3 +4,3 @@ import { api } from '../api/client';
+ import { apiAtLeast, p } from '../api/connections';
+-import { isDeletedMember, type Campaign, type Entry, type Proposal } from '../api/types';
++import { isDeletedMember, type Campaign, type Entry, type Member, type Proposal } from '../api/types';
+ import { Avatar } from '../components/Avatar';
+@@ -8,14 +8,16 @@ import { IconCheck } from '../components/Icons';
+ import { SecretBox } from '../components/VisTag';
+-import { t, tn } from '../i18n';
++import { t, tk, tn } from '../i18n';
++import { Popup } from './Popup';
++
++const STATUS: Record<string, string> = { retired: tk('im Ruhestand'), deceased: tk('verstorben') };
+ 
+ /**
+- * Die Gruppe am Tisch: wer spielt wen, Kurzbeschreibung, Hintergrund (nur SL), Zustimmung zur Aufnahme und
++ * Die Gruppe am Tisch (Tippen auf eine Person zeigt alles zum Charakter): wer spielt wen, Kurzbeschreibung, Hintergrund (nur SL), Zustimmung zur Aufnahme und
+  * mitgebrachte Welt, die noch in keinem Kapitel vorkam (Aufhänger).
+  */
+-export function GroupPanel({ campaign, onEntry, compact, onExpand }: {
++export function GroupPanel({ campaign, onEntry, compact }: {
+   campaign: Campaign;
+   onEntry: (entryId: string) => void;
+-  /** Kleine Karte: Wappen und Zustimmung; Tippen öffnet die Gruppe groß */
++  /** Kleine Karte: Wappen und Zustimmung; Tippen auf ein Wappen zeigt den Charakter */
+   compact?: boolean;
+-  onExpand?: () => void;
+ }) {
+@@ -24,2 +26,4 @@ export function GroupPanel({ campaign, onEntry, compact, onExpand }: {
+   const [open, setOpen] = useState<string | null>(null);
++  const [detail, setDetail] = useState<Member | null>(null);
++  const closeDetail = useCallback(() => setDetail(null), []);
+ 
+@@ -38,2 +42,9 @@ export function GroupPanel({ campaign, onEntry, compact, onExpand }: {
+ 
++  const popup = detail && (
++    <Popup title={detail.characterName ?? detail.displayName} onClose={closeDetail}>
++      <CharacterInfo campaign={campaign} member={detail} entries={entries} brought={brought}
++        onEntry={(id) => { setDetail(null); onEntry(id); }} />
++    </Popup>
++  );
++
+   if (!players.length) return <div className="table-panel-body"><div className="empty">{t('Noch niemand am Tisch. Lade Mitspielende über die Übersicht ein.')}</div></div>;
+@@ -44,12 +55,13 @@ export function GroupPanel({ campaign, onEntry, compact, onExpand }: {
+       <div className="table-panel-body">
+-        <button type="button" className="table-group-compact" onClick={onExpand}
+-          aria-label={t('{n} von {total} haben der Aufnahme zugestimmt. Gruppe groß öffnen.', { n: agreed, total: players.length })}>
++        <div className="table-group-compact">
+           {players.map((m) => (
+-            <span key={m.id} className="table-group-face" title={m.characterName ?? m.displayName}>
++            <button key={m.id} type="button" className="table-group-face" title={m.characterName ?? m.displayName} onClick={() => setDetail(m)}
++              aria-label={t('{name} ({player}), {consent}. Charakter ansehen.', { name: m.characterName ?? t('Noch ohne Charakter'), player: m.displayName, consent: m.recordingConsentAt ? t('Zugestimmt') : t('Ohne Zustimmung') })}>
+               <Avatar campaignId={campaign.id} member={m} size={44} />
+               <span className={m.recordingConsentAt ? 'table-consent yes' : 'table-consent'} aria-hidden>{m.recordingConsentAt ? <IconCheck size={12} /> : '!'}</span>
+-            </span>
++            </button>
+           ))}
+-        </button>
++        </div>
+         <span className="small muted">{t('{n} von {total} haben der Aufnahme zugestimmt.', { n: agreed, total: players.length })}</span>
++        {popup}
+       </div>
+@@ -67,7 +79,9 @@ export function GroupPanel({ campaign, onEntry, compact, onExpand }: {
+             <div className="row" style={{ gap: 10, alignItems: 'flex-start' }}>
+-              <Avatar campaignId={campaign.id} member={m} size={48} />
+-              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+-                <strong>{m.characterName ?? t('Noch ohne Charakter')}</strong>
+-                <span className="muted small">{m.displayName}</span>
+-              </div>
++              <button type="button" className="table-member-open" onClick={() => setDetail(m)} aria-label={t('Charakter {name} ansehen', { name: m.characterName ?? m.displayName })}>
++                <Avatar campaignId={campaign.id} member={m} size={48} />
++                <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2, textAlign: 'left' }}>
++                  <strong>{m.characterName ?? t('Noch ohne Charakter')}</strong>
++                  <span className="muted small">{m.displayName}</span>
++                </span>
++              </button>
+               {m.recordingConsentAt
+@@ -98,2 +112,68 @@ export function GroupPanel({ campaign, onEntry, compact, onExpand }: {
+       })}
++      {popup}
++    </div>
++  );
++}
++
++/** Alles zu einem Charakter auf einen Blick (nur SL): Beschreibung, Hintergrund, Erwähnungen, mitgebrachte Welt */
++function CharacterInfo({ campaign, member: m, entries, brought, onEntry }: {
++  campaign: Campaign;
++  member: Member;
++  entries: Entry[];
++  brought: Proposal[];
++  onEntry: (entryId: string) => void;
++}) {
++  const pc = entries.find((e) => e.type === 'pc' && e.holderMemberId === m.id);
++  const mine = brought.filter((b) => b.submittedByMemberId === m.id && b.decision === 'accepted' && b.targetEntryId)
++    .map((b) => entries.find((e) => e.id === b.targetEntryId))
++    .filter((e): e is Entry => !!e);
++  const waiting = brought.filter((b) => b.submittedByMemberId === m.id && b.decision === 'open').length;
++  const items = entries.filter((e) => e.type === 'item' && e.holderMemberId === m.id);
++  return (
++    <div className="table-panel-body">
++      <div className="row" style={{ gap: 14, alignItems: 'center' }}>
++        <Avatar campaignId={campaign.id} member={m} size={96} />
++        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
++          <h3 style={{ margin: 0 }}>{m.characterName ?? t('Noch ohne Charakter')}{m.characterNickname ? ` „${m.characterNickname}“` : ''}</h3>
++          <span className="muted small">{t('gespielt von {name}', { name: m.displayName })}{m.characterStatus && STATUS[m.characterStatus] ? ' · ' + t(STATUS[m.characterStatus]) : ''}</span>
++          <span>
++            {m.recordingConsentAt
++              ? <span className="pill moss"><IconCheck /> {t('Zugestimmt')}</span>
++              : <span className="pill">{t('Ohne Zustimmung')}</span>}
++          </span>
++        </div>
++      </div>
++      {m.characterSummary && <p style={{ margin: 0 }}>{m.characterSummary}</p>}
++      {m.characterBackstory && <SecretBox><span style={{ whiteSpace: 'pre-wrap' }}>{m.characterBackstory}</span></SecretBox>}
++      {pc && (pc.mentions?.length ?? 0) > 0 && (
++        <section className="table-scene">
++          <strong>{t('In den Kapiteln')}</strong>
++          {pc.mentions.slice(-6).map((x, i) => (
++            <span key={i} className="small"><span className="muted">{t('Kapitel {n}', { n: x.sessionNumber })}:</span> {x.note}</span>
++          ))}
++        </section>
++      )}
++      {items.length > 0 && (
++        <div className="small"><span className="muted">{t('Trägt bei sich:')}</span>{' '}
++          {items.map((e, i) => <span key={e.id}>{i > 0 ? ', ' : ''}<button type="button" className="linklike" onClick={() => onEntry(e.id)}>{e.name}</button></span>)}
++        </div>
++      )}
++      {mine.length > 0 && (
++        <div className="small" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
++          <span className="muted">{t('Mitgebrachte Welt')}</span>
++          <div className="row wrap" style={{ gap: 6 }}>
++            {mine.map((e) => (
++              <button key={e.id} type="button" className="btn small outline" onClick={() => onEntry(e.id)}>
++                {e.name}{!e.firstSessionNumber ? ' · ' + t('noch nicht vorgekommen') : ''}
++              </button>
++            ))}
++          </div>
++        </div>
++      )}
++      {waiting > 0 && (
++        <Link className="small" to={p(`/k/${campaign.id}/mitgebracht`)}>
++          {tn(waiting, '{n} mitgebrachter Eintrag wartet auf dich', '{n} mitgebrachte Einträge warten auf dich')}
++        </Link>
++      )}
++      <Link className="btn small outline" style={{ alignSelf: 'flex-start' }} to={p(`/k/${campaign.id}/charakter/${m.id}`)}>{t('Zur Charakterseite')}</Link>
+     </div>
