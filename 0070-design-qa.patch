@@ -1,0 +1,502 @@
+From c05872386aacea28ca8c8ff4658eb3adcfd2a8ed Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 8 Oct 2026 16:27:02 +0200
+Subject: [PATCH] =?UTF-8?q?Bedienbarkeit=20nach=20Design-Pr=C3=BCfung:=20M?=
+ =?UTF-8?q?odule=20finden=20Platz,=20Chronik=20statt=20Abschrift,=20=C3=9C?=
+ =?UTF-8?q?bersicht=20schmaler,=20Szenen=20einheitlich?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ scripts/tests/table-layout.test.mjs | 22 +++++++++-
+ src/characters/labels.ts            |  7 ++++
+ src/characters/store.ts             |  2 +-
+ src/components/Icons.tsx            | 10 ++++-
+ src/components/Links.tsx            | 15 ++++++-
+ src/i18n/en.ts                      | 23 +++++++----
+ src/pages/CharactersPage.tsx        |  6 +--
+ src/pages/MyCharacterPage.tsx       | 26 +++++++-----
+ src/pages/Overview.tsx              | 30 +++++++-------
+ src/pages/TablePage.tsx             | 13 +++---
+ src/table/PlanPanel.tsx             | 22 ++++++----
+ src/table/layout.ts                 | 22 ++++++++++
+ src/theme.css                       | 64 +++++++++++++++++++++++++----
+ 13 files changed, 197 insertions(+), 65 deletions(-)
+
+diff --git a/scripts/tests/table-layout.test.mjs b/scripts/tests/table-layout.test.mjs
+index cc692be..e834702 100644
+--- a/scripts/tests/table-layout.test.mjs
++++ b/scripts/tests/table-layout.test.mjs
+@@ -3,3 +3,3 @@ import { test } from 'node:test';
+ import assert from 'node:assert/strict';
+-import { defaultLayout, firstFree, fits, normalizeLayout, readingOrder, tryChange, unusedPanels } from '../../src/table/layout.ts';
++import { defaultLayout, firstFree, fits, normalizeLayout, placeNew, readingOrder, tryChange, unusedPanels } from '../../src/table/layout.ts';
+ 
+@@ -56 +56,21 @@ test('Lesereihenfolge und freie Module', () => {
+ });
++
++test('neues Modul findet immer Platz, solange Karten kleiner werden können', () => {
++  let l = defaultLayout();
++  for (const id of ['docs', 'notes', 'clock', 'links']) {
++    const next = placeNew(l, id);
++    assert.ok(next, `Platz für ${id}`);
++    assert.ok(next.every((c) => fits(next, c)), 'nichts überlappt');
++    l = next;
++  }
++  assert.equal(l.length, 7);
++  const first = placeNew(defaultLayout(), 'docs');
++  assert.deepEqual(first.find((c) => c.id === 'plan'), { id: 'plan', x: 0, y: 0, w: 2, h: 4 }, 'größte Karte wird eine Zeile niedriger');
++  assert.deepEqual(first.find((c) => c.id === 'docs'), { id: 'docs', x: 0, y: 4, w: 2, h: 1 });
++});
++
++test('kein Platz, wenn alle Karten schon klein sind', () => {
++  const full = [];
++  for (let y = 0; y < 5; y++) for (let x = 0; x < 6; x += 2) full.push({ id: `k${x}${y}`, x, y, w: 2, h: 1 });
++  assert.equal(placeNew(full, 'links'), null);
++});
+diff --git a/src/characters/labels.ts b/src/characters/labels.ts
+index b06bc03..220ff85 100644
+--- a/src/characters/labels.ts
++++ b/src/characters/labels.ts
+@@ -10,2 +10,9 @@ export const STATUS_LABEL: Record<CharacterStatus, string> = {
+ 
++/** Kurze Namen für den Filter in „Meine Charaktere“ (passt auch auf schmale Handys) */
++export const STATUS_FILTER_LABEL: Record<CharacterStatus, string> = {
++  active: tk('Aktiv'),
++  retired: tk('Ruhestand'),
++  deceased: tk('Verstorben')
++};
++
+ /** Stand eines mitgebrachten Eintrags in einer Kampagne, in Worten (null = noch nicht geschickt) */
+diff --git a/src/characters/store.ts b/src/characters/store.ts
+index 0fbc634..cb2b935 100644
+--- a/src/characters/store.ts
++++ b/src/characters/store.ts
+@@ -95,3 +95,3 @@ function persist(list: StoredCharacter[]): void {
+   } catch {
+-    throw new Error(t('Der Speicher der App ist voll. Entferne große Charakterbilder oder alte Abschriften.'));
++    throw new Error(t('Der Speicher der App ist voll. Entferne große Charakterbilder oder alte Chroniken.'));
+   }
+diff --git a/src/components/Icons.tsx b/src/components/Icons.tsx
+index f16c6d9..214c9d8 100644
+--- a/src/components/Icons.tsx
++++ b/src/components/Icons.tsx
+@@ -5,3 +5,3 @@ import type { SVGProps } from 'react';
+  * Fester Wortschatz: Schlüsselloch = nur SL, offenes Auge = öffentlich, Bändchen = Kapitel/Recap,
+- * Mikrofon = Aufnahme, Buch = Bibel, Kalender = Termin, Sprechblase = Kommentar.
++ * Mikrofon = Aufnahme, Buch = Bibel, Kalender = Termin, Sprechblase = Kommentar, Schirm = SL-Schirm.
+  */
+@@ -70 +70,9 @@ export const IconScan = ({ size }: { size?: number }) => (
+ );
++/** SL-Schirm: dreiteiliger, aufgestellter Schirm */
++export const IconScreen = ({ size = 18 }: { size?: number }) => (
++  <svg {...base(size)}><path d="M3 6.5 8 4.5v14l-5 2z" /><path d="M8 4.5l8 2v14l-8-2z" /><path d="M16 6.5l5-2v14l-5 2z" /></svg>
++);
++/** Suchen (Lupe) */
++export const IconSearch = ({ size = 18 }: { size?: number }) => (
++  <svg {...base(size)}><circle cx="10.5" cy="10.5" r="6" /><path d="m15 15 5.5 5.5" /></svg>
++);
+diff --git a/src/components/Links.tsx b/src/components/Links.tsx
+index c8e5caa..1942693 100644
+--- a/src/components/Links.tsx
++++ b/src/components/Links.tsx
+@@ -52,4 +52,17 @@ export async function openLink(link: Link): Promise<void> {
+ /** Links als Knöpfe; zeigt Name und Adresse */
+-export function LinkButtons({ links, small = true }: { links: Link[] | undefined; small?: boolean }) {
++export function LinkButtons({ links, small = true, compact }: { links: Link[] | undefined; small?: boolean; compact?: boolean }) {
+   if (!links?.length) return null;
++  // Schmal (Übersicht): nur Name und Pfeil, die Adresse steht in der Rückfrage beim ersten Öffnen und im Screenreader-Namen
++  if (compact) {
++    return (
++      <div className="row wrap" style={{ gap: 6 }}>
++        {links.map((l) => (
++          <button key={l.id} type="button" className="btn small ghost link-chip" onClick={() => openLink(l)}
++            aria-label={t('{label} öffnen ({host})', { label: l.label, host: hostOf(l.url) })}>
++            {l.label} <span aria-hidden>↗</span>
++          </button>
++        ))}
++      </div>
++    );
++  }
+   return (
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 0a19bdf..4ef31e0 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -770,3 +770,3 @@ export const en: Record<string, string> = {
+   "In der Bibel": "In the bible",
+-  "Der Speicher der App ist voll. Entferne große Charakterbilder oder alte Abschriften.": "The app's storage is full. Remove large character pictures or old transcripts.",
++  "Der Speicher der App ist voll. Entferne große Charakterbilder oder alte Chroniken.": "The app's storage is full. Remove large character pictures or old chronicles.",
+   "Charakter nicht gefunden.": "Character not found.",
+@@ -804,4 +804,4 @@ export const en: Record<string, string> = {
+   "Lösen": "Detach",
+-  "{name} aus deiner Sammlung löschen? In den Kampagnen bleibt der letzte Stand stehen. Private Notizen und Abschriften sind dann weg.": "Delete {name} from your collection? Campaigns keep the latest version. Private notes and transcripts will be gone.",
+-  "{name} aus deiner Sammlung löschen? Private Notizen und Abschriften sind dann weg.": "Delete {name} from your collection? Private notes and transcripts will be gone.",
++  "{name} aus deiner Sammlung löschen? In den Kampagnen bleibt der letzte Stand stehen. Private Notizen und Chroniken sind dann weg.": "Delete {name} from your collection? Campaigns keep the latest version. Private notes and chronicles will be gone.",
++  "{name} aus deiner Sammlung löschen? Private Notizen und Chroniken sind dann weg.": "Delete {name} from your collection? Private notes and chronicles will be gone.",
+   "Status": "Status",
+@@ -816,5 +816,5 @@ export const en: Record<string, string> = {
+   "Stand schicken": "Send update",
+-  "Abschrift holen": "Get transcript",
++  "Chronik sichern": "Save chronicle",
+   "In einer Kampagne einsetzen": "Bring into a campaign",
+-  "Abschriften": "Transcripts",
++  "Chroniken": "Chronicles",
+   "Was dein Charakter erlebt hat – bleibt in der Sammlung, auch wenn die Kampagne endet.": "What your character has lived through – stays in your collection even after the campaign ends.",
+@@ -1047,3 +1047,2 @@ export const en: Record<string, string> = {
+   "Noch kein Plan. Ein Plan ist freiwillig: Szenen, Namen und Unterlagen für die nächste Runde, nur für dich.": "No plan yet. A plan is optional: scenes, names and documents for the next session, just for you.",
+-  "Stand der Szene: {s}. Tippen zum Ändern.": "Scene status: {s}. Tap to change.",
+   "Namen als Schreibhilfe:": "Names as spelling help:",
+@@ -1091,3 +1090,2 @@ export const en: Record<string, string> = {
+   "{name} dazulegen": "Add {name}",
+-  "Kein Platz frei. Mach eine Karte kleiner.": "No room left. Make a card smaller.",
+   "Zurücksetzen": "Reset",
+@@ -1150,5 +1148,12 @@ export const en: Record<string, string> = {
+   "Als Datei weitergeben": "Pass on as a file",
+-  "Zum Beispiel auf dein Tablet oder ein neues Handy: Dort unter „Meine Charaktere“ → „Sammlung sichern“ → „Aus Datei zurückholen“. Die Datei enthält auch deine privaten Notizen und Abschriften.": "For example to your tablet or a new phone: there, go to “My characters” → “Back up collection” → “Restore from a file”. The file also contains your private notes and copies.",
++  "Zum Beispiel auf dein Tablet oder ein neues Handy: Dort unter „Meine Charaktere“ → „Sammlung sichern“ → „Aus Datei zurückholen“. Die Datei enthält auch deine privaten Notizen und Chroniken.": "For example to your tablet or a new phone: there, go to “My characters” → “Back up collection” → “Restore from a file”. The file also contains your private notes and chronicles.",
+   "{name} als Datei speichern": "Save {name} as a file",
+-  "„Aus Datei zurückholen“ nimmt auch einzelne Charakter-Dateien an. Gibt es den Charakter hier schon, gewinnt der neuere Stand; Abschriften und mitgebrachte Welt werden zusammengeführt.": "“Restore from a file” also accepts single character files. If the character already exists here, the newer version wins; copies and brought-in world are merged.",
++  "„Aus Datei zurückholen“ nimmt auch einzelne Charakter-Dateien an. Gibt es den Charakter hier schon, gewinnt der neuere Stand; Chroniken und mitgebrachte Welt werden zusammengeführt.": "“Restore from a file” also accepts single character files. If the character already exists here, the newer version wins; chronicles and brought-in world are merged.",
++  "Von der Kampagne lösen": "Detach from campaign",
++  "Ruhestand": "Retired",
++  "Alle Karten sind schon so klein wie möglich. Nimm erst eine vom Schirm.": "All cards are already as small as they can be. Take one off the screen first.",
++  "Wer war das? Name suchen …": "Who was that? Search a name …",
++  "{title} als gespielt abhaken": "Mark {title} as played",
++  "Wieder offen": "Reopen",
++  "Szene überspringen": "Skip scene",
+ };
+diff --git a/src/pages/CharactersPage.tsx b/src/pages/CharactersPage.tsx
+index 1816264..bf3a93f 100644
+--- a/src/pages/CharactersPage.tsx
++++ b/src/pages/CharactersPage.tsx
+@@ -4,3 +4,3 @@ import type { CharacterStatus } from '../api/types';
+ import { CharacterEditor } from '../characters/CharacterEditor';
+-import { STATUS_LABEL } from '../characters/labels';
++import { STATUS_FILTER_LABEL, STATUS_LABEL } from '../characters/labels';
+ import { CharacterPortrait } from '../characters/Portrait';
+@@ -69,3 +69,3 @@ export function CharactersPage() {
+                 <button key={s} type="button" aria-pressed={filter === s} onClick={() => setFilter(s)}>
+-                  {s === 'all' ? t('Alle ({n})', { n: list.length }) : t(STATUS_LABEL[s])}
++                  {s === 'all' ? t('Alle ({n})', { n: list.length }) : t(STATUS_FILTER_LABEL[s])}
+                 </button>
+@@ -110,3 +110,3 @@ export function CharactersPage() {
+             <span className="small">{t('Sichere deine Charaktere ab und zu als Datei. Auf einem neuen Gerät holst du sie damit zurück. Die Datei enthält auch deine privaten Notizen – gib sie nicht weiter.')}</span>
+-            <span className="muted small">{t('„Aus Datei zurückholen“ nimmt auch einzelne Charakter-Dateien an. Gibt es den Charakter hier schon, gewinnt der neuere Stand; Abschriften und mitgebrachte Welt werden zusammengeführt.')}</span>
++            <span className="muted small">{t('„Aus Datei zurückholen“ nimmt auch einzelne Charakter-Dateien an. Gibt es den Charakter hier schon, gewinnt der neuere Stand; Chroniken und mitgebrachte Welt werden zusammengeführt.')}</span>
+             <ErrorBox error={backupError} />
+diff --git a/src/pages/MyCharacterPage.tsx b/src/pages/MyCharacterPage.tsx
+index 8c459a2..5f24c27 100644
+--- a/src/pages/MyCharacterPage.tsx
++++ b/src/pages/MyCharacterPage.tsx
+@@ -77,4 +77,4 @@ export function MyCharacterPage() {
+     const q = c.links.length
+-      ? t('{name} aus deiner Sammlung löschen? In den Kampagnen bleibt der letzte Stand stehen. Private Notizen und Abschriften sind dann weg.', { name: c.name })
+-      : t('{name} aus deiner Sammlung löschen? Private Notizen und Abschriften sind dann weg.', { name: c.name });
++      ? t('{name} aus deiner Sammlung löschen? In den Kampagnen bleibt der letzte Stand stehen. Private Notizen und Chroniken sind dann weg.', { name: c.name })
++      : t('{name} aus deiner Sammlung löschen? Private Notizen und Chroniken sind dann weg.', { name: c.name });
+     if (!(await confirmDialog(q, { confirmLabel: t('Löschen'), danger: true }))) return;
+@@ -92,2 +92,11 @@ export function MyCharacterPage() {
+         <section className="card">
++          {/* Zustand: selten gebraucht, darum nur hier; gilt sofort, oben steht er als Abzeichen */}
++          <div className="field" style={{ margin: '0 0 12px' }}>
++            <span className="label" id="status-label">{t('Status')}</span>
++            <div className="segmented" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }} role="group" aria-labelledby="status-label">
++              {STATUS_ORDER.map((s) => (
++                <button key={s} type="button" aria-pressed={c.status === s} onClick={() => setStatus(s)}>{t(STATUS_LABEL[s])}</button>
++              ))}
++            </div>
++          </div>
+           <CharacterEditor character={c} submitLabel={t('Speichern')} onSaved={() => setEditing(false)}
+@@ -112,7 +121,2 @@ export function MyCharacterPage() {
+           <button type="button" className="btn outline" onClick={() => setEditing(true)}>{t('Charakter bearbeiten')}</button>
+-          <div className="segmented" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }} role="group" aria-label={t('Status')}>
+-            {STATUS_ORDER.map((s) => (
+-              <button key={s} type="button" aria-pressed={c.status === s} onClick={() => setStatus(s)}>{t(STATUS_LABEL[s])}</button>
+-            ))}
+-          </div>
+         </>
+@@ -186,5 +190,5 @@ export function MyCharacterPage() {
+                   onClick={() => run('chron:' + k, () => fetchChronicle(c.id, l))}>
+-                  {busy === 'chron:' + k ? t('Lade …') : t('Abschrift holen')}
++                  {busy === 'chron:' + k ? t('Lade …') : t('Chronik sichern')}
+                 </button>
+-                <button type="button" className="btn small ghost" disabled={!!busy} onClick={() => release(l)}>{t('Lösen')}</button>
++                <button type="button" className="btn small ghost" disabled={!!busy} onClick={() => release(l)}>{t('Von der Kampagne lösen')}</button>
+               </div>
+@@ -206,3 +210,3 @@ export function MyCharacterPage() {
+           <Divider />
+-          <h2>{t('Abschriften')}</h2>
++          <h2>{t('Chroniken')}</h2>
+           <p className="muted small" style={{ margin: 0 }}>{t('Was dein Charakter erlebt hat – bleibt in der Sammlung, auch wenn die Kampagne endet.')}</p>
+@@ -240,3 +244,3 @@ export function MyCharacterPage() {
+         <h2>{t('Als Datei weitergeben')}</h2>
+-        <span className="small">{t('Zum Beispiel auf dein Tablet oder ein neues Handy: Dort unter „Meine Charaktere“ → „Sammlung sichern“ → „Aus Datei zurückholen“. Die Datei enthält auch deine privaten Notizen und Abschriften.')}</span>
++        <span className="small">{t('Zum Beispiel auf dein Tablet oder ein neues Handy: Dort unter „Meine Charaktere“ → „Sammlung sichern“ → „Aus Datei zurückholen“. Die Datei enthält auch deine privaten Notizen und Chroniken.')}</span>
+         <ErrorBox error={fileError} />
+diff --git a/src/pages/Overview.tsx b/src/pages/Overview.tsx
+index 0d0e4c5..9985b4e 100644
+--- a/src/pages/Overview.tsx
++++ b/src/pages/Overview.tsx
+@@ -20,3 +20,3 @@ import { useAuth } from '../auth/AuthContext';
+ import type { Campaign, GameSystem, GmNotice, Member, SessionSummary, Usage } from '../api/types';
+-import { IconCheck, IconInfo, IconLock } from '../components/Icons';
++import { IconCheck, IconInfo, IconLock, IconScreen, IconSearch } from '../components/Icons';
+ import { LinkButtons } from '../components/Links';
+@@ -71,3 +71,3 @@ export function Overview() {
+               {!campaign.archivedAt && (
+-                <Link className="btn small accent" to={p(`/k/${campaignId}/tisch`)}>{t('SL-Schirm')}</Link>
++                <Link className="btn small accent" to={p(`/k/${campaignId}/tisch`)}><IconScreen /> {t('SL-Schirm')}</Link>
+               )}
+@@ -89,2 +89,3 @@ export function Overview() {
+           <MusterBanner />
++          <BibleSearch campaignId={campaignId} />
+           {campaign.archivedAt && (
+@@ -132,3 +133,2 @@ export function Overview() {
+           {gm && campaign.gmNotices?.map((n) => <GmNoticeCard key={n.id} campaign={campaign} notice={n} onDone={load} />)}
+-          <BibleSearch campaignId={campaignId} />
+           {/* Nächste Runde */}
+@@ -147,8 +147,2 @@ export function Overview() {
+ 
+-          {(campaign.links ?? []).some((l) => l.shared) && (
+-            <section className="card">
+-              <span className="overline">{t('Links der Gruppe')}</span>
+-              <LinkButtons links={(campaign.links ?? []).filter((l) => l.shared)} small={false} />
+-            </section>
+-          )}
+ 
+@@ -176,2 +170,8 @@ export function Overview() {
+           <Divider />
++          {(campaign.links ?? []).some((l) => l.shared) && (
++            <section className="overview-links" aria-labelledby="group-links">
++              <span className="overline" id="group-links">{t('Links der Gruppe')}</span>
++              <LinkButtons links={(campaign.links ?? []).filter((l) => l.shared)} compact />
++            </section>
++          )}
+           <div id="world"><WorldInfo campaign={campaign} onSaved={setCampaign} /></div>
+@@ -195,3 +195,3 @@ export function Overview() {
+ 
+-/** „Wer war das?“ – Suchfeld, das in die Bibel springt (fehlertolerant, siehe search/fuzzy.ts) */
++/** „Wer war das?“ – schmales Suchfeld oben, springt in die Bibel (fehlertolerant, siehe search/fuzzy.ts) */
+ function BibleSearch({ campaignId }: { campaignId: string }) {
+@@ -200,8 +200,6 @@ function BibleSearch({ campaignId }: { campaignId: string }) {
+   return (
+-    <form role="search" className="card overview-search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) navigate(p(`/k/${campaignId}/bibel?q=${encodeURIComponent(q.trim())}`)); }}>
+-      <label htmlFor="overview-search" className="overline">{t('Wer war das?')}</label>
+-      <div className="row" style={{ gap: 8 }}>
+-        <input id="overview-search" type="search" enterKeyHint="search" placeholder={t('Name in der Bibel suchen …')} value={q} onChange={(e) => setQ(e.target.value)} />
+-        <button type="submit" className="btn small outline" disabled={!q.trim()}>{t('Suchen')}</button>
+-      </div>
++    <form role="search" className="overview-search" aria-label={t('Wer war das?')}
++      onSubmit={(e) => { e.preventDefault(); if (q.trim()) navigate(p(`/k/${campaignId}/bibel?q=${encodeURIComponent(q.trim())}`)); }}>
++      <IconSearch />
++      <input type="search" enterKeyHint="search" aria-label={t('Name in der Bibel suchen …')} placeholder={t('Wer war das? Name suchen …')} value={q} onChange={(e) => setQ(e.target.value)} />
+     </form>
+diff --git a/src/pages/TablePage.tsx b/src/pages/TablePage.tsx
+index 11581d1..4f80863 100644
+--- a/src/pages/TablePage.tsx
++++ b/src/pages/TablePage.tsx
+@@ -13,3 +13,3 @@ import { GroupPanel } from '../table/GroupPanel';
+ import {
+-  GRID_COLS, GRID_ROWS, MIN_H, MIN_W, defaultLayout, firstFree, fits, loadLayout, readingOrder, saveLayout, tryChange, unusedPanels,
++  GRID_COLS, GRID_ROWS, MIN_H, MIN_W, defaultLayout, fits, loadLayout, placeNew, readingOrder, saveLayout, tryChange, unusedPanels,
+   type CardPos, type Layout, type PanelId
+@@ -171,7 +171,8 @@ function Editor({ layout, onChange, onDone }: { layout: Layout; onChange: (l: La
+ 
++  // Ist kein Platz frei, macht placeNew die größte Karte etwas kleiner – das neue Modul ist dann gleich ausgewählt
+   const add = (id: PanelId) => {
+-    const pos = firstFree(layout, id);
+-    if (pos) { onChange([...layout, pos]); setSelected(id); }
++    const next = placeNew(layout, id);
++    if (next) { onChange(next); setSelected(id); }
+   };
+-  const anyRoom = free.length > 0 && !!firstFree(layout, free[0]);
++  const anyRoom = free.length > 0 && !!placeNew(layout, free[0]);
+ 
+@@ -205,3 +206,3 @@ function Editor({ layout, onChange, onDone }: { layout: Layout; onChange: (l: La
+         {free.map((id) => (
+-          <button key={id} type="button" className="btn small dashed" disabled={!firstFree(layout, id)} onClick={() => add(id)}>
++          <button key={id} type="button" className="btn small dashed" disabled={!anyRoom} onClick={() => add(id)}>
+             {t('{name} dazulegen', { name: label(id) })}
+@@ -209,3 +210,3 @@ function Editor({ layout, onChange, onDone }: { layout: Layout; onChange: (l: La
+         ))}
+-        {!anyRoom && <span className="muted small">{t('Kein Platz frei. Mach eine Karte kleiner.')}</span>}
++        {!anyRoom && <span className="muted small">{t('Alle Karten sind schon so klein wie möglich. Nimm erst eine vom Schirm.')}</span>}
+       </div>}
+diff --git a/src/table/PlanPanel.tsx b/src/table/PlanPanel.tsx
+index a03c293..4268ae5 100644
+--- a/src/table/PlanPanel.tsx
++++ b/src/table/PlanPanel.tsx
+@@ -4,2 +4,3 @@ import { apiAtLeast } from '../api/connections';
+ import { LinkButtons, LinkEditor } from '../components/Links';
++import { IconCheck } from '../components/Icons';
+ import type { CampaignDocument, ChapterPlan, Entry, PlanScene } from '../api/types';
+@@ -16,3 +17,2 @@ const SCENE_STATE: Record<NonNullable<PlanScene['state']>, string> = {
+ };
+-const NEXT_STATE: Record<NonNullable<PlanScene['state']>, NonNullable<PlanScene['state']>> = { open: 'played', played: 'skipped', skipped: 'open' };
+ 
+@@ -117,5 +117,5 @@ export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc, compact }: {
+                 <span style={{ flex: 1, minWidth: 0 }}>{t('Jetzt:')} <strong>{current.title}</strong></span>
+-                <button type="button" className="btn small outline"
++                <button type="button" className="btn small outline" aria-label={t('{title} als gespielt abhaken', { title: current.title })}
+                   onClick={() => setSceneState(current.id, 'played')}>
+-                  {t('Gespielt')}
++                  <IconCheck /> {t('Gespielt')}
+                 </button>
+@@ -176,6 +176,7 @@ export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc, compact }: {
+                   <strong style={{ flex: 1 }}>{i + 1}. {sc.title}</strong>
+-                  <button type="button" className="btn small ghost" aria-label={t('Stand der Szene: {s}. Tippen zum Ändern.', { s: t(SCENE_STATE[state]) })}
+-                    onClick={() => setSceneState(sc.id, NEXT_STATE[state])}>
+-                    {t(SCENE_STATE[state])}
+-                  </button>
++                  {/* Überall gleich (auch in der Kurzfassung): Abhaken als Knopf mit Haken, erledigt als Abzeichen */}
++                  {state === 'open'
++                    ? <button type="button" className="btn small outline" aria-label={t('{title} als gespielt abhaken', { title: sc.title })}
++                        onClick={() => setSceneState(sc.id, 'played')}><IconCheck /> {t('Gespielt')}</button>
++                    : <span className="pill">{t(SCENE_STATE[state])}</span>}
+                 </div>
+@@ -186,3 +187,3 @@ export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc, compact }: {
+                     {sc.entryIds!.map((id) => entryName(id) && (
+-                      <button key={id} type="button" className="btn small outline" onClick={() => onEntry(id)}>{entryName(id)}</button>
++                      <button key={id} type="button" className="btn small chip" onClick={() => onEntry(id)}>{entryName(id)}</button>
+                     ))}
+@@ -190,2 +191,5 @@ export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc, compact }: {
+                 )}
++                {state === 'open'
++                  ? <button type="button" className="linklike small muted" style={{ alignSelf: 'flex-start', minHeight: 48 }} onClick={() => setSceneState(sc.id, 'skipped')}>{t('Szene überspringen')}</button>
++                  : <button type="button" className="linklike small muted" style={{ alignSelf: 'flex-start', minHeight: 48 }} onClick={() => setSceneState(sc.id, 'open')}>{t('Wieder offen')}</button>}
+               </section>
+@@ -200,3 +204,3 @@ export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc, compact }: {
+                 const d = docs.find((x) => x.id === id);
+-                return d ? <button key={id} type="button" className="btn small outline" onClick={() => onDoc(id)}>{d.title}</button> : null;
++                return d ? <button key={id} type="button" className="btn small chip" onClick={() => onDoc(id)}>{d.title}</button> : null;
+               })}
+diff --git a/src/table/layout.ts b/src/table/layout.ts
+index 401a165..7883303 100644
+--- a/src/table/layout.ts
++++ b/src/table/layout.ts
+@@ -121 +121,23 @@ export function readingOrder(layout: Layout): Layout {
+ }
++
++/**
++ * Platz für ein weiteres Modul schaffen: erst ein freier Platz; sonst wird die größte Karte, die es verträgt, um eine
++ * Zeile niedriger (oder ein Drittel schmaler) und das neue Modul kommt in die frei gewordene Lücke. null, wenn
++ * wirklich nichts mehr geht (alle Karten schon so klein wie möglich).
++ */
++export function placeNew(layout: Layout, id: PanelId): Layout | null {
++  const free = firstFree(layout, id);
++  if (free) return [...layout, free];
++  const bySize = [...layout].sort((a, b) => b.w * b.h - a.w * a.h || a.y - b.y || a.x - b.x);
++  for (const c of bySize) {
++    const tries: [Partial<CardPos>, CardPos][] = [
++      [{ h: c.h - 1 }, { id, x: c.x, y: c.y + c.h - 1, w: c.w, h: 1 }],
++      [{ w: c.w - MIN_W }, { id, x: c.x + c.w - MIN_W, y: c.y, w: MIN_W, h: c.h }]
++    ];
++    for (const [change, card] of tries) {
++      const smaller = tryChange(layout, c.id, change);
++      if (smaller && fits(smaller, card)) return [...smaller, card];
++    }
++  }
++  return null;
++}
+diff --git a/src/theme.css b/src/theme.css
+index 556584b..4cb0e3b 100644
+--- a/src/theme.css
++++ b/src/theme.css
+@@ -24,2 +24,4 @@
+   --messing: #c49235;
++  /* Schrift auf Messing: bleibt in beiden Themen dunkel (Messing ist hell) */
++  --on-messing: #2a2118;
+   --salbei: #3d6a48;
+@@ -49,2 +51,4 @@
+   --messing: #d9ad55;
++  /* Schrift auf Messing: bleibt in beiden Themen dunkel (Messing ist hell) */
++  --on-messing: #2a2118;
+   --salbei: #8cc096;
+@@ -74,2 +78,4 @@
+     --messing: #d9ad55;
++    /* Schrift auf Messing: bleibt in beiden Themen dunkel (Messing ist hell) */
++    --on-messing: #2a2118;
+     --salbei: #8cc096;
+@@ -487,5 +493,6 @@ h2 {
+ 
++/* Abzeichen ohne Rahmen, damit es nicht wie ein Knopf aussieht */
+ .vis.public {
+   color: var(--ink);
+-  border: 1px solid var(--line-strong);
++  background: var(--paper-sunken);
+ }
+@@ -538,3 +545,4 @@ h2 {
+ 
+-.field label {
++.field label,
++.field .label {
+   font: 500 14px/20px var(--font-sans);
+@@ -1455,3 +1463,3 @@ details.card[open] { padding-bottom: var(--space-4); }
+   background: var(--messing);
+-  color: #2a2118;
++  color: var(--on-messing);
+   border-radius: 3px;
+@@ -1634,6 +1642,8 @@ details.card[open] { padding-bottom: var(--space-4); }
+ 
++/* Leicht hervorgehoben, aber kein Hauptknopf: Umriss in Messing, Schrift in Tinte */
+ .btn.accent {
+-  background: var(--messing);
+-  border-color: var(--messing);
+-  color: #2a2118;
++  background: var(--paper-raised);
++  border: 2px solid var(--messing);
++  color: var(--ink);
++  gap: 8px;
+ }
+@@ -1766,3 +1776,16 @@ button.table-group-face {
+ 
+-/* Übersicht: „Wer war das?“ */
++/* Übersicht: „Wer war das?“ als schmales Suchfeld mit Lupe */
++.overview-search {
++  position: relative;
++  display: flex;
++  align-items: center;
++}
++
++.overview-search svg {
++  position: absolute;
++  left: 14px;
++  color: var(--ink-muted);
++  pointer-events: none;
++}
++
+ .overview-search input {
+@@ -1770,2 +1793,29 @@ button.table-group-face {
+   min-width: 0;
++  padding-left: 40px;
++}
++
++/* Übersicht: Links der Gruppe als schmale Zeile */
++.overview-links {
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
++}
++
++.btn.link-chip {
++  border-color: var(--line-strong);
++}
++
++/* Verknüpfte Einträge und Unterlagen: kleine Chips statt Knöpfe (Tippfläche bleibt 48 px) */
++.btn.chip {
++  background: var(--paper-sunken);
++  color: var(--ink);
++  border: 1px solid transparent;
++  border-radius: var(--radius-pill);
++  box-shadow: none;
++  font-weight: 500;
++  padding-inline: 14px;
++}
++
++.btn.chip:hover {
++  border-color: var(--line-strong);
+ }
