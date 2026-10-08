@@ -19,6 +19,7 @@ import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { Campaign, GameSystem, GmNotice, Member, SessionSummary, Usage } from '../api/types';
 import { IconCheck, IconInfo, IconLock } from '../components/Icons';
+import { LinkButtons } from '../components/Links';
 import { Divider, ErrorBox, Screen, rememberCampaign } from '../components/Screen';
 import { formatDateFull, formatDateTime } from '../components/format';
 import { CONSENT_STANDING, CONSENT_SUMMARY } from '../consent';
@@ -65,9 +66,14 @@ export function Overview() {
       {campaign && (
         <>
           {gm && !pickingCover && (
-            <button type="button" className="btn ghost small" style={{ alignSelf: 'flex-end', marginTop: hasCover(campaign) ? -6 : 0 }} onClick={() => setPickingCover(true)}>
-              {hasCover(campaign) ? t('Titelbild ändern') : t('Titelbild wählen')}
-            </button>
+            <div className="overview-tools" style={{ marginTop: hasCover(campaign) ? -6 : 0 }}>
+              {!campaign.archivedAt && (
+                <Link className="btn small accent" to={p(`/k/${campaignId}/tisch`)}>{t('SL-Schirm')}</Link>
+              )}
+              <button type="button" className="btn small subtle" onClick={() => setPickingCover(true)}>
+                {hasCover(campaign) ? t('Titelbild ändern') : t('Titelbild wählen')}
+              </button>
+            </div>
           )}
           {gm && pickingCover && <CoverPicker campaign={campaign} onChanged={setCampaign} onClose={() => setPickingCover(false)} />}
 
@@ -136,11 +142,11 @@ export function Overview() {
             </span>
           </Link>
 
-          {gm && !campaign.archivedAt && (
-            <Link to={p(`/k/${campaignId}/tisch`)} className="card">
-              <strong>{t('SL-Schirm')}</strong>
-              <span className="muted small">{t('Für den Spielabend: Kapitelplan, Bibel, Gruppe und Unterlagen nebeneinander. Am besten auf dem Tablet quer.')}</span>
-            </Link>
+          {(campaign.links ?? []).some((l) => l.shared) && (
+            <section className="card">
+              <span className="overline">{t('Links der Gruppe')}</span>
+              <LinkButtons links={(campaign.links ?? []).filter((l) => l.shared)} small={false} />
+            </section>
           )}
 
           {latest && (

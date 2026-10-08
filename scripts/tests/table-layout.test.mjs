@@ -52,5 +52,5 @@ test('freier Platz und Ändern nur, wenn es passt', () => {
 test('Lesereihenfolge und freie Module', () => {
   const l = [{ id: 'group', x: 2, y: 1, w: 2, h: 1 }, { id: 'plan', x: 0, y: 0, w: 2, h: 2 }, { id: 'bible', x: 2, y: 0, w: 2, h: 1 }];
   assert.deepEqual(readingOrder(l).map((c) => c.id), ['plan', 'bible', 'group']);
-  assert.deepEqual(unusedPanels(l), ['docs']);
+  assert.deepEqual(unusedPanels(l), ['docs', 'notes', 'clock', 'links']);
 });

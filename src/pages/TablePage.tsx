@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { apiAtLeast, p } from '../api/connections';
@@ -15,7 +14,9 @@ import {
   GRID_COLS, GRID_ROWS, MIN_H, MIN_W, defaultLayout, firstFree, fits, loadLayout, readingOrder, saveLayout, tryChange, unusedPanels,
   type CardPos, type Layout, type PanelId
 } from '../table/layout';
+import { ClockPanel, LinksPanel, NotesPanel } from '../table/ExtraPanels';
 import { PlanPanel } from '../table/PlanPanel';
+import { Popup } from '../table/Popup';
 
 const native = hasNativeRecorder();
 
@@ -24,7 +25,10 @@ const LABELS: Record<PanelId, string> = {
   plan: tk('Kapitelplan'),
   docs: tk('Unterlagen'),
   bible: tk('Bibel'),
-  group: tk('Die Gruppe')
+  group: tk('Die Gruppe'),
+  notes: tk('Notizzettel'),
+  clock: tk('Uhr'),
+  links: tk('Links')
 };
 const label = (id: PanelId) => t(LABELS[id]);
 
@@ -71,33 +75,6 @@ function RecordingBar({ campaignId }: { campaignId: string }) {
       <button type="button" className="btn small outline" onClick={toggle}>{paused ? t('Weiter') : t('Pause')}</button>
       <Link className="btn small ghost" to={p(`/k/${campaignId}/aufnahme`)}>{t('Zur Aufnahme')}</Link>
     </div>
-  );
-}
-
-/** Ein Modul groß über dem Schirm; schließt mit „Schließen“ oder Escape, der Fokus kehrt zurück */
-function Popup({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  const close = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    const before = document.activeElement as HTMLElement | null;
-    close.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      before?.focus?.();
-    };
-  }, [onClose]);
-  return createPortal(
-    <div className="table-popup-shade" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label={title} className="table-popup table-panel" onClick={(e) => e.stopPropagation()}>
-        <div className="table-panel-head">
-          <h2 className="table-panel-title">{title}</h2>
-          <button ref={close} type="button" className="btn small outline" onClick={onClose}>{t('Schließen')}</button>
-        </div>
-        {children}
-      </div>
-    </div>,
-    document.body
   );
 }
 
@@ -321,6 +298,12 @@ export function TablePage() {
           focusEntryId={focusEntryId} compact={compact} onEntry={openEntry} />;
       case 'group':
         return <GroupPanel campaign={campaign} onEntry={openEntry} compact={compact} />;
+      case 'notes':
+        return <NotesPanel campaignId={campaign.id} nextNumber={nextNumber} compact={compact} />;
+      case 'clock':
+        return <ClockPanel campaignId={campaign.id} compact={compact} />;
+      case 'links':
+        return <LinksPanel campaign={campaign} onCampaign={setCampaign} compact={compact} />;
     }
   };
 

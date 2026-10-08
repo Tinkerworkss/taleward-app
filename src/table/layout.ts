@@ -6,7 +6,7 @@
 // Ohne Importe, damit die Tests (scripts/tests/table-layout.test.mjs) die Datei direkt laden können
 
 /** Neue Module hier eintragen, dazu in TablePage einen Namen (LABELS) und einen Fall in panel() */
-export const PANEL_IDS = ['plan', 'docs', 'bible', 'group'] as const;
+export const PANEL_IDS = ['plan', 'docs', 'bible', 'group', 'notes', 'clock', 'links'] as const;
 export type PanelId = (typeof PANEL_IDS)[number];
 
 /** Breite in Feldern: 2 = ein Drittel, 3 = die Hälfte, 4 = zwei Drittel, 6 = ganz */

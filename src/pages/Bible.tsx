@@ -2,6 +2,7 @@ import { isDeletedMember } from '../api/types';
 import { PlayerPicker } from '../components/PlayerPicker';
 import { confirmDialog } from '../components/confirm';
 import { SecretBox, VisTag } from '../components/VisTag';
+import { LinkButtons } from '../components/Links';
 import { p } from '../api/connections';
 import { Link } from 'react-router-dom';
 import { t, tk } from '../i18n';
@@ -262,6 +263,7 @@ function EntryCard({ entry: e, gm, holder, campaign, players, onChanged }: {
       {e.summary && <div>{e.summary}</div>}
       {e.gmNotes && e.visibility !== 'gm_only' && <SecretBox>{e.gmNotes}</SecretBox>}
       {e.gmNotes && e.visibility === 'gm_only' && <div className="small">{e.gmNotes}</div>}
+      <LinkButtons links={e.links} />
       {(e.type === 'item' && holder) || e.firstSessionNumber ? (
         <div className="muted small">
           {e.type === 'item' && holder ? `${holder}. ` : ''}
