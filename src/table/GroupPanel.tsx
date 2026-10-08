@@ -12,7 +12,13 @@ import { t, tn } from '../i18n';
  * Die Gruppe am Tisch: wer spielt wen, Kurzbeschreibung, Hintergrund (nur SL), Zustimmung zur Aufnahme und
  * mitgebrachte Welt, die noch in keinem Kapitel vorkam (Aufhänger).
  */
-export function GroupPanel({ campaign, onEntry }: { campaign: Campaign; onEntry: (entryId: string) => void }) {
+export function GroupPanel({ campaign, onEntry, compact, onExpand }: {
+  campaign: Campaign;
+  onEntry: (entryId: string) => void;
+  /** Kleine Karte: Wappen und Zustimmung; Tippen öffnet die Gruppe groß */
+  compact?: boolean;
+  onExpand?: () => void;
+}) {
   const [brought, setBrought] = useState<Proposal[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [open, setOpen] = useState<string | null>(null);
@@ -31,6 +37,24 @@ export function GroupPanel({ campaign, onEntry }: { campaign: Campaign; onEntry:
   const pending = (memberId: string) => brought.filter((b) => b.submittedByMemberId === memberId && b.decision === 'open').length;
 
   if (!players.length) return <div className="table-panel-body"><div className="empty">{t('Noch niemand am Tisch. Lade Mitspielende über die Übersicht ein.')}</div></div>;
+
+  if (compact) {
+    const agreed = players.filter((m) => m.recordingConsentAt).length;
+    return (
+      <div className="table-panel-body">
+        <button type="button" className="table-group-compact" onClick={onExpand}
+          aria-label={t('{n} von {total} haben der Aufnahme zugestimmt. Gruppe groß öffnen.', { n: agreed, total: players.length })}>
+          {players.map((m) => (
+            <span key={m.id} className="table-group-face" title={m.characterName ?? m.displayName}>
+              <Avatar campaignId={campaign.id} member={m} size={44} />
+              <span className={m.recordingConsentAt ? 'table-consent yes' : 'table-consent'} aria-hidden>{m.recordingConsentAt ? <IconCheck size={12} /> : '!'}</span>
+            </span>
+          ))}
+        </button>
+        <span className="small muted">{t('{n} von {total} haben der Aufnahme zugestimmt.', { n: agreed, total: players.length })}</span>
+      </div>
+    );
+  }
 
   return (
     <div className="table-panel-body">

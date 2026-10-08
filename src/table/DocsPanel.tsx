@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { CampaignDocument, DocumentText } from '../api/types';
 import { ErrorBox } from '../components/Screen';
-import { t } from '../i18n';
+import { t, tn } from '../i18n';
 import { matchScore } from '../search/fuzzy';
 
 /** Text mit hervorgehobenen Treffern der Suche */
@@ -17,7 +17,13 @@ function Highlight({ text, query }: { text: string; query: string }) {
 /**
  * SL-Unterlagen am Tisch nachlesen: Text je Seite, durchsuchbar; im Browser auf Wunsch das Original.
  */
-export function DocsPanel({ campaignId, docId, onDoc }: { campaignId: string; docId: string | null; onDoc: (id: string | null) => void }) {
+export function DocsPanel({ campaignId, docId, onDoc, compact }: {
+  campaignId: string;
+  docId: string | null;
+  onDoc: (id: string | null) => void;
+  /** Kleine Karte: nur die Titel; Tippen öffnet die Unterlage groß */
+  compact?: boolean;
+}) {
   const [docs, setDocs] = useState<CampaignDocument[] | null>(null);
   const [text, setText] = useState<DocumentText | null>(null);
   const [query, setQuery] = useState('');
@@ -30,9 +36,9 @@ export function DocsPanel({ campaignId, docId, onDoc }: { campaignId: string; do
   useEffect(() => {
     setText(null);
     setQuery('');
-    if (!docId) return;
+    if (!docId || compact) return;
     api.documentText(docId).then(setText).catch(setError);
-  }, [docId]);
+  }, [docId, compact]);
 
   const openOriginal = async (d: CampaignDocument) => {
     try {
@@ -45,7 +51,7 @@ export function DocsPanel({ campaignId, docId, onDoc }: { campaignId: string; do
     }
   };
 
-  const doc = docs?.find((d) => d.id === docId) ?? null;
+  const doc = compact ? null : docs?.find((d) => d.id === docId) ?? null;
   const pages = text?.pages.filter((pg) => !query.trim() || matchScore(query, pg.text) > 0) ?? [];
 
   return (
@@ -59,7 +65,7 @@ export function DocsPanel({ campaignId, docId, onDoc }: { campaignId: string; do
             <button key={d.id} type="button" className="table-entry-head card-like" onClick={() => onDoc(d.id)}>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <strong>{d.title}</strong>
-                <span className="muted small">{d.pageCount ? ' · ' + t('{n} Seiten', { n: d.pageCount }) : ''}</span>
+                <span className="muted small">{d.pageCount ? ' · ' + tn(d.pageCount, '{n} Seite', '{n} Seiten') : ''}</span>
               </span>
               <span aria-hidden style={{ color: 'var(--ink-muted)' }}>›</span>
             </button>

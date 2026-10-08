@@ -13,13 +13,16 @@ const UNDO_SECONDS = 10;
  * Bibel am Tisch: Suche „Wer war das?“ (fehlertolerant), alles mit Geheimem und SL-Notizen, Aufdecken mit ein paar
  * Sekunden zum Zurücknehmen.
  */
-export function BiblePanel({ campaignId, members, query, onQuery, focusEntryId }: {
+export function BiblePanel({ campaignId, members, query, onQuery, focusEntryId, compact, onEntry }: {
   campaignId: string;
   members: Member[];
   query: string;
   onQuery: (q: string) => void;
   /** Von außen (Kapitelplan) gewählter Eintrag: aufklappen und hinscrollen */
   focusEntryId: string | null;
+  /** Kleine Karte: nur Suchfeld und die besten Treffer; Tippen öffnet die Bibel groß */
+  compact?: boolean;
+  onEntry?: (entryId: string) => void;
 }) {
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [open, setOpen] = useState<string | null>(null);
@@ -31,11 +34,12 @@ export function BiblePanel({ campaignId, members, query, onQuery, focusEntryId }
     api.entries(campaignId).then(setEntries).catch(setError);
   }, [campaignId]);
 
+  const loaded = entries !== null;
   useEffect(() => {
-    if (!focusEntryId) return;
+    if (!focusEntryId || !loaded) return;
     setOpen(focusEntryId);
     window.setTimeout(() => document.getElementById(`tb-${focusEntryId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
-  }, [focusEntryId]);
+  }, [focusEntryId, loaded]);
 
   // Rückweg-Uhr
   useEffect(() => {
@@ -75,6 +79,28 @@ export function BiblePanel({ campaignId, members, query, onQuery, focusEntryId }
     .map((id) => members.find((m) => m.id === id))
     .filter((m): m is Member => !!m)
     .map((m) => m.characterName ?? m.displayName);
+
+  if (compact) {
+    return (
+      <div className="table-panel-body">
+        <div className="field">
+          <label htmlFor="tbc-search">{t('Wer war das?')}</label>
+          <input id="tbc-search" type="search" value={query} placeholder={t('Name, Ort, Gegenstand …')} onChange={(ev) => onQuery(ev.target.value)} />
+        </div>
+        <ErrorBox error={error} />
+        {query.trim() && shown?.length === 0 && <span className="muted small">{t('Nichts gefunden für „{q}“.', { q: query })}</span>}
+        {query.trim() && (shown?.length ?? 0) > 0 && (
+          <div className="row wrap" style={{ gap: 6 }}>
+            {shown!.slice(0, 4).map((e) => (
+              <button key={e.id} type="button" className="btn small outline" onClick={() => onEntry?.(e.id)}>
+                {e.name}{e.visibility === 'gm_only' ? ' · ' + t('Nur SL') : ''}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="table-panel-body">

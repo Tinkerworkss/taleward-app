@@ -1075,4 +1075,11 @@ export const en: Record<string, string> = {
   "Plan löschen": "Delete plan",
   "Kapitelplan": "Chapter plan",
   "Die Gruppe": "The group",
+  "{n} von {total} haben der Aufnahme zugestimmt. Gruppe groß öffnen.": "{n} of {total} have agreed to the recording. Open the group large.",
+  "{n} von {total} haben der Aufnahme zugestimmt.": "{n} of {total} have agreed to the recording.",
+  "Noch kein Plan.": "No plan yet.",
+  "{n} von {total} Szenen erledigt": "{n} of {total} scenes done",
+  "Jetzt:": "Now:",
+  "Gespielt": "Played",
+  "Alle Szenen erledigt.": "All scenes done.",
 };

@@ -22,12 +22,14 @@ function pickPlan(plans: ChapterPlan[]): ChapterPlan | null {
  * Kapitelplan am Tisch: Szenenkarten zum Abhaken, Notizen, Namen und Verweise in Bibel und Unterlagen. Nur für die SL;
  * der Plan fließt nie in Kapitel oder Vorschläge.
  */
-export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc }: {
+export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc, compact }: {
   campaignId: string;
   /** Nummer des nächsten Kapitels (Vorgabe für neue Pläne) */
   nextNumber: number;
   onEntry: (entryId: string) => void;
   onDoc: (docId: string) => void;
+  /** Kleine Karte: nur die nächste offene Szene zum Abhaken */
+  compact?: boolean;
 }) {
   const [plans, setPlans] = useState<ChapterPlan[] | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);
@@ -74,6 +76,32 @@ export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc }: {
       setError(e);
     }
   };
+
+  if (compact) {
+    const current = plan?.scenes.find((sc) => (sc.state ?? 'open') === 'open');
+    const done = plan?.scenes.filter((sc) => sc.state === 'played' || sc.state === 'skipped').length ?? 0;
+    return (
+      <div className="table-panel-body">
+        <ErrorBox error={error} />
+        {!plans && !error && <div className="muted small">{t('Lade …')}</div>}
+        {plans && !plan && <span className="muted small">{t('Noch kein Plan.')}</span>}
+        {plan && (
+          <>
+            <span className="small"><strong>{plan.title}</strong> · {t('{n} von {total} Szenen erledigt', { n: done, total: plan.scenes.length })}</span>
+            {current ? (
+              <div className="row between" style={{ gap: 8, alignItems: 'center' }}>
+                <span style={{ flex: 1, minWidth: 0 }}>{t('Jetzt:')} <strong>{current.title}</strong></span>
+                <button type="button" className="btn small outline"
+                  onClick={() => save({ scenes: plan.scenes.map((x) => (x.id === current.id ? { ...x, state: 'played' } : x)) })}>
+                  {t('Gespielt')}
+                </button>
+              </div>
+            ) : plan.scenes.length > 0 && <span className="muted small">{t('Alle Szenen erledigt.')}</span>}
+          </>
+        )}
+      </div>
+    );
+  }
 
   if (editing && plan) {
     return <PlanEditor plan={plan} entries={entries} docs={docs} onCancel={() => setEditing(false)}
