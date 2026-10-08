@@ -1,0 +1,328 @@
+From 46ba2feaeb6fe7d7c67062d14139da3df5f9c4ad Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 8 Oct 2026 14:58:47 +0200
+Subject: [PATCH] =?UTF-8?q?Bibel:=20fehlertolerante=20Suche,=20Suchfeld=20?=
+ =?UTF-8?q?=E2=80=9EWer=20war=20das=3F=E2=80=9C=20auf=20der=20=C3=9Cbersic?=
+ =?UTF-8?q?ht;=20Musterkampagne:=20Hinweis=20in=20der=20Kampagne,=20Unterl?=
+ =?UTF-8?q?agen=20als=20PDF?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ scripts/tests/minipdf.test.mjs | 25 +++++++++
+ src/components/Muster.tsx      | 36 +++++++++----
+ src/i18n/en.ts                 |  2 +
+ src/mocks/handlers.ts          | 11 +++-
+ src/mocks/minipdf.ts           | 94 ++++++++++++++++++++++++++++++++++
+ src/pages/Bible.tsx            | 23 +++++----
+ src/pages/Overview.tsx         | 18 +++++++
+ src/theme.css                  |  6 +++
+ 8 files changed, 195 insertions(+), 20 deletions(-)
+ create mode 100644 scripts/tests/minipdf.test.mjs
+ create mode 100644 src/mocks/minipdf.ts
+
+diff --git a/scripts/tests/minipdf.test.mjs b/scripts/tests/minipdf.test.mjs
+new file mode 100644
+index 0000000..7db1bd5
+--- /dev/null
++++ b/scripts/tests/minipdf.test.mjs
+@@ -0,0 +1,25 @@
++// Testmodus: Unterlagen als echte PDF-Datei
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { textToPdf } from '../../src/mocks/minipdf.ts';
++
++const latin1 = (b) => Array.from(b, (c) => String.fromCharCode(c)).join('');
++
++test('gültiger Aufbau mit Seiten, Verweistabelle und Umlauten', () => {
++  const pdf = latin1(textToPdf(['Aushang an der Zollbrücke\nGesucht: „Fährleute“ – gut (bezahlt)', 'Seite zwei'], 'Aushang'));
++  assert.ok(pdf.startsWith('%PDF-1.4\n'));
++  assert.ok(pdf.trimEnd().endsWith('%%EOF'));
++  assert.match(pdf, /\/Count 2\b/);
++  assert.ok(pdf.includes('Zollbr\\374cke'), 'ü als Oktal');
++  assert.ok(pdf.includes('\\204F\\344hrleute\\223'), '„ und “ aus Windows-1252');
++  assert.ok(pdf.includes('gut \\(bezahlt\\)'), 'Klammern geschützt');
++  // Jeder Eintrag der Verweistabelle zeigt auf den Anfang seines Objekts
++  const xref = Number(pdf.match(/startxref\n(\d+)/)[1]);
++  const rows = pdf.slice(xref).split('\n').slice(3).filter((r) => / n $/.test(r));
++  rows.forEach((r, i) => assert.equal(pdf.slice(Number(r.slice(0, 10))).split('\n')[0], `${i + 1} 0 obj`));
++});
++
++test('lange Seiten werden umbrochen und verteilt', () => {
++  const pdf = latin1(textToPdf([Array.from({ length: 900 }, (_, i) => `Wort${i}`).join(' ')]));
++  assert.match(pdf, /\/Count 2\b/);
++});
+diff --git a/src/components/Muster.tsx b/src/components/Muster.tsx
+index 48320db..52e09e8 100644
+--- a/src/components/Muster.tsx
++++ b/src/components/Muster.tsx
+@@ -3,3 +3,4 @@ import { useNavigate } from 'react-router-dom';
+ import { endMuster, musterConnection, musterPath, startMuster } from '../api/musterRuntime';
+-import type { MusterRole } from '../api/muster';
++import { isMusterUrl, type MusterRole } from '../api/muster';
++import { currentConnection } from '../api/connections';
+ import { t } from '../i18n';
+@@ -51,2 +52,10 @@ export function MusterTry() {
+ 
++async function askEnd(): Promise<void> {
++  const ok = await confirmDialog(
++    t('Musterkampagne beenden? Sie verschwindet mit ihren Charakteren von diesem Gerät. Deine eigenen Kampagnen und Charaktere bleiben.'),
++    { confirmLabel: t('Beenden'), danger: true }
++  );
++  if (ok) endMuster();
++}
++
+ /** Hinweis in der Kampagnenliste, solange die Musterkampagne läuft */
+@@ -54,9 +63,2 @@ export function MusterNotice() {
+   if (!musterConnection()) return null;
+-  const end = async () => {
+-    const ok = await confirmDialog(
+-      t('Musterkampagne beenden? Sie verschwindet mit ihren Charakteren von diesem Gerät. Deine eigenen Kampagnen und Charaktere bleiben.'),
+-      { confirmLabel: t('Beenden'), danger: true }
+-    );
+-    if (ok) endMuster();
+-  };
+   return (
+@@ -65,3 +67,3 @@ export function MusterNotice() {
+       <span className="muted small">{t('Alles darin ist erfunden und bleibt auf diesem Gerät. Was du änderst, ist nach einem Neustart der App wieder wie vorher.')}</span>
+-      <button type="button" className="btn small ghost" style={{ alignSelf: 'flex-start' }} onClick={end}>{t('Musterkampagne beenden')}</button>
++      <button type="button" className="btn small ghost" style={{ alignSelf: 'flex-start' }} onClick={askEnd}>{t('Musterkampagne beenden')}</button>
+     </section>
+@@ -69 +71,17 @@ export function MusterNotice() {
+ }
++
++/** Schmaler Hinweis in der Kampagne selbst, damit niemand die Musterkampagne für eine echte hält */
++export function MusterBanner() {
++  let muster = false;
++  try { muster = isMusterUrl(currentConnection().baseUrl); } catch { /* keine Verbindung */ }
++  if (!muster) return null;
++  return (
++    <div className="notice" role="note" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
++      <span>
++        <strong>{t('Musterkampagne')}</strong>{' '}
++        {t('Alles hier ist erfunden und bleibt auf diesem Gerät. Probier ruhig alles aus; nach einem Neustart der App ist es wieder wie vorher.')}
++      </span>
++      <button type="button" className="btn small ghost" onClick={askEnd}>{t('Musterkampagne beenden')}</button>
++    </div>
++  );
++}
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 01917d8..5061154 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -1147,2 +1147,4 @@ export const en: Record<string, string> = {
+   "Nur auf diesem Gerät gespeichert, bis dein Server Notizen kann.": "Only saved on this device until your server can store notes.",
++  "Name in der Bibel suchen …": "Search the bible for a name …",
++  "Alles hier ist erfunden und bleibt auf diesem Gerät. Probier ruhig alles aus; nach einem Neustart der App ist es wieder wie vorher.": "Everything here is made up and stays on this device. Try whatever you like; after restarting the app it’s back to how it was.",
+ };
+diff --git a/src/mocks/handlers.ts b/src/mocks/handlers.ts
+index f7d46a3..4fc0161 100644
+--- a/src/mocks/handlers.ts
++++ b/src/mocks/handlers.ts
+@@ -2,2 +2,3 @@ import { http, HttpResponse, delay } from 'msw';
+ import { DEMO_HOST, DEMO_USERS, musterProbe } from './muster/seed';
++import { textToPdf } from './minipdf';
+ 
+@@ -1140,4 +1141,10 @@ export const handlers = [
+     if (!d || !isGm(d.campaignId)) return err(404, 'not_found', 'Unterlage nicht gefunden.');
+-    // Testmodus: statt der Originaldatei der erkannte Text
+-    return new HttpResponse((documentTexts[d.id] ?? '').replace(/\f/g, '\n\n'), {
++    const text = documentTexts[d.id] ?? '';
++    // Testmodus: PDF-Unterlagen als echte PDF aus dem erkannten Text, alles andere als Text
++    if (/\.pdf$/i.test(d.fileName)) {
++      return new HttpResponse(textToPdf(text.split('\f'), d.title), {
++        headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${d.fileName.replace(/[^\w.-]/g, '_')}"`, 'Cache-Control': 'no-store' }
++      });
++    }
++    return new HttpResponse(text.replace(/\f/g, '\n\n'), {
+       headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }
+diff --git a/src/mocks/minipdf.ts b/src/mocks/minipdf.ts
+new file mode 100644
+index 0000000..a2d72ba
+--- /dev/null
++++ b/src/mocks/minipdf.ts
+@@ -0,0 +1,94 @@
++/*
++ * Kleine PDF-Datei aus Text, ohne Bibliothek: für die Unterlagen der Musterkampagne und des Testmodus, damit
++ * „Original öffnen“ eine echte PDF zeigt. Eine Seite je Textseite (A4), Schrift Helvetica, Umbruch nach Wörtern.
++ * Zeichen außerhalb von Windows-1252 werden durch „?“ ersetzt. Ohne Laufzeit-Importe (Test: scripts/tests/minipdf.test.mjs).
++ */
++
++/** Zeichen, die in Windows-1252 nicht auf ihrer Unicode-Stelle liegen */
++const CP1252: Record<string, number> = {
++  '€': 0x80, '‚': 0x82, '„': 0x84, '…': 0x85, '‘': 0x91, '’': 0x92, '“': 0x93, '”': 0x94, '•': 0x95, '–': 0x96, '—': 0x97, '›': 0x9b, '‹': 0x8b
++};
++
++function encode(s: string): number[] {
++  const out: number[] = [];
++  for (const ch of s) {
++    const c = ch.codePointAt(0)!;
++    if (CP1252[ch] !== undefined) out.push(CP1252[ch]);
++    else if ((c >= 0x20 && c <= 0x7e) || c === 0x0a || c === 0x0d) out.push(c);
++    else if (c >= 0xa0 && c <= 0xff) out.push(c);
++    else out.push(0x3f);
++  }
++  return out;
++}
++
++/** Text für einen PDF-String: Klammern und Rückstrich schützen, Bytes über 127 als Oktal */
++function pdfString(s: string): string {
++  return '(' + encode(s).map((b) => {
++    if (b === 0x28 || b === 0x29 || b === 0x5c) return '\\' + String.fromCharCode(b);
++    if (b > 0x7e) return '\\' + b.toString(8).padStart(3, '0');
++    return String.fromCharCode(b);
++  }).join('') + ')';
++}
++
++function wrap(text: string, width: number): string[] {
++  const lines: string[] = [];
++  for (const para of text.split('\n')) {
++    let line = '';
++    for (const word of para.split(/\s+/).filter(Boolean)) {
++      if (line && line.length + 1 + word.length > width) {
++        lines.push(line);
++        line = word;
++      } else {
++        line = line ? `${line} ${word}` : word;
++      }
++    }
++    lines.push(line);
++  }
++  return lines;
++}
++
++/** PDF aus Seiten mit Text; die erste Zeile der ersten Seite wird als Überschrift gesetzt */
++export function textToPdf(pages: string[], title = ''): Uint8Array {
++  const LINES_PER_PAGE = 52;
++  // Lange Textseiten auf mehrere PDF-Seiten verteilen
++  const sheets: string[][] = [];
++  for (const page of pages.length ? pages : ['']) {
++    const lines = wrap(page.trim(), 88);
++    for (let i = 0; i < lines.length || i === 0; i += LINES_PER_PAGE) sheets.push(lines.slice(i, i + LINES_PER_PAGE));
++  }
++
++  const objects: string[] = [];
++  const add = (body: string) => { objects.push(body); return objects.length; };
++  const catalog = add('');
++  const pagesObj = add('');
++  const font = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
++  const bold = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
++  const kids: number[] = [];
++  sheets.forEach((lines, si) => {
++    const ops = ['BT', '/F1 10.5 Tf', '14 TL', '56 790 Td'];
++    lines.forEach((line, li) => {
++      if (si === 0 && li === 0) ops.push('/F2 13 Tf', `${pdfString(line)} Tj`, '/F1 10.5 Tf', 'T*');
++      else ops.push(`${pdfString(line)} Tj`, 'T*');
++    });
++    ops.push('ET', 'BT', '/F1 8 Tf', '520 30 Td', `(${si + 1} / ${sheets.length}) Tj`, 'ET');
++    const stream = ops.join('\n');
++    const content = add(`<< /Length ${encode(stream).length} >>\nstream\n${stream}\nendstream`);
++    kids.push(add(`<< /Type /Page /Parent ${pagesObj} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${font} 0 R /F2 ${bold} 0 R >> >> /Contents ${content} 0 R >>`));
++  });
++  objects[catalog - 1] = `<< /Type /Catalog /Pages ${pagesObj} 0 R >>`;
++  objects[pagesObj - 1] = `<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(' ')}] /Count ${kids.length} >>`;
++  const info = add(`<< /Title ${pdfString(title)} /Producer (Taleward Testmodus) >>`);
++
++  // Zusammensetzen; alle Zeichen sind hier schon ASCII (Strings oktal), Längen also in Bytes = Zeichen
++  let out = '%PDF-1.4\n';
++  const offsets: number[] = [];
++  objects.forEach((body, i) => {
++    offsets.push(out.length);
++    out += `${i + 1} 0 obj\n${body}\nendobj\n`;
++  });
++  const xref = out.length;
++  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
++  out += offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
++  out += `trailer\n<< /Size ${objects.length + 1} /Root ${catalog} 0 R /Info ${info} 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
++  return new Uint8Array(encode(out));
++}
+diff --git a/src/pages/Bible.tsx b/src/pages/Bible.tsx
+index 01203cf..ea60128 100644
+--- a/src/pages/Bible.tsx
++++ b/src/pages/Bible.tsx
+@@ -9,3 +9,4 @@ import { t, tk } from '../i18n';
+ import { useEffect, useState } from 'react';
+-import { useParams } from 'react-router-dom';
++import { useParams, useSearchParams } from 'react-router-dom';
++import { fuzzyFilter } from '../search/fuzzy';
+ import { api } from '../api/client';
+@@ -36,4 +37,6 @@ export function Bible() {
+   const [tab, setTab] = useState<EntryType>('npc');
+-  const [query, setQuery] = useState('');
+-  const [entries, setEntries] = useState<Entry[] | null>(null);
++  // Suche aus der Übersicht kommt als ?q= mit
++  const [params] = useSearchParams();
++  const [query, setQuery] = useState(() => params.get('q') ?? '');
++  const [all, setAll] = useState<Entry[] | null>(null);
+   const [error, setError] = useState<unknown>(null);
+@@ -51,9 +54,11 @@ export function Bible() {
+ 
++  // Die ganze Bibel einmal laden (der Server gibt nur, was diese Person sehen darf) und hier fehlertolerant suchen:
++  // „Kasmürin“ findet „Kasmyrin“, kleine Tippfehler auch
+   useEffect(() => {
+-    const t = setTimeout(() => {
+-      api.entries(campaignId, query ? undefined : tab, query || undefined).then(setEntries).catch(setError);
+-    }, query ? 250 : 0);
+-    return () => clearTimeout(t);
+-  }, [campaignId, tab, query, reload]);
++    api.entries(campaignId).then(setAll).catch(setError);
++  }, [campaignId, reload]);
+ 
++  const entries = all && (query.trim()
++    ? fuzzyFilter(all, query, (e) => [e.name, e.summary, e.gmNotes ?? ''])
++    : all.filter((e) => e.type === tab));
+   const holder = (id: string | null | undefined) => {
+@@ -94,3 +99,3 @@ export function Bible() {
+           players={campaign?.members.filter((m) => m.role === 'player' && !isDeletedMember(m)) ?? []}
+-          onChanged={(u) => setEntries((list) => (u ? list?.map((x) => (x.id === u.id ? u : x)) : list?.filter((x) => x.id !== e.id)) ?? null)} />
++          onChanged={(u) => setAll((list) => (u ? list?.map((x) => (x.id === u.id ? u : x)) : list?.filter((x) => x.id !== e.id)) ?? null)} />
+       ))}
+diff --git a/src/pages/Overview.tsx b/src/pages/Overview.tsx
+index dd7a408..0d0e4c5 100644
+--- a/src/pages/Overview.tsx
++++ b/src/pages/Overview.tsx
+@@ -22,2 +22,3 @@ import { IconCheck, IconInfo, IconLock } from '../components/Icons';
+ import { LinkButtons } from '../components/Links';
++import { MusterBanner } from '../components/Muster';
+ import { Divider, ErrorBox, Screen, rememberCampaign } from '../components/Screen';
+@@ -87,2 +88,3 @@ export function Overview() {
+ 
++          <MusterBanner />
+           {campaign.archivedAt && (
+@@ -130,2 +132,3 @@ export function Overview() {
+           {gm && campaign.gmNotices?.map((n) => <GmNoticeCard key={n.id} campaign={campaign} notice={n} onDone={load} />)}
++          <BibleSearch campaignId={campaignId} />
+           {/* Nächste Runde */}
+@@ -192,2 +195,17 @@ export function Overview() {
+ 
++/** „Wer war das?“ – Suchfeld, das in die Bibel springt (fehlertolerant, siehe search/fuzzy.ts) */
++function BibleSearch({ campaignId }: { campaignId: string }) {
++  const navigate = useNavigate();
++  const [q, setQ] = useState('');
++  return (
++    <form role="search" className="card overview-search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) navigate(p(`/k/${campaignId}/bibel?q=${encodeURIComponent(q.trim())}`)); }}>
++      <label htmlFor="overview-search" className="overline">{t('Wer war das?')}</label>
++      <div className="row" style={{ gap: 8 }}>
++        <input id="overview-search" type="search" enterKeyHint="search" placeholder={t('Name in der Bibel suchen …')} value={q} onChange={(e) => setQ(e.target.value)} />
++        <button type="submit" className="btn small outline" disabled={!q.trim()}>{t('Suchen')}</button>
++      </div>
++    </form>
++  );
++}
++
+ /**
+diff --git a/src/theme.css b/src/theme.css
+index e6cfe1a..556584b 100644
+--- a/src/theme.css
++++ b/src/theme.css
+@@ -1765 +1765,7 @@ button.table-group-face {
+ }
++
++/* Übersicht: „Wer war das?“ */
++.overview-search input {
++  flex: 1;
++  min-width: 0;
++}
