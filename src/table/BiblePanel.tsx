@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { Entry, EntryInput, Member } from '../api/types';
+import { apiAtLeast } from '../api/connections';
+import type { Entry, EntryInput, EntryType, Link, Member } from '../api/types';
+import { LinkButtons, LinkEditor } from '../components/Links';
 import { ENTRY_KIND } from '../components/ProposalCard';
 import { ErrorBox } from '../components/Screen';
 import { SecretBox, VisTag } from '../components/VisTag';
 import { t } from '../i18n';
 import { fuzzyFilter } from '../search/fuzzy';
+import { rememberName } from './currentPlan';
+
+const QUICK_TYPES: EntryType[] = ['npc', 'location', 'item', 'faction', 'quest', 'other'];
 
 const UNDO_SECONDS = 10;
 
@@ -29,6 +34,38 @@ export function BiblePanel({ campaignId, members, query, onQuery, focusEntryId, 
   const [error, setError] = useState<unknown>(null);
   const [undo, setUndo] = useState<{ entry: Entry; before: Partial<EntryInput>; left: number } | null>(null);
   const timer = useRef<number | null>(null);
+  const [quick, setQuick] = useState(false);
+  const [quickName, setQuickName] = useState('');
+  const [quickType, setQuickType] = useState<EntryType>('npc');
+  const [linking, setLinking] = useState<string | null>(null);
+
+  /** Neuer Eintrag in fünf Sekunden: geheim angelegt, Name gleich als Schreibhilfe für die Abschrift */
+  const quickAdd = async () => {
+    const name = quickName.trim();
+    if (!name) return;
+    setError(null);
+    try {
+      const e = await api.createEntry(campaignId, { type: quickType, name, summary: '', visibility: 'gm_only' });
+      setEntries((list) => [...(list ?? []), e].sort((a, b) => a.name.localeCompare(b.name)));
+      setQuickName('');
+      setQuick(false);
+      setOpen(e.id);
+      window.setTimeout(() => document.getElementById(`tb-${e.id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+      rememberName(campaignId, name);
+    } catch (err) {
+      setError(err);
+    }
+  };
+
+  const saveLinks = async (e: Entry, links: Link[]) => {
+    setError(null);
+    try {
+      replace(await api.updateEntry(e.id, { links }));
+      setLinking(null);
+    } catch (err) {
+      setError(err);
+    }
+  };
 
   useEffect(() => {
     api.entries(campaignId).then(setEntries).catch(setError);
@@ -108,6 +145,19 @@ export function BiblePanel({ campaignId, members, query, onQuery, focusEntryId, 
         <label htmlFor="tb-search">{t('Wer war das?')}</label>
         <input id="tb-search" type="search" value={query} placeholder={t('Name, Ort, Gegenstand …')} onChange={(ev) => onQuery(ev.target.value)} />
       </div>
+      {!quick ? (
+        <button type="button" className="btn small dashed" onClick={() => setQuick(true)}>{t('Schnell anlegen')}</button>
+      ) : (
+        <form className="table-quick" onSubmit={(ev) => { ev.preventDefault(); quickAdd(); }}>
+          <input type="text" aria-label={t('Name des neuen Eintrags')} placeholder={t('Name')} value={quickName} maxLength={120} autoFocus onChange={(ev) => setQuickName(ev.target.value)} />
+          <select aria-label={t('Art')} value={quickType} onChange={(ev) => setQuickType(ev.target.value as EntryType)}>
+            {QUICK_TYPES.map((k) => <option key={k} value={k}>{t(ENTRY_KIND[k])}</option>)}
+          </select>
+          <button type="submit" className="btn small" disabled={!quickName.trim()}>{t('Anlegen')}</button>
+          <button type="button" className="btn small ghost" onClick={() => setQuick(false)}>{t('Abbrechen')}</button>
+          <span className="muted small" style={{ flexBasis: '100%' }}>{t('Wird geheim angelegt und als Schreibhilfe für die Abschrift gemerkt. Beschreiben kannst du ihn später.')}</span>
+        </form>
+      )}
       <ErrorBox error={error} />
       {undo && (
         <div className="notice" role="status" style={{ alignItems: 'center' }}>
@@ -135,11 +185,21 @@ export function BiblePanel({ campaignId, members, query, onQuery, focusEntryId, 
                 {e.summary && <p className="small" style={{ margin: 0 }}>{e.summary}</p>}
                 {e.gmNotes && <SecretBox>{e.gmNotes}</SecretBox>}
                 {partly && <span className="small" style={{ color: 'var(--siegel-text)' }}>{t('nicht für {names}', { names: hiddenNames(e).join(', ') })}</span>}
-                {(secret || partly) && (
-                  <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start' }} onClick={() => reveal(e)}>
-                    {secret ? t('Aufdecken') : t('Für alle aufdecken')}
-                  </button>
-                )}
+                <LinkButtons links={e.links} />
+                {linking === e.id
+                  ? <LinkEditor links={e.links ?? []} max={3} canShare onSave={(l) => saveLinks(e, l)} onCancel={() => setLinking(null)} />
+                  : (
+                    <div className="row wrap" style={{ gap: 6 }}>
+                      {(secret || partly) && (
+                        <button type="button" className="btn small outline" onClick={() => reveal(e)}>
+                          {secret ? t('Aufdecken') : t('Für alle aufdecken')}
+                        </button>
+                      )}
+                      {apiAtLeast('0.4.13') && (
+                        <button type="button" className="btn small ghost" onClick={() => setLinking(e.id)}>{(e.links?.length ?? 0) ? t('Links bearbeiten') : t('Link hinzufügen')}</button>
+                      )}
+                    </div>
+                  )}
               </div>
             )}
           </section>

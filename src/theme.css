@@ -1622,3 +1622,144 @@ details.card[open] { padding-bottom: var(--space-4); }
     border-color: var(--on-tinte);
   }
 }
+
+/* Übersicht der SL: SL-Schirm hervorgehoben, Titelbild dezent daneben */
+.overview-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn.accent {
+  background: var(--messing);
+  border-color: var(--messing);
+  color: #2a2118;
+}
+
+.btn.subtle {
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--ink-muted);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Links zu anderen Programmen */
+.btn.link-btn {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  text-align: left;
+}
+
+.link-host {
+  font: 400 12px/16px var(--font-sans);
+  color: var(--ink-muted);
+}
+
+.link-edit-row,
+.link-edit-new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.link-edit-new input {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.linklike {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Unterlagen: Dateien hineinziehen */
+.table-drop {
+  position: relative;
+}
+
+.table-drop.active {
+  outline: 3px dashed var(--tinte);
+  outline-offset: -6px;
+  border-radius: 12px;
+}
+
+.table-drop-hint {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--tinte);
+  color: var(--on-tinte);
+  font: 700 15px/20px var(--font-sans);
+  text-align: center;
+}
+
+.table-doc-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Bibel: schnell anlegen */
+.table-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.table-quick input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+/* Gruppe: Personen antippen */
+.table-member-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.table-group-face {
+  padding: 2px;
+  min-width: 48px;
+  min-height: 48px;
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+/* Uhr und Notizzettel */
+.table-clock {
+  font: 700 40px/44px var(--font-serif);
+  color: var(--ink);
+}
+
+.table-notes {
+  flex: 1;
+  min-height: 72px;
+  resize: vertical;
+}

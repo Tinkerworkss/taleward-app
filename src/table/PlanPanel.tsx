@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
-import { api } from '../api/client';
+import { api, isApiError } from '../api/client';
+import { apiAtLeast } from '../api/connections';
+import { LinkButtons, LinkEditor } from '../components/Links';
 import type { CampaignDocument, ChapterPlan, Entry, PlanScene } from '../api/types';
 import { confirmDialog } from '../components/confirm';
 import { ErrorBox } from '../components/Screen';
 import { tk, t } from '../i18n';
 import { fuzzyFilter } from '../search/fuzzy';
+import { pickPlan } from './currentPlan';
 
 const SCENE_STATE: Record<NonNullable<PlanScene['state']>, string> = {
   open: tk('offen'),
@@ -13,10 +16,6 @@ const SCENE_STATE: Record<NonNullable<PlanScene['state']>, string> = {
 };
 const NEXT_STATE: Record<NonNullable<PlanScene['state']>, NonNullable<PlanScene['state']>> = { open: 'played', played: 'skipped', skipped: 'open' };
 
-/** Der Plan für die nächste Runde: der früheste, der noch nicht gespielt ist */
-function pickPlan(plans: ChapterPlan[]): ChapterPlan | null {
-  return plans.find((pl) => pl.state !== 'played') ?? plans[plans.length - 1] ?? null;
-}
 
 /**
  * Kapitelplan am Tisch: Szenenkarten zum Abhaken, Notizen, Namen und Verweise in Bibel und Unterlagen. Nur für die SL;
@@ -65,6 +64,31 @@ export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc, compact }: {
     }
   };
 
+  /**
+   * Kleine Änderung am Tisch (Szene abhaken): hat ein anderes Gerät oder der Notizzettel den Plan inzwischen
+   * geändert, einmal frisch laden und dieselbe Änderung auf den neuen Stand anwenden.
+   */
+  const apply = async (fn: (p: ChapterPlan) => Partial<ChapterPlan>) => {
+    if (!plan) return;
+    setError(null);
+    try {
+      let u: ChapterPlan;
+      try {
+        u = await api.updatePlan(plan.id, { ...fn(plan), ifUpdatedAt: plan.updatedAt });
+      } catch (e) {
+        if (!isApiError(e, 'conflict')) throw e;
+        const fresh = await api.plan(plan.id);
+        u = await api.updatePlan(plan.id, { ...fn(fresh), ifUpdatedAt: fresh.updatedAt });
+      }
+      setPlans((list) => list?.map((x) => (x.id === u.id ? u : x)) ?? null);
+    } catch (e) {
+      setError(e);
+      load();
+    }
+  };
+  const setSceneState = (sceneId: string, state: NonNullable<PlanScene['state']>) =>
+    apply((p) => ({ scenes: p.scenes.map((x) => (x.id === sceneId ? { ...x, state } : x)) }));
+
   const create = async () => {
     setError(null);
     try {
@@ -92,7 +116,7 @@ export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc, compact }: {
               <div className="row between" style={{ gap: 8, alignItems: 'center' }}>
                 <span style={{ flex: 1, minWidth: 0 }}>{t('Jetzt:')} <strong>{current.title}</strong></span>
                 <button type="button" className="btn small outline"
-                  onClick={() => save({ scenes: plan.scenes.map((x) => (x.id === current.id ? { ...x, state: 'played' } : x)) })}>
+                  onClick={() => setSceneState(current.id, 'played')}>
                   {t('Gespielt')}
                 </button>
               </div>
@@ -151,11 +175,12 @@ export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc, compact }: {
                 <div className="row between" style={{ gap: 8, alignItems: 'flex-start' }}>
                   <strong style={{ flex: 1 }}>{i + 1}. {sc.title}</strong>
                   <button type="button" className="btn small ghost" aria-label={t('Stand der Szene: {s}. Tippen zum Ändern.', { s: t(SCENE_STATE[state]) })}
-                    onClick={() => save({ scenes: plan.scenes.map((x) => (x.id === sc.id ? { ...x, state: NEXT_STATE[state] } : x)) })}>
+                    onClick={() => setSceneState(sc.id, NEXT_STATE[state])}>
                     {t(SCENE_STATE[state])}
                   </button>
                 </div>
                 {sc.notes && <p className="small" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{sc.notes}</p>}
+                <LinkButtons links={sc.links} />
                 {(sc.entryIds?.length ?? 0) > 0 && (
                   <div className="row wrap" style={{ gap: 6 }}>
                     {sc.entryIds!.map((id) => entryName(id) && (
@@ -201,6 +226,7 @@ function PlanEditor({ plan, entries, docs, onSave, onCancel, onDelete }: {
   const [docIds, setDocIds] = useState<string[]>(plan.documentIds);
   const [picking, setPicking] = useState<string | null>(null);
   const [pickQuery, setPickQuery] = useState('');
+  const [linking, setLinking] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const setScene = (id: string, change: Partial<PlanScene>) => setScenes((list) => list.map((s) => (s.id === id ? { ...s, ...change } : s)));
@@ -255,7 +281,15 @@ function PlanEditor({ plan, entries, docs, onSave, onCancel, onDelete }: {
               </button>
             ))}
             <button type="button" className="btn small ghost" onClick={() => { setPicking(picking === sc.id ? null : sc.id); setPickQuery(''); }}>{t('Eintrag verknüpfen')}</button>
+            {apiAtLeast('0.4.13') && linking !== sc.id && (
+              <button type="button" className="btn small ghost" onClick={() => setLinking(sc.id)}>{(sc.links?.length ?? 0) ? t('Links bearbeiten') : t('Link hinzufügen')}</button>
+            )}
           </div>
+          {linking !== sc.id && <LinkButtons links={sc.links} />}
+          {linking === sc.id && (
+            <LinkEditor links={sc.links ?? []} max={3} canShare={false} saveLabel={t('Übernehmen')}
+              onSave={(links) => { setScene(sc.id, { links }); setLinking(null); }} onCancel={() => setLinking(null)} />
+          )}
           {picking === sc.id && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <input type="search" aria-label={t('Eintrag suchen')} placeholder={t('Name, Ort, Gegenstand …')} value={pickQuery} autoFocus onChange={(e) => setPickQuery(e.target.value)} />
