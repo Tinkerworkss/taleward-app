@@ -1,0 +1,386 @@
+From cb59194727e9a6fd64006d5abc42a8eb81a9c80b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 8 Oct 2026 14:14:35 +0200
+Subject: [PATCH 65/65] =?UTF-8?q?SL-Schirm:=20Module=20Notizzettel,=20Uhr?=
+ =?UTF-8?q?=20und=20Links;=20SL-Schirm-Knopf=20auf=20der=20=C3=9Cbersicht;?=
+ =?UTF-8?q?=20geteilte=20Links=20f=C3=BCr=20alle?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ scripts/tests/table-layout.test.mjs |   2 +-
+ src/i18n/en.ts                      |  22 ++-
+ src/pages/Bible.tsx                 |   2 +
+ src/pages/Overview.tsx              |  22 +--
+ src/pages/TablePage.tsx             |  41 ++----
+ src/table/ExtraPanels.tsx           | 199 ++++++++++++++++++++++++++++
+ src/table/layout.ts                 |   2 +-
+ 7 files changed, 250 insertions(+), 40 deletions(-)
+ create mode 100644 src/table/ExtraPanels.tsx
+
+diff --git a/scripts/tests/table-layout.test.mjs b/scripts/tests/table-layout.test.mjs
+index c89cf5f..cc692be 100644
+--- a/scripts/tests/table-layout.test.mjs
++++ b/scripts/tests/table-layout.test.mjs
+@@ -54,3 +54,3 @@ test('Lesereihenfolge und freie Module', () => {
+   assert.deepEqual(readingOrder(l).map((c) => c.id), ['plan', 'bible', 'group']);
+-  assert.deepEqual(unusedPanels(l), ['docs']);
++  assert.deepEqual(unusedPanels(l), ['docs', 'notes', 'clock', 'links']);
+ });
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index ab1d959..01917d8 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -1021,3 +1021,2 @@ export const en: Record<string, string> = {
+   "SL-Schirm": "GM screen",
+-  "Für den Spielabend: Kapitelplan, Bibel, Gruppe und Unterlagen nebeneinander. Am besten auf dem Tablet quer.": "For game night: chapter plan, bible, group and documents side by side. Best on a tablet in landscape.",
+   "Pause": "Pause",
+@@ -1127,2 +1126,23 @@ export const en: Record<string, string> = {
+   "Zur Charakterseite": "To the character page",
++  "Links der Gruppe": "The group’s links",
++  "Notizzettel": "Notepad",
++  "Uhr": "Clock",
++  "Links": "Links",
++  "Links kann dein Server noch nicht speichern. Nach dem nächsten Update des Servers sind sie da.": "Your server can’t store links yet. They’ll be there after the server’s next update.",
++  "Noch keine Links. Zum Beispiel der virtuelle Spieltisch, der Sprachkanal, eine Karte oder Musik.": "No links yet. For example the virtual tabletop, the voice channel, a map or music.",
++  "Mit „Auch für Spieler“ markierte Links sehen alle am Tisch auf ihrer Übersicht.": "Links marked “Players too” appear for everyone at the table on their overview.",
++  "Runde läuft seit {t} h": "Session running for {t} h",
++  "noch {t} h bis {end}": "{t} h left until {end}",
++  "{t} h über der Zeit": "{t} h over time",
++  "Runde beginnt jetzt": "Session starts now",
++  "Beginn zurücksetzen": "Reset start",
++  "Geplantes Ende": "Planned end",
++  "Gilt nur für heute und nur auf diesem Gerät.": "Only for today and only on this device.",
++  "Notizen zur Runde": "Session notes",
++  "Was dir während der Runde einfällt …": "Whatever comes to mind during the session …",
++  "Speichert …": "Saving …",
++  "Noch nicht gespeichert": "Not saved yet",
++  "Gespeichert im Plan „{title}“. Nur für dich, fließt nie in ein Kapitel.": "Saved in the plan “{title}”. Just for you, never goes into a chapter.",
++  "Wird mit der ersten Notiz im Plan der nächsten Runde gespeichert.": "Saved in the next session’s plan as soon as you write something.",
++  "Nur auf diesem Gerät gespeichert, bis dein Server Notizen kann.": "Only saved on this device until your server can store notes.",
+ };
+diff --git a/src/pages/Bible.tsx b/src/pages/Bible.tsx
+index e193eef..01203cf 100644
+--- a/src/pages/Bible.tsx
++++ b/src/pages/Bible.tsx
+@@ -4,2 +4,3 @@ import { confirmDialog } from '../components/confirm';
+ import { SecretBox, VisTag } from '../components/VisTag';
++import { LinkButtons } from '../components/Links';
+ import { p } from '../api/connections';
+@@ -264,2 +265,3 @@ function EntryCard({ entry: e, gm, holder, campaign, players, onChanged }: {
+       {e.gmNotes && e.visibility === 'gm_only' && <div className="small">{e.gmNotes}</div>}
++      <LinkButtons links={e.links} />
+       {(e.type === 'item' && holder) || e.firstSessionNumber ? (
+diff --git a/src/pages/Overview.tsx b/src/pages/Overview.tsx
+index 4956f86..dd7a408 100644
+--- a/src/pages/Overview.tsx
++++ b/src/pages/Overview.tsx
+@@ -21,2 +21,3 @@ import type { Campaign, GameSystem, GmNotice, Member, SessionSummary, Usage } fr
+ import { IconCheck, IconInfo, IconLock } from '../components/Icons';
++import { LinkButtons } from '../components/Links';
+ import { Divider, ErrorBox, Screen, rememberCampaign } from '../components/Screen';
+@@ -67,5 +68,10 @@ export function Overview() {
+           {gm && !pickingCover && (
+-            <button type="button" className="btn ghost small" style={{ alignSelf: 'flex-end', marginTop: hasCover(campaign) ? -6 : 0 }} onClick={() => setPickingCover(true)}>
+-              {hasCover(campaign) ? t('Titelbild ändern') : t('Titelbild wählen')}
+-            </button>
++            <div className="overview-tools" style={{ marginTop: hasCover(campaign) ? -6 : 0 }}>
++              {!campaign.archivedAt && (
++                <Link className="btn small accent" to={p(`/k/${campaignId}/tisch`)}>{t('SL-Schirm')}</Link>
++              )}
++              <button type="button" className="btn small subtle" onClick={() => setPickingCover(true)}>
++                {hasCover(campaign) ? t('Titelbild ändern') : t('Titelbild wählen')}
++              </button>
++            </div>
+           )}
+@@ -138,7 +144,7 @@ export function Overview() {
+ 
+-          {gm && !campaign.archivedAt && (
+-            <Link to={p(`/k/${campaignId}/tisch`)} className="card">
+-              <strong>{t('SL-Schirm')}</strong>
+-              <span className="muted small">{t('Für den Spielabend: Kapitelplan, Bibel, Gruppe und Unterlagen nebeneinander. Am besten auf dem Tablet quer.')}</span>
+-            </Link>
++          {(campaign.links ?? []).some((l) => l.shared) && (
++            <section className="card">
++              <span className="overline">{t('Links der Gruppe')}</span>
++              <LinkButtons links={(campaign.links ?? []).filter((l) => l.shared)} small={false} />
++            </section>
+           )}
+diff --git a/src/pages/TablePage.tsx b/src/pages/TablePage.tsx
+index 30c0f13..11581d1 100644
+--- a/src/pages/TablePage.tsx
++++ b/src/pages/TablePage.tsx
+@@ -1,3 +1,2 @@
+ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+-import { createPortal } from 'react-dom';
+ import { Link, useParams } from 'react-router-dom';
+@@ -17,3 +16,5 @@ import {
+ } from '../table/layout';
++import { ClockPanel, LinksPanel, NotesPanel } from '../table/ExtraPanels';
+ import { PlanPanel } from '../table/PlanPanel';
++import { Popup } from '../table/Popup';
+ 
+@@ -26,3 +27,6 @@ const LABELS: Record<PanelId, string> = {
+   bible: tk('Bibel'),
+-  group: tk('Die Gruppe')
++  group: tk('Die Gruppe'),
++  notes: tk('Notizzettel'),
++  clock: tk('Uhr'),
++  links: tk('Links')
+ };
+@@ -76,29 +80,2 @@ function RecordingBar({ campaignId }: { campaignId: string }) {
+ 
+-/** Ein Modul groß über dem Schirm; schließt mit „Schließen“ oder Escape, der Fokus kehrt zurück */
+-function Popup({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+-  const close = useRef<HTMLButtonElement>(null);
+-  useEffect(() => {
+-    const before = document.activeElement as HTMLElement | null;
+-    close.current?.focus();
+-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+-    window.addEventListener('keydown', onKey);
+-    return () => {
+-      window.removeEventListener('keydown', onKey);
+-      before?.focus?.();
+-    };
+-  }, [onClose]);
+-  return createPortal(
+-    <div className="table-popup-shade" onClick={onClose}>
+-      <div role="dialog" aria-modal="true" aria-label={title} className="table-popup table-panel" onClick={(e) => e.stopPropagation()}>
+-        <div className="table-panel-head">
+-          <h2 className="table-panel-title">{title}</h2>
+-          <button ref={close} type="button" className="btn small outline" onClick={onClose}>{t('Schließen')}</button>
+-        </div>
+-        {children}
+-      </div>
+-    </div>,
+-    document.body
+-  );
+-}
+-
+ /** Eine Karte auf dem Schirm; misst selbst, ob sie für die volle Ansicht groß genug ist */
+@@ -323,2 +300,8 @@ export function TablePage() {
+         return <GroupPanel campaign={campaign} onEntry={openEntry} compact={compact} />;
++      case 'notes':
++        return <NotesPanel campaignId={campaign.id} nextNumber={nextNumber} compact={compact} />;
++      case 'clock':
++        return <ClockPanel campaignId={campaign.id} compact={compact} />;
++      case 'links':
++        return <LinksPanel campaign={campaign} onCampaign={setCampaign} compact={compact} />;
+     }
+diff --git a/src/table/ExtraPanels.tsx b/src/table/ExtraPanels.tsx
+new file mode 100644
+index 0000000..5dcfa1d
+--- /dev/null
++++ b/src/table/ExtraPanels.tsx
+@@ -0,0 +1,199 @@
++import { useEffect, useRef, useState } from 'react';
++import { api } from '../api/client';
++import { apiAtLeast, currentConnectionId } from '../api/connections';
++import type { Campaign, ChapterPlan, Link } from '../api/types';
++import { LinkButtons, LinkEditor } from '../components/Links';
++import { ErrorBox } from '../components/Screen';
++import { getLang, t } from '../i18n';
++import { currentPlan } from './currentPlan';
++
++/*
++ * Weitere Module für den SL-Schirm: Links, Uhr und Notizzettel. Jedes hat eine kleine (compact) und eine große Ansicht.
++ */
++
++const store = {
++  get<T>(key: string, fallback: T): T {
++    try { return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback; } catch { return fallback; }
++  },
++  set(key: string, value: unknown) {
++    try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* egal */ }
++  }
++};
++const scoped = (name: string, campaignId: string) => `taleward.${name}.${currentConnectionId() ?? '-'}:${campaignId}`;
++
++/** Links der Kampagne: Spieltisch, Discord, Karte, Musik. Geteilte sehen auch die Spieler auf ihrer Übersicht. */
++export function LinksPanel({ campaign, onCampaign, compact }: { campaign: Campaign; onCampaign: (c: Campaign) => void; compact?: boolean }) {
++  const [editing, setEditing] = useState(false);
++  const [error, setError] = useState<unknown>(null);
++  if (!apiAtLeast('0.4.13')) {
++    return <div className="table-panel-body"><div className="muted small">{t('Links kann dein Server noch nicht speichern. Nach dem nächsten Update des Servers sind sie da.')}</div></div>;
++  }
++  const links = campaign.links ?? [];
++  const save = async (next: Link[]) => {
++    setError(null);
++    try {
++      onCampaign(await api.updateCampaign(campaign.id, { links: next }));
++      setEditing(false);
++    } catch (e) {
++      setError(e);
++    }
++  };
++  return (
++    <div className="table-panel-body">
++      <ErrorBox error={error} />
++      {editing && !compact
++        ? <LinkEditor links={links} max={20} canShare onSave={save} onCancel={() => setEditing(false)} />
++        : (
++          <>
++            {links.length === 0 && <span className="muted small">{t('Noch keine Links. Zum Beispiel der virtuelle Spieltisch, der Sprachkanal, eine Karte oder Musik.')}</span>}
++            <LinkButtons links={links} />
++            {links.some((l) => l.shared) && !compact && <span className="muted small">{t('Mit „Auch für Spieler“ markierte Links sehen alle am Tisch auf ihrer Übersicht.')}</span>}
++            {!compact && <button type="button" className="btn small dashed" onClick={() => setEditing(true)}>{links.length ? t('Links bearbeiten') : t('Link hinzufügen')}</button>}
++          </>
++        )}
++    </div>
++  );
++}
++
++interface Evening {
++  /** Tag, für den der Rest gilt; am nächsten Tag beginnt alles neu */
++  date: string;
++  start: string | null;
++  end: string | null;
++}
++
++const today = () => new Date().toLocaleDateString('sv');
++const hm = (d: Date) => d.toLocaleTimeString(getLang() === 'en' ? 'en-GB' : 'de-DE', { hour: '2-digit', minute: '2-digit' });
++function span(ms: number): string {
++  const m = Math.max(0, Math.round(ms / 60000));
++  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
++}
++
++/** Uhr für den Abend: wie spät, wie lange schon gespielt, wie viel Zeit bis zum geplanten Ende. Nur auf diesem Gerät. */
++export function ClockPanel({ campaignId, compact }: { campaignId: string; compact?: boolean }) {
++  const key = scoped('abend', campaignId);
++  const [now, setNow] = useState(() => new Date());
++  const [ev, setEv] = useState<Evening>(() => {
++    const saved = store.get<Evening | null>(key, null);
++    return saved && saved.date === today() ? saved : { date: today(), start: null, end: null };
++  });
++  useEffect(() => {
++    const id = window.setInterval(() => setNow(new Date()), 15_000);
++    return () => window.clearInterval(id);
++  }, []);
++  const update = (change: Partial<Evening>) => {
++    const next = { ...ev, ...change, date: today() };
++    setEv(next);
++    store.set(key, next);
++  };
++
++  const start = ev.start ? new Date(ev.start) : null;
++  let end: Date | null = null;
++  if (ev.end) {
++    const [h, m] = ev.end.split(':').map(Number);
++    end = new Date(now);
++    end.setHours(h, m, 0, 0);
++    if (start && end < start) end.setDate(end.getDate() + 1); // Ende nach Mitternacht
++  }
++  const left = end ? end.getTime() - now.getTime() : null;
++
++  return (
++    <div className="table-panel-body">
++      <div className="table-clock" aria-live="off">{hm(now)}</div>
++      <div className="small" role="status">
++        {start && <span>{t('Runde läuft seit {t} h', { t: span(now.getTime() - start.getTime()) })}</span>}
++        {start && left !== null && ' · '}
++        {left !== null && (left >= 0
++          ? <span>{t('noch {t} h bis {end}', { t: span(left), end: ev.end! })}</span>
++          : <strong style={{ color: 'var(--siegel-text)' }}>{t('{t} h über der Zeit', { t: span(-left) })}</strong>)}
++      </div>
++      {compact && !start && (
++        <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start' }} onClick={() => update({ start: new Date().toISOString() })}>{t('Runde beginnt jetzt')}</button>
++      )}
++      {!compact && (
++        <>
++          <div className="row wrap" style={{ gap: 8, alignItems: 'flex-end' }}>
++            {!start
++              ? <button type="button" className="btn small outline" onClick={() => update({ start: new Date().toISOString() })}>{t('Runde beginnt jetzt')}</button>
++              : <button type="button" className="btn small ghost" onClick={() => update({ start: null })}>{t('Beginn zurücksetzen')}</button>}
++            <div className="field" style={{ margin: 0 }}>
++              <label htmlFor={`clock-end-${campaignId}`}>{t('Geplantes Ende')}</label>
++              <input id={`clock-end-${campaignId}`} type="time" value={ev.end ?? ''} onChange={(e) => update({ end: e.target.value || null })} />
++            </div>
++          </div>
++          <span className="muted small">{t('Gilt nur für heute und nur auf diesem Gerät.')}</span>
++        </>
++      )}
++    </div>
++  );
++}
++
++/**
++ * Notizzettel für die Runde. Ab Schnittstelle 0.4.13 im Plan der nächsten Runde gespeichert (nur für dich, auf allen
++ * Geräten, nie im Kapitel); bei älteren Servern nur auf diesem Gerät.
++ */
++export function NotesPanel({ campaignId, nextNumber, compact }: { campaignId: string; nextNumber: number; compact?: boolean }) {
++  const online = apiAtLeast('0.4.13');
++  const localKey = scoped('notizen', campaignId);
++  const [text, setText] = useState<string | null>(online ? null : store.get(localKey, ''));
++  const [plan, setPlan] = useState<ChapterPlan | null>(null);
++  const [state, setState] = useState<'saved' | 'saving' | 'dirty'>('saved');
++  const [error, setError] = useState<unknown>(null);
++  const pending = useRef<string | null>(null);
++  const timer = useRef<number | null>(null);
++  const planRef = useRef<ChapterPlan | null>(null);
++  planRef.current = plan;
++
++  useEffect(() => {
++    if (!online) return;
++    currentPlan(campaignId, nextNumber, false).then((pl) => { setPlan(pl); setText(pl?.tableNotes ?? ''); }).catch((e) => { setError(e); setText(''); });
++  }, [campaignId, nextNumber, online]);
++
++  const flush = async () => {
++    if (pending.current === null) return;
++    const value = pending.current;
++    pending.current = null;
++    if (!online) { store.set(localKey, value); setState('saved'); return; }
++    setState('saving');
++    try {
++      const pl = planRef.current ?? await currentPlan(campaignId, nextNumber, true);
++      const u = await api.updatePlan(pl!.id, { tableNotes: value || null });
++      setPlan(u);
++      setError(null);
++      setState(pending.current === null ? 'saved' : 'dirty');
++    } catch (e) {
++      setError(e);
++      pending.current = pending.current ?? value;
++      setState('dirty');
++    }
++  };
++
++  // Beim Verlassen nichts verlieren
++  useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); flush(); }, // eslint-disable-line react-hooks/exhaustive-deps
++    []);
++
++  const change = (v: string) => {
++    setText(v);
++    pending.current = v;
++    setState('dirty');
++    if (timer.current) window.clearTimeout(timer.current);
++    timer.current = window.setTimeout(flush, 1200);
++  };
++
++  return (
++    <div className="table-panel-body">
++      <ErrorBox error={error} />
++      {text === null
++        ? <div className="muted small">{t('Lade …')}</div>
++        : (
++          <textarea className="table-notes" aria-label={t('Notizen zur Runde')} rows={compact ? 3 : 10} value={text}
++            placeholder={t('Was dir während der Runde einfällt …')} onChange={(e) => change(e.target.value)} onBlur={() => flush()} />
++        )}
++      <span className="muted small" role="status">
++        {state === 'saving' ? t('Speichert …') : state === 'dirty' ? t('Noch nicht gespeichert') : online
++          ? (plan ? t('Gespeichert im Plan „{title}“. Nur für dich, fließt nie in ein Kapitel.', { title: plan.title }) : t('Wird mit der ersten Notiz im Plan der nächsten Runde gespeichert.'))
++          : t('Nur auf diesem Gerät gespeichert, bis dein Server Notizen kann.')}
++      </span>
++    </div>
++  );
++}
+diff --git a/src/table/layout.ts b/src/table/layout.ts
+index 3bba4fd..401a165 100644
+--- a/src/table/layout.ts
++++ b/src/table/layout.ts
+@@ -8,3 +8,3 @@
+ /** Neue Module hier eintragen, dazu in TablePage einen Namen (LABELS) und einen Fall in panel() */
+-export const PANEL_IDS = ['plan', 'docs', 'bible', 'group'] as const;
++export const PANEL_IDS = ['plan', 'docs', 'bible', 'group', 'notes', 'clock', 'links'] as const;
+ export type PanelId = (typeof PANEL_IDS)[number];
