@@ -32,6 +32,7 @@ import { MyCharacterPage } from './pages/MyCharacterPage';
 import { CharacterPage } from './pages/CharacterPage';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { DocumentReview } from './pages/DocumentReview';
+import { TablePage } from './pages/TablePage';
 
 /** Seiten, die zu einem bestimmten Server gehören (unter /v/<server>/…) */
 const scoped = (el: JSX.Element) => <ConnectionScope>{el}</ConnectionScope>;
@@ -71,6 +72,7 @@ function Routed() {
       <Route path="/v/:conn/k/:campaignId/chronik" element={scoped(<Chronicle />)} />
       <Route path="/v/:conn/k/:campaignId/aufnahme" element={scoped(<Recording />)} />
       <Route path="/v/:conn/k/:campaignId/bibel" element={scoped(<Bible />)} />
+      <Route path="/v/:conn/k/:campaignId/tisch" element={scoped(<TablePage />)} />
       <Route path="/v/:conn/k/:campaignId/termin" element={scoped(<DatePollPage />)} />
       <Route path="/v/:conn/k/:campaignId/willkommen" element={scoped(<WelcomePage />)} />
       {/* Frühere Seite „Neue Kampagne einrichten“: jetzt „Erste Schritte“ auf der Übersicht */}

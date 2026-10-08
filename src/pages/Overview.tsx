@@ -136,6 +136,13 @@ export function Overview() {
             </span>
           </Link>
 
+          {gm && !campaign.archivedAt && (
+            <Link to={p(`/k/${campaignId}/tisch`)} className="card">
+              <strong>{t('SL-Schirm')}</strong>
+              <span className="muted small">{t('Für den Spielabend: Kapitelplan, Bibel, Gruppe und Unterlagen nebeneinander. Am besten auf dem Tablet quer.')}</span>
+            </Link>
+          )}
+
           {latest && (
             <Link to={p(`/s/${latest.id}/recap`)} className="card">
               <div className="row between">
