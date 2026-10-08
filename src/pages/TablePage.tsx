@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
@@ -6,12 +6,15 @@ import { apiAtLeast, p } from '../api/connections';
 import type { Campaign } from '../api/types';
 import { IconBack } from '../components/Icons';
 import { ErrorBox, rememberCampaign } from '../components/Screen';
-import { t, tk } from '../i18n';
+import { t, tk, tn } from '../i18n';
 import { BackgroundRecorder, hasNativeRecorder, type NativeStatus } from '../recorder/native';
 import { BiblePanel } from '../table/BiblePanel';
 import { DocsPanel } from '../table/DocsPanel';
 import { GroupPanel } from '../table/GroupPanel';
-import { MAX_CARDS, MAX_COLUMNS, loadLayout, saveLayout, unusedPanels, type Layout, type PanelId } from '../table/layout';
+import {
+  GRID_COLS, GRID_ROWS, MIN_H, MIN_W, defaultLayout, firstFree, fits, loadLayout, readingOrder, saveLayout, tryChange, unusedPanels,
+  type CardPos, type Layout, type PanelId
+} from '../table/layout';
 import { PlanPanel } from '../table/PlanPanel';
 
 const native = hasNativeRecorder();
@@ -25,10 +28,10 @@ const LABELS: Record<PanelId, string> = {
 };
 const label = (id: PanelId) => t(LABELS[id]);
 
-/** Unter dieser Größe zeigt eine Karte nur die Kurzfassung; Tippen auf „Groß öffnen“ zeigt das Modul im Fenster */
+/** Unter dieser Größe zeigt eine Karte nur die Kurzfassung; „Groß öffnen“ zeigt das Modul im Fenster */
 const COMPACT_HEIGHT = 300;
 const COMPACT_WIDTH = 280;
-const WIDE = '(min-width: 900px)';
+const WIDE = '(min-width: 700px)';
 
 function clock(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -71,123 +74,6 @@ function RecordingBar({ campaignId }: { campaignId: string }) {
   );
 }
 
-/** Spalten und Karten einrichten; gilt nur auf diesem Gerät. */
-function LayoutChooser({ layout, onChange }: { layout: Layout; onChange: (l: Layout) => void }) {
-  const free = unusedPanels(layout);
-  const setCount = (n: number) => {
-    if (n >= layout.length) {
-      const next = layout.map((c) => [...c]);
-      const rest = unusedPanels(layout);
-      while (next.length < n) {
-        if (rest.length) { next.push([rest.shift()!]); continue; }
-        // Kein freies Modul: die unterste Karte der vollsten Spalte bekommt die neue Spalte
-        const fullest = next.reduce((a, c) => (c.length > a.length ? c : a));
-        if (fullest.length < 2) break;
-        next.push([fullest.pop()!]);
-      }
-      onChange(next);
-    } else {
-      // Karten wegfallender Spalten wandern in die letzte bleibende Spalte, soweit Platz ist
-      const keep = layout.slice(0, n).map((c) => [...c]);
-      const moved = layout.slice(n).flat();
-      keep[n - 1] = [...keep[n - 1], ...moved].slice(0, MAX_CARDS);
-      onChange(keep);
-    }
-  };
-  const edit = (fn: (l: Layout) => void) => {
-    const next = layout.map((c) => [...c]);
-    fn(next);
-    onChange(next.filter((c) => c.length > 0));
-  };
-  const replace = (ci: number, ri: number, id: PanelId) => edit((l) => { l[ci][ri] = id; });
-  const remove = (ci: number, ri: number) => edit((l) => { l[ci].splice(ri, 1); });
-  const add = (ci: number) => edit((l) => { if (free.length) l[ci].push(free[0]); });
-  const moveV = (ci: number, ri: number, d: -1 | 1) => edit((l) => { [l[ci][ri], l[ci][ri + d]] = [l[ci][ri + d], l[ci][ri]]; });
-  const moveH = (ci: number, ri: number, d: -1 | 1) => edit((l) => {
-    if (l[ci + d].length >= MAX_CARDS) return;
-    l[ci + d].push(l[ci].splice(ri, 1)[0]);
-  });
-  const total = layout.flat().length;
-
-  return (
-    <div className="table-panel-body" style={{ gap: 12 }}>
-      <strong>{t('Was liegt auf deinem Schirm?')}</strong>
-      <div className="field">
-        <span id="tl-count" className="small" style={{ fontWeight: 700 }}>{t('Spalten')}</span>
-        <div className="segmented" role="group" aria-labelledby="tl-count" style={{ gridTemplateColumns: `repeat(${MAX_COLUMNS}, minmax(0, 1fr))` }}>
-          {Array.from({ length: MAX_COLUMNS }, (_, i) => i + 1).map((n) => (
-            <button key={n} type="button" aria-pressed={layout.length === n} disabled={n > total + free.length} onClick={() => setCount(n)}>{n}</button>
-          ))}
-        </div>
-      </div>
-      <div className="table-chooser">
-        {layout.map((col, ci) => (
-          <fieldset key={ci} className="table-chooser-col">
-            <legend>{t('Spalte {n}', { n: ci + 1 })}</legend>
-            {col.map((id, ri) => (
-              <div key={id} className="table-chooser-card">
-                <select aria-label={t('Spalte {c}, Karte {r}', { c: ci + 1, r: ri + 1 })} value={id} onChange={(e) => replace(ci, ri, e.target.value as PanelId)}>
-                  {[id, ...free].map((pid) => <option key={pid} value={pid}>{label(pid)}</option>)}
-                </select>
-                <div className="row wrap" style={{ gap: 4 }}>
-                  <button type="button" className="btn small ghost" disabled={ri === 0} aria-label={t('{name} nach oben', { name: label(id) })} onClick={() => moveV(ci, ri, -1)}>↑</button>
-                  <button type="button" className="btn small ghost" disabled={ri === col.length - 1} aria-label={t('{name} nach unten', { name: label(id) })} onClick={() => moveV(ci, ri, 1)}>↓</button>
-                  {layout.length > 1 && <>
-                    <button type="button" className="btn small ghost" disabled={ci === 0 || layout[ci - 1].length >= MAX_CARDS} aria-label={t('{name} in die Spalte links', { name: label(id) })} onClick={() => moveH(ci, ri, -1)}>←</button>
-                    <button type="button" className="btn small ghost" disabled={ci === layout.length - 1 || layout[ci + 1].length >= MAX_CARDS} aria-label={t('{name} in die Spalte rechts', { name: label(id) })} onClick={() => moveH(ci, ri, 1)}>→</button>
-                  </>}
-                  <button type="button" className="btn small ghost" disabled={total <= 1} aria-label={t('{name} vom Schirm nehmen', { name: label(id) })} onClick={() => remove(ci, ri)}>×</button>
-                </div>
-              </div>
-            ))}
-            {col.length < MAX_CARDS && free.length > 0 && (
-              <button type="button" className="btn small dashed" onClick={() => add(ci)}>{t('Karte hinzufügen')}</button>
-            )}
-          </fieldset>
-        ))}
-      </div>
-      <span className="muted small">{t('Liegen mehrere Karten übereinander, zeigen sie eine Kurzfassung. „Groß öffnen“ zeigt alles. Auf schmalen Bildschirmen stehen die Karten untereinander. Die Einrichtung gilt nur auf diesem Gerät.')}</span>
-    </div>
-  );
-}
-
-/** Eine Spalte; misst, ob ihre Karten genug Platz für die volle Ansicht haben (alle Karten einer Spalte gleich) */
-function Column({ count, forceCompact, children }: { count: number; forceCompact: boolean; children: (compact: boolean) => ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [small, setSmall] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || forceCompact) return;
-    const ro = new ResizeObserver(([e]) => {
-      const share = (e.contentRect.height - 14 * (count - 1)) / count;
-      setSmall(share < COMPACT_HEIGHT || e.contentRect.width < COMPACT_WIDTH);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [count, forceCompact]);
-  return <div ref={ref} className="table-col">{children(forceCompact || small)}</div>;
-}
-
-/** Eine Karte auf dem Schirm */
-function Card({ id, compact, onCompact, onExpand, children }: {
-  id: PanelId;
-  compact: boolean;
-  onCompact: (id: PanelId, compact: boolean) => void;
-  onExpand: () => void;
-  children: ReactNode;
-}) {
-  useEffect(() => { onCompact(id, compact); }, [id, compact, onCompact]);
-  return (
-    <section className={compact ? 'table-panel compact' : 'table-panel'} aria-label={label(id)}>
-      <div className="table-panel-head">
-        <h2 className="table-panel-title">{label(id)}</h2>
-        {compact && <button type="button" className="btn small ghost" onClick={onExpand}>{t('Groß öffnen')}</button>}
-      </div>
-      {children}
-    </section>
-  );
-}
-
 /** Ein Modul groß über dem Schirm; schließt mit „Schließen“ oder Escape, der Fokus kehrt zurück */
 function Popup({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const close = useRef<HTMLButtonElement>(null);
@@ -215,9 +101,164 @@ function Popup({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
+/** Eine Karte auf dem Schirm; misst selbst, ob sie für die volle Ansicht groß genug ist */
+function Card({ id, forceCompact, onCompact, onExpand, style, children }: {
+  id: PanelId;
+  forceCompact: boolean;
+  onCompact: (id: PanelId, compact: boolean) => void;
+  onExpand: () => void;
+  style?: CSSProperties;
+  children: (compact: boolean) => ReactNode;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  const [small, setSmall] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || forceCompact) return;
+    // Die Größe gibt das Raster vor, nicht der Inhalt; darum schaukelt sich hier nichts auf
+    const ro = new ResizeObserver(([e]) => setSmall(e.contentRect.height < COMPACT_HEIGHT || e.contentRect.width < COMPACT_WIDTH));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [forceCompact]);
+  const compact = forceCompact || small;
+  useEffect(() => { onCompact(id, compact); }, [id, compact, onCompact]);
+  return (
+    <section ref={ref} className={compact ? 'table-panel compact' : 'table-panel'} aria-label={label(id)} style={style}>
+      <div className="table-panel-head">
+        <h2 className="table-panel-title">{label(id)}</h2>
+        {compact && <button type="button" className="btn small ghost" onClick={onExpand}>{t('Groß öffnen')}</button>}
+      </div>
+      {children(compact)}
+    </section>
+  );
+}
+
+const area = (c: CardPos): CSSProperties => ({ gridColumn: `${c.x + 1} / span ${c.w}`, gridRow: `${c.y + 1} / span ${c.h}` });
+const share = (n: number) => ({ 2: '1/3', 3: '1/2', 4: '2/3', 5: '5/6', 6: '1' } as Record<number, string>)[n] ?? `${n}/6`;
+
+interface Drag {
+  id: PanelId;
+  mode: 'move' | 'resize';
+  startX: number;
+  startY: number;
+  orig: CardPos;
+  preview: CardPos;
+  ok: boolean;
+}
+
 /**
- * SL-Schirm: alles für den Spielabend auf einen Blick, für Tablet quer oder Laptop. Bis zu 3 Spalten mit je bis zu
- * 5 Karten; welche, sucht sich die SL aus. Nur für die Spielleitung.
+ * Bearbeiten: Karten ziehen (verschieben) oder an der Ecke ziehen (Größe), alles rastet im Raster ein und überlappt nie.
+ * Dieselben Schritte gehen über die Leiste mit Knöpfen, auch ohne Ziehen und mit der Tastatur.
+ */
+function Editor({ layout, onChange, onDone }: { layout: Layout; onChange: (l: Layout) => void; onDone: () => void }) {
+  const grid = useRef<HTMLDivElement>(null);
+  const [selected, setSelected] = useState<PanelId | null>(layout[0]?.id ?? null);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const dragRef = useRef<Drag | null>(null);
+  dragRef.current = drag;
+  const card = layout.find((c) => c.id === selected) ?? null;
+  const free = unusedPanels(layout);
+
+  const change = (delta: Partial<Omit<CardPos, 'id'>>) => {
+    if (!card) return;
+    const next = tryChange(layout, card.id, delta);
+    if (next) onChange(next);
+  };
+  const can = (delta: Partial<Omit<CardPos, 'id'>>) => !!card && fits(layout, { ...card, ...delta });
+
+  const start = (e: ReactPointerEvent, c: CardPos, mode: Drag['mode']) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSelected(c.id);
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    setDrag({ id: c.id, mode, startX: e.clientX, startY: e.clientY, orig: c, preview: c, ok: true });
+  };
+  const move = (e: ReactPointerEvent) => {
+    const d = dragRef.current;
+    const rect = grid.current?.getBoundingClientRect();
+    if (!d || !rect) return;
+    const dx = Math.round((e.clientX - d.startX) / (rect.width / GRID_COLS));
+    const dy = Math.round((e.clientY - d.startY) / (rect.height / GRID_ROWS));
+    const o = d.orig;
+    const preview = d.mode === 'move'
+      ? { ...o, x: Math.min(Math.max(0, o.x + dx), GRID_COLS - o.w), y: Math.min(Math.max(0, o.y + dy), GRID_ROWS - o.h) }
+      : { ...o, w: Math.min(Math.max(MIN_W, o.w + dx), GRID_COLS - o.x), h: Math.min(Math.max(MIN_H, o.h + dy), GRID_ROWS - o.y) };
+    setDrag({ ...d, preview, ok: fits(layout, preview) });
+  };
+  const end = () => {
+    const d = dragRef.current;
+    if (d && d.ok) onChange(layout.map((c) => (c.id === d.id ? d.preview : c)));
+    setDrag(null);
+  };
+
+  const add = (id: PanelId) => {
+    const pos = firstFree(layout, id);
+    if (pos) { onChange([...layout, pos]); setSelected(id); }
+  };
+  const anyRoom = free.length > 0 && !!firstFree(layout, free[0]);
+
+  return (
+    <>
+      <div className="table-edit-bar" role="toolbar" aria-label={t('Schirm einrichten')}>
+        {card ? (
+          <>
+            <strong className="table-edit-name">{label(card.id)} · {t('{w} breit, {h} hoch', { w: share(card.w), h: tn(card.h, '{n} Zeile', '{n} Zeilen') })}</strong>
+            <div className="table-edit-group" role="group" aria-label={t('Verschieben')}>
+              <button type="button" className="btn small ghost" disabled={!can({ x: card.x - 1 })} aria-label={t('{name} nach links', { name: label(card.id) })} onClick={() => change({ x: card.x - 1 })}>←</button>
+              <button type="button" className="btn small ghost" disabled={!can({ x: card.x + 1 })} aria-label={t('{name} nach rechts', { name: label(card.id) })} onClick={() => change({ x: card.x + 1 })}>→</button>
+              <button type="button" className="btn small ghost" disabled={!can({ y: card.y - 1 })} aria-label={t('{name} nach oben', { name: label(card.id) })} onClick={() => change({ y: card.y - 1 })}>↑</button>
+              <button type="button" className="btn small ghost" disabled={!can({ y: card.y + 1 })} aria-label={t('{name} nach unten', { name: label(card.id) })} onClick={() => change({ y: card.y + 1 })}>↓</button>
+            </div>
+            <div className="table-edit-group" role="group" aria-label={t('Größe')}>
+              <button type="button" className="btn small ghost" disabled={!can({ w: card.w - 1 })} onClick={() => change({ w: card.w - 1 })}>{t('Schmaler')}</button>
+              <button type="button" className="btn small ghost" disabled={!can({ w: card.w + 1 })} onClick={() => change({ w: card.w + 1 })}>{t('Breiter')}</button>
+              <button type="button" className="btn small ghost" disabled={!can({ h: card.h - 1 })} onClick={() => change({ h: card.h - 1 })}>{t('Niedriger')}</button>
+              <button type="button" className="btn small ghost" disabled={!can({ h: card.h + 1 })} onClick={() => change({ h: card.h + 1 })}>{t('Höher')}</button>
+            </div>
+            <button type="button" className="btn small ghost" disabled={layout.length <= 1}
+              onClick={() => { onChange(layout.filter((c) => c.id !== card.id)); setSelected(null); }}>{t('Vom Schirm nehmen')}</button>
+          </>
+        ) : <span className="muted small">{t('Tippe eine Karte an, um sie zu verschieben oder ihre Größe zu ändern.')}</span>}
+        <span style={{ flex: 1 }} />
+        <button type="button" className="btn small ghost" onClick={() => { onChange(defaultLayout()); setSelected('plan'); }}>{t('Zurücksetzen')}</button>
+        <button type="button" className="btn small" onClick={onDone}>{t('Fertig')}</button>
+      </div>
+      {free.length > 0 && <div className="table-edit-bar">
+        {free.map((id) => (
+          <button key={id} type="button" className="btn small dashed" disabled={!firstFree(layout, id)} onClick={() => add(id)}>
+            {t('{name} dazulegen', { name: label(id) })}
+          </button>
+        ))}
+        {!anyRoom && <span className="muted small">{t('Kein Platz frei. Mach eine Karte kleiner.')}</span>}
+      </div>}
+      <p className="muted small" style={{ margin: 0 }}>{t('Karte ziehen zum Verschieben, an der Ecke ziehen für die Größe. Gilt nur auf diesem Gerät.')}</p>
+      <div ref={grid} className="table-grid editing" onPointerMove={move} onPointerUp={end} onPointerCancel={() => setDrag(null)}>
+        {Array.from({ length: GRID_COLS * GRID_ROWS }, (_, i) => (
+          <span key={i} className="table-cell" aria-hidden style={{ gridColumn: (i % GRID_COLS) + 1, gridRow: Math.floor(i / GRID_COLS) + 1 }} />
+        ))}
+        {layout.map((c) => {
+          const shown = drag?.id === c.id ? drag.preview : c;
+          const cls = ['table-edit-card', selected === c.id ? 'selected' : '', drag?.id === c.id ? (drag.ok ? 'dragging' : 'dragging blocked') : ''].join(' ');
+          return (
+            <div key={c.id} className={cls} style={area(shown)} onPointerDown={(e) => start(e, c, 'move')}>
+              <button type="button" className="table-edit-select" aria-pressed={selected === c.id} onClick={() => setSelected(c.id)}
+                onPointerDown={(e) => start(e, c, 'move')}>
+                <strong>{label(c.id)}</strong>
+                <span className="small">{share(shown.w)} · {tn(shown.h, '{n} Zeile', '{n} Zeilen')}</span>
+              </button>
+              <span className="table-edit-resize" aria-hidden onPointerDown={(e) => start(e, c, 'resize')} />
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+/**
+ * SL-Schirm: alles für den Spielabend auf einen Blick, für Tablet quer oder Laptop. Die SL legt die Karten im Raster
+ * selbst zurecht (Größe und Platz). Nur für die Spielleitung.
  */
 export function TablePage() {
   const { campaignId = '' } = useParams();
@@ -225,7 +266,7 @@ export function TablePage() {
   const [nextNumber, setNextNumber] = useState(1);
   const [error, setError] = useState<unknown>(null);
   const [layout, setLayoutState] = useState<Layout>(loadLayout);
-  const [choosing, setChoosing] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [popup, setPopup] = useState<PanelId | null>(null);
   /** Nach dem Schließen des Fensters laden die Karten neu (dort kann sich etwas geändert haben) */
   const [round, setRound] = useState(0);
@@ -248,12 +289,11 @@ export function TablePage() {
     saveLayout(l);
   };
   const onCompact = useRef((id: PanelId, c: boolean) => { compactRef.current[id] = c; }).current;
-  const closeChooser = useRef(() => setChoosing(false)).current;
   const closePopup = useRef(() => { setPopup(null); setRound((r) => r + 1); }).current;
 
   /** Ein Modul zeigen: liegt es groß auf dem Schirm, dort; sonst im Fenster */
   const show = (id: PanelId) => {
-    const onScreen = layout.flat().includes(id);
+    const onScreen = layout.some((c) => c.id === id);
     if (!onScreen || compactRef.current[id] !== false) setPopup(id);
   };
   const openEntry = (id: string) => {
@@ -284,41 +324,47 @@ export function TablePage() {
     }
   };
 
-  // Schmal: eine Spalte mit allen Karten untereinander, jede als Kurzfassung
-  const columns: Layout = wide ? layout : [layout.flat()];
+  const gm = campaign?.myRole === 'gm';
 
   return (
-    <div className="table-screen">
+    <div className={editing ? 'table-screen editing' : 'table-screen'}>
       <header className="table-header">
         <Link className="btn ghost small" to={p(`/k/${campaignId}`)}><IconBack size={20} /> {t('Übersicht')}</Link>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="overline">{campaign?.title ?? ' '}</div>
           <h1 className="table-title">{t('SL-Schirm')}</h1>
         </div>
-        {campaign?.myRole === 'gm' && (
-          <button type="button" className="btn small outline" aria-expanded={choosing} onClick={() => setChoosing(!choosing)}>{t('Schirm einrichten')}</button>
+        {gm && wide && !editing && (
+          <button type="button" className="btn small outline" onClick={() => setEditing(true)}>{t('Schirm einrichten')}</button>
         )}
       </header>
       <ErrorBox error={error} />
       {!campaign && !error && <div className="empty">{t('Lade …')}</div>}
-      {campaign && campaign.myRole !== 'gm' && (
+      {campaign && !gm && (
         <div className="empty">{t('Den SL-Schirm hat nur die Spielleitung. Was du über die Welt weißt, steht in der Bibel.')}</div>
       )}
-      {campaign?.myRole === 'gm' && (
+      {gm && editing && wide && <Editor layout={layout} onChange={setLayout} onDone={() => setEditing(false)} />}
+      {gm && !(editing && wide) && (
         <>
           <RecordingBar campaignId={campaign.id} />
-          {choosing && <Popup title={t('Schirm einrichten')} onClose={closeChooser}><LayoutChooser layout={layout} onChange={setLayout} /></Popup>}
-          <div className="table-grid" style={{ ['--cols' as string]: columns.length }}>
-            {columns.map((col, ci) => (
-              <Column key={ci} count={col.length} forceCompact={!wide}>
-                {(compact) => col.map((id) => (
-                  <Card key={`${id}-${round}`} id={id} compact={compact} onCompact={onCompact} onExpand={() => setPopup(id)}>
-                    {panel(id, compact)}
-                  </Card>
-                ))}
-              </Column>
-            ))}
-          </div>
+          {wide ? (
+            <div className="table-grid">
+              {layout.map((c) => (
+                <Card key={`${c.id}-${round}`} id={c.id} forceCompact={false} onCompact={onCompact} onExpand={() => setPopup(c.id)} style={area(c)}>
+                  {(compact) => panel(c.id, compact)}
+                </Card>
+              ))}
+            </div>
+          ) : (
+            // Schmal: alle Karten untereinander, jede als Kurzfassung
+            <div className="table-stack">
+              {readingOrder(layout).map((c) => (
+                <Card key={`${c.id}-${round}`} id={c.id} forceCompact onCompact={onCompact} onExpand={() => setPopup(c.id)}>
+                  {(compact) => panel(c.id, compact)}
+                </Card>
+              ))}
+            </div>
+          )}
           {popup && <Popup title={label(popup)} onClose={closePopup}>{panel(popup, false)}</Popup>}
         </>
       )}

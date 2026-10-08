@@ -1,38 +1,100 @@
 /*
- * SL-Schirm: bis zu 3 Spalten mit je bis zu 5 Karten. Jede Ansicht (Modul) liegt höchstens einmal auf dem Schirm.
+ * SL-Schirm: ein Raster aus 6 × 5 Feldern. Jede Karte belegt ein Rechteck darin (mindestens 2 Felder breit = ein
+ * Drittel, mindestens 1 Feld hoch), Karten überlappen nie. Jede Ansicht (Modul) liegt höchstens einmal auf dem Schirm.
  * Gilt je Gerät (Tablet und Laptop wollen oft Verschiedenes) und bleibt nur im Speicher dieses Geräts.
  */
 // Ohne Importe, damit die Tests (scripts/tests/table-layout.test.mjs) die Datei direkt laden können
 
-/** Neue Module hier eintragen und in TablePage (MODULES) eine kleine und eine große Ansicht dazu */
+/** Neue Module hier eintragen, dazu in TablePage einen Namen (LABELS) und einen Fall in panel() */
 export const PANEL_IDS = ['plan', 'docs', 'bible', 'group'] as const;
 export type PanelId = (typeof PANEL_IDS)[number];
-/** Spalten von links nach rechts, je Spalte die Karten von oben nach unten */
-export type Layout = PanelId[][];
 
-export const MAX_COLUMNS = 3;
-export const MAX_CARDS = 5;
+/** Breite in Feldern: 2 = ein Drittel, 3 = die Hälfte, 4 = zwei Drittel, 6 = ganz */
+export const GRID_COLS = 6;
+export const GRID_ROWS = 5;
+export const MIN_W = 2;
+export const MIN_H = 1;
+
+export interface CardPos {
+  id: PanelId;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+export type Layout = CardPos[];
 
 const KEY = 'taleward.slSchirm';
-const DEFAULT: Layout = [['plan'], ['bible'], ['group']];
 const known = (x: unknown): x is PanelId => (PANEL_IDS as readonly unknown[]).includes(x);
 
-/** Bringt jede gespeicherte Form in Ordnung: alte Liste (eine Karte je Spalte), Unbekanntes und Doppeltes fallen weg */
+export function defaultLayout(): Layout {
+  return [
+    { id: 'plan', x: 0, y: 0, w: 2, h: 5 },
+    { id: 'bible', x: 2, y: 0, w: 2, h: 5 },
+    { id: 'group', x: 4, y: 0, w: 2, h: 5 }
+  ];
+}
+
+/** Liegt die Karte im Raster und überdeckt keine andere? */
+export function fits(layout: Layout, c: CardPos): boolean {
+  if (c.x < 0 || c.y < 0 || c.w < MIN_W || c.h < MIN_H || c.x + c.w > GRID_COLS || c.y + c.h > GRID_ROWS) return false;
+  return layout.every((o) => o.id === c.id || o.x >= c.x + c.w || c.x >= o.x + o.w || o.y >= c.y + c.h || c.y >= o.y + o.h);
+}
+
+/** Erster freier Platz für eine Karte der Größe w × h (von oben links), sonst null */
+export function firstFree(layout: Layout, id: PanelId, w = MIN_W, h = MIN_H): CardPos | null {
+  for (let y = 0; y + h <= GRID_ROWS; y++) {
+    for (let x = 0; x + w <= GRID_COLS; x++) {
+      const c = { id, x, y, w, h };
+      if (fits(layout, c)) return c;
+    }
+  }
+  return null;
+}
+
+/** Ältere Form (Spalten mit Karten übereinander) ins Raster übertragen */
+function fromColumns(cols: unknown[][]): Layout {
+  const usable = cols.slice(0, 3);
+  const w = GRID_COLS / usable.length;
+  const out: Layout = [];
+  usable.forEach((col, ci) => {
+    const ids = col.filter(known).slice(0, GRID_ROWS);
+    let y = 0;
+    ids.forEach((id, i) => {
+      // Zeilen gleichmäßig verteilen, der Rest geht an die oberen Karten
+      const h = Math.floor(GRID_ROWS / ids.length) + (i < GRID_ROWS % ids.length ? 1 : 0);
+      out.push({ id, x: ci * w, y, w, h });
+      y += h;
+    });
+  });
+  return out;
+}
+
+/** Bringt jede gespeicherte Form in Ordnung: alte Formen werden übernommen, Ungültiges, Doppeltes und Überlappendes fällt weg */
 export function normalizeLayout(raw: unknown): Layout {
-  if (!Array.isArray(raw)) return DEFAULT;
-  const seen = new Set<PanelId>();
-  const cols = raw.slice(0, MAX_COLUMNS).map((col) => (Array.isArray(col) ? col : [col])
-    .filter((x): x is PanelId => known(x) && !seen.has(x) && !!seen.add(x))
-    .slice(0, MAX_CARDS));
-  const kept = cols.filter((c) => c.length > 0);
-  return kept.length ? kept : DEFAULT;
+  let cards: unknown[] = [];
+  if (Array.isArray(raw) && raw.length && raw.every((c) => Array.isArray(c) || typeof c === 'string')) {
+    cards = fromColumns(raw.map((c) => (Array.isArray(c) ? c : [c])));
+  } else if (Array.isArray(raw)) {
+    cards = raw;
+  }
+  const out: Layout = [];
+  for (const c of cards) {
+    if (!c || typeof c !== 'object') continue;
+    const { id, x, y, w, h } = c as Record<string, unknown>;
+    if (!known(id) || out.some((o) => o.id === id)) continue;
+    if (![x, y, w, h].every((n) => Number.isInteger(n))) continue;
+    const pos = { id, x: x as number, y: y as number, w: w as number, h: h as number };
+    if (fits(out, pos)) out.push(pos);
+  }
+  return out.length ? out : defaultLayout();
 }
 
 export function loadLayout(): Layout {
   try {
     return normalizeLayout(JSON.parse(localStorage.getItem(KEY) ?? 'null'));
   } catch {
-    return DEFAULT;
+    return defaultLayout();
   }
 }
 
@@ -42,6 +104,18 @@ export function saveLayout(layout: Layout): void {
 
 /** Module, die noch auf keiner Karte liegen */
 export function unusedPanels(layout: Layout): PanelId[] {
-  const used = new Set(layout.flat());
-  return PANEL_IDS.filter((id) => !used.has(id));
+  return PANEL_IDS.filter((id) => !layout.some((c) => c.id === id));
+}
+
+/** Eine Karte ändern, wenn das Ergebnis passt; sonst bleibt alles, wie es war */
+export function tryChange(layout: Layout, id: PanelId, change: Partial<Omit<CardPos, 'id'>>): Layout | null {
+  const card = layout.find((c) => c.id === id);
+  if (!card) return null;
+  const next = { ...card, ...change };
+  return fits(layout, next) ? layout.map((c) => (c.id === id ? next : c)) : null;
+}
+
+/** Reihenfolge zum Lesen (schmale Bildschirme, Screenreader): Zeile für Zeile, links nach rechts */
+export function readingOrder(layout: Layout): Layout {
+  return [...layout].sort((a, b) => a.y - b.y || a.x - b.x);
 }
