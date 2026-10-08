@@ -1,0 +1,634 @@
+From c2e03f443f26519f48e1913ced65b8aa3fabda1a Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 8 Oct 2026 10:20:49 +0200
+Subject: [PATCH 60/60] =?UTF-8?q?SL-Schirm:=20Raster=20mit=20frei=20versch?=
+ =?UTF-8?q?iebbaren=20Karten=20in=20w=C3=A4hlbarer=20Gr=C3=B6=C3=9Fe?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ scripts/tests/table-layout.test.mjs |  57 +++--
+ src/i18n/en.ts                      |   9 -
+ src/pages/TablePage.tsx             | 338 ++++++++++++++++------------
+ src/table/layout.ts                 | 110 +++++++--
+ 4 files changed, 327 insertions(+), 187 deletions(-)
+
+diff --git a/scripts/tests/table-layout.test.mjs b/scripts/tests/table-layout.test.mjs
+index b91484a..c89cf5f 100644
+--- a/scripts/tests/table-layout.test.mjs
++++ b/scripts/tests/table-layout.test.mjs
+@@ -1,18 +1,29 @@
+-// SL-Schirm: gespeicherte Einrichtung wird immer zu etwas Gültigem
++// SL-Schirm: Raster, Platzsuche und Übernahme älterer Einrichtungen
+ import { test } from 'node:test';
+ import assert from 'node:assert/strict';
+-import { normalizeLayout, unusedPanels } from '../../src/table/layout.ts';
++import { defaultLayout, firstFree, fits, normalizeLayout, readingOrder, tryChange, unusedPanels } from '../../src/table/layout.ts';
+ 
+-test('alte Form (eine Karte je Spalte) wird übernommen', () => {
+-  assert.deepEqual(normalizeLayout(['plan', 'bible']), [['plan'], ['bible']]);
++test('älteste Form (eine Karte je Spalte) wird ins Raster übernommen', () => {
++  assert.deepEqual(normalizeLayout(['plan', 'bible']), [
++    { id: 'plan', x: 0, y: 0, w: 3, h: 5 },
++    { id: 'bible', x: 3, y: 0, w: 3, h: 5 }
++  ]);
+ });
+ 
+-test('Unbekanntes, Doppeltes und leere Spalten fallen weg', () => {
+-  assert.deepEqual(normalizeLayout([['plan', 'zauber', 'plan'], [], ['bible', 'group']]), [['plan'], ['bible', 'group']]);
++test('Spalten mit mehreren Karten teilen die Höhe', () => {
++  const l = normalizeLayout([['plan', 'group', 'docs'], ['bible']]);
++  assert.deepEqual(l.filter((c) => c.x === 0).map((c) => [c.id, c.y, c.h]), [['plan', 0, 2], ['group', 2, 2], ['docs', 4, 1]]);
++  assert.deepEqual(l.find((c) => c.id === 'bible'), { id: 'bible', x: 3, y: 0, w: 3, h: 5 });
+ });
+ 
+-test('höchstens 3 Spalten und 5 Karten je Spalte', () => {
+-  const l = normalizeLayout([['plan'], ['docs'], ['bible'], ['group']]);
+-  assert.equal(l.length, 3);
+-  assert.ok(l.every((c) => c.length <= 5));
++test('Unbekanntes, Doppeltes, Überlappendes und Ungültiges fällt weg', () => {
++  const l = normalizeLayout([
++    { id: 'plan', x: 0, y: 0, w: 4, h: 3 },
++    { id: 'plan', x: 4, y: 0, w: 2, h: 1 },
++    { id: 'zauber', x: 4, y: 0, w: 2, h: 1 },
++    { id: 'bible', x: 2, y: 2, w: 2, h: 2 },
++    { id: 'group', x: 4, y: 4, w: 3, h: 1 },
++    { id: 'docs', x: 0, y: 3, w: 6, h: 2 }
++  ]);
++  assert.deepEqual(l, [{ id: 'plan', x: 0, y: 0, w: 4, h: 3 }, { id: 'docs', x: 0, y: 3, w: 6, h: 2 }]);
+ });
+@@ -20,8 +31,26 @@ test('höchstens 3 Spalten und 5 Karten je Spalte', () => {
+ test('Unbrauchbares ergibt die Grundeinstellung', () => {
+-  assert.deepEqual(normalizeLayout(null), [['plan'], ['bible'], ['group']]);
+-  assert.deepEqual(normalizeLayout([[]]), [['plan'], ['bible'], ['group']]);
++  assert.deepEqual(normalizeLayout(null), defaultLayout());
++  assert.deepEqual(normalizeLayout([]), defaultLayout());
+ });
+ 
+-test('freie Module', () => {
+-  assert.deepEqual(unusedPanels([['plan', 'bible']]), ['docs', 'group']);
++test('zwei Drittel und ein Drittel nebeneinander', () => {
++  const l = [{ id: 'plan', x: 0, y: 0, w: 4, h: 5 }];
++  assert.ok(fits(l, { id: 'bible', x: 4, y: 0, w: 2, h: 5 }));
++  assert.ok(!fits(l, { id: 'bible', x: 3, y: 0, w: 2, h: 5 }));
++  assert.ok(!fits(l, { id: 'bible', x: 5, y: 0, w: 1, h: 5 }), 'schmaler als ein Drittel geht nicht');
++});
++
++test('freier Platz und Ändern nur, wenn es passt', () => {
++  const l = defaultLayout();
++  assert.equal(firstFree(l, 'docs'), null);
++  const smaller = tryChange(l, 'group', { h: 3 });
++  assert.ok(smaller);
++  assert.deepEqual(firstFree(smaller, 'docs'), { id: 'docs', x: 4, y: 3, w: 2, h: 1 });
++  assert.equal(tryChange(l, 'plan', { w: 4 }), null);
++});
++
++test('Lesereihenfolge und freie Module', () => {
++  const l = [{ id: 'group', x: 2, y: 1, w: 2, h: 1 }, { id: 'plan', x: 0, y: 0, w: 2, h: 2 }, { id: 'bible', x: 2, y: 0, w: 2, h: 1 }];
++  assert.deepEqual(readingOrder(l).map((c) => c.id), ['plan', 'bible', 'group']);
++  assert.deepEqual(unusedPanels(l), ['docs']);
+ });
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index be47422..640cb0a 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -1023,5 +1023,2 @@ export const en: Record<string, string> = {
+   "Pause": "Pause",
+-  "Was liegt auf deinem Schirm?": "What’s on your screen?",
+-  "Spalten": "Columns",
+-  "Spalte {n}": "Column {n}",
+   "Kapitelpläne kann dein Server noch nicht speichern. Nach dem nächsten Update des Servers sind sie da.": "Your server can’t store chapter plans yet. They’ll be there after the server’s next update.",
+@@ -1074,10 +1071,4 @@ export const en: Record<string, string> = {
+   "Die Gruppe": "The group",
+-  "Spalte {c}, Karte {r}": "Column {c}, card {r}",
+   "{name} nach oben": "Move {name} up",
+   "{name} nach unten": "Move {name} down",
+-  "{name} in die Spalte links": "Move {name} to the column on the left",
+-  "{name} in die Spalte rechts": "Move {name} to the column on the right",
+-  "{name} vom Schirm nehmen": "Take {name} off the screen",
+-  "Karte hinzufügen": "Add card",
+-  "Liegen mehrere Karten übereinander, zeigen sie eine Kurzfassung. „Groß öffnen“ zeigt alles. Auf schmalen Bildschirmen stehen die Karten untereinander. Die Einrichtung gilt nur auf diesem Gerät.": "When several cards share a column, they show a short version. “Open large” shows everything. On narrow screens the cards are stacked. This setup only applies to this device.",
+   "Groß öffnen": "Open large",
+diff --git a/src/pages/TablePage.tsx b/src/pages/TablePage.tsx
+index 596ca1b..433f146 100644
+--- a/src/pages/TablePage.tsx
++++ b/src/pages/TablePage.tsx
+@@ -1,2 +1,2 @@
+-import { useEffect, useRef, useState, type ReactNode } from 'react';
++import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+ import { createPortal } from 'react-dom';
+@@ -8,3 +8,3 @@ import { IconBack } from '../components/Icons';
+ import { ErrorBox, rememberCampaign } from '../components/Screen';
+-import { t, tk } from '../i18n';
++import { t, tk, tn } from '../i18n';
+ import { BackgroundRecorder, hasNativeRecorder, type NativeStatus } from '../recorder/native';
+@@ -13,3 +13,6 @@ import { DocsPanel } from '../table/DocsPanel';
+ import { GroupPanel } from '../table/GroupPanel';
+-import { MAX_CARDS, MAX_COLUMNS, loadLayout, saveLayout, unusedPanels, type Layout, type PanelId } from '../table/layout';
++import {
++  GRID_COLS, GRID_ROWS, MIN_H, MIN_W, defaultLayout, firstFree, fits, loadLayout, readingOrder, saveLayout, tryChange, unusedPanels,
++  type CardPos, type Layout, type PanelId
++} from '../table/layout';
+ import { PlanPanel } from '../table/PlanPanel';
+@@ -27,6 +30,6 @@ const label = (id: PanelId) => t(LABELS[id]);
+ 
+-/** Unter dieser Größe zeigt eine Karte nur die Kurzfassung; Tippen auf „Groß öffnen“ zeigt das Modul im Fenster */
++/** Unter dieser Größe zeigt eine Karte nur die Kurzfassung; „Groß öffnen“ zeigt das Modul im Fenster */
+ const COMPACT_HEIGHT = 300;
+ const COMPACT_WIDTH = 280;
+-const WIDE = '(min-width: 900px)';
++const WIDE = '(min-width: 700px)';
+ 
+@@ -73,119 +76,2 @@ function RecordingBar({ campaignId }: { campaignId: string }) {
+ 
+-/** Spalten und Karten einrichten; gilt nur auf diesem Gerät. */
+-function LayoutChooser({ layout, onChange }: { layout: Layout; onChange: (l: Layout) => void }) {
+-  const free = unusedPanels(layout);
+-  const setCount = (n: number) => {
+-    if (n >= layout.length) {
+-      const next = layout.map((c) => [...c]);
+-      const rest = unusedPanels(layout);
+-      while (next.length < n) {
+-        if (rest.length) { next.push([rest.shift()!]); continue; }
+-        // Kein freies Modul: die unterste Karte der vollsten Spalte bekommt die neue Spalte
+-        const fullest = next.reduce((a, c) => (c.length > a.length ? c : a));
+-        if (fullest.length < 2) break;
+-        next.push([fullest.pop()!]);
+-      }
+-      onChange(next);
+-    } else {
+-      // Karten wegfallender Spalten wandern in die letzte bleibende Spalte, soweit Platz ist
+-      const keep = layout.slice(0, n).map((c) => [...c]);
+-      const moved = layout.slice(n).flat();
+-      keep[n - 1] = [...keep[n - 1], ...moved].slice(0, MAX_CARDS);
+-      onChange(keep);
+-    }
+-  };
+-  const edit = (fn: (l: Layout) => void) => {
+-    const next = layout.map((c) => [...c]);
+-    fn(next);
+-    onChange(next.filter((c) => c.length > 0));
+-  };
+-  const replace = (ci: number, ri: number, id: PanelId) => edit((l) => { l[ci][ri] = id; });
+-  const remove = (ci: number, ri: number) => edit((l) => { l[ci].splice(ri, 1); });
+-  const add = (ci: number) => edit((l) => { if (free.length) l[ci].push(free[0]); });
+-  const moveV = (ci: number, ri: number, d: -1 | 1) => edit((l) => { [l[ci][ri], l[ci][ri + d]] = [l[ci][ri + d], l[ci][ri]]; });
+-  const moveH = (ci: number, ri: number, d: -1 | 1) => edit((l) => {
+-    if (l[ci + d].length >= MAX_CARDS) return;
+-    l[ci + d].push(l[ci].splice(ri, 1)[0]);
+-  });
+-  const total = layout.flat().length;
+-
+-  return (
+-    <div className="table-panel-body" style={{ gap: 12 }}>
+-      <strong>{t('Was liegt auf deinem Schirm?')}</strong>
+-      <div className="field">
+-        <span id="tl-count" className="small" style={{ fontWeight: 700 }}>{t('Spalten')}</span>
+-        <div className="segmented" role="group" aria-labelledby="tl-count" style={{ gridTemplateColumns: `repeat(${MAX_COLUMNS}, minmax(0, 1fr))` }}>
+-          {Array.from({ length: MAX_COLUMNS }, (_, i) => i + 1).map((n) => (
+-            <button key={n} type="button" aria-pressed={layout.length === n} disabled={n > total + free.length} onClick={() => setCount(n)}>{n}</button>
+-          ))}
+-        </div>
+-      </div>
+-      <div className="table-chooser">
+-        {layout.map((col, ci) => (
+-          <fieldset key={ci} className="table-chooser-col">
+-            <legend>{t('Spalte {n}', { n: ci + 1 })}</legend>
+-            {col.map((id, ri) => (
+-              <div key={id} className="table-chooser-card">
+-                <select aria-label={t('Spalte {c}, Karte {r}', { c: ci + 1, r: ri + 1 })} value={id} onChange={(e) => replace(ci, ri, e.target.value as PanelId)}>
+-                  {[id, ...free].map((pid) => <option key={pid} value={pid}>{label(pid)}</option>)}
+-                </select>
+-                <div className="row wrap" style={{ gap: 4 }}>
+-                  <button type="button" className="btn small ghost" disabled={ri === 0} aria-label={t('{name} nach oben', { name: label(id) })} onClick={() => moveV(ci, ri, -1)}>↑</button>
+-                  <button type="button" className="btn small ghost" disabled={ri === col.length - 1} aria-label={t('{name} nach unten', { name: label(id) })} onClick={() => moveV(ci, ri, 1)}>↓</button>
+-                  {layout.length > 1 && <>
+-                    <button type="button" className="btn small ghost" disabled={ci === 0 || layout[ci - 1].length >= MAX_CARDS} aria-label={t('{name} in die Spalte links', { name: label(id) })} onClick={() => moveH(ci, ri, -1)}>←</button>
+-                    <button type="button" className="btn small ghost" disabled={ci === layout.length - 1 || layout[ci + 1].length >= MAX_CARDS} aria-label={t('{name} in die Spalte rechts', { name: label(id) })} onClick={() => moveH(ci, ri, 1)}>→</button>
+-                  </>}
+-                  <button type="button" className="btn small ghost" disabled={total <= 1} aria-label={t('{name} vom Schirm nehmen', { name: label(id) })} onClick={() => remove(ci, ri)}>×</button>
+-                </div>
+-              </div>
+-            ))}
+-            {col.length < MAX_CARDS && free.length > 0 && (
+-              <button type="button" className="btn small dashed" onClick={() => add(ci)}>{t('Karte hinzufügen')}</button>
+-            )}
+-          </fieldset>
+-        ))}
+-      </div>
+-      <span className="muted small">{t('Liegen mehrere Karten übereinander, zeigen sie eine Kurzfassung. „Groß öffnen“ zeigt alles. Auf schmalen Bildschirmen stehen die Karten untereinander. Die Einrichtung gilt nur auf diesem Gerät.')}</span>
+-    </div>
+-  );
+-}
+-
+-/** Eine Spalte; misst, ob ihre Karten genug Platz für die volle Ansicht haben (alle Karten einer Spalte gleich) */
+-function Column({ count, forceCompact, children }: { count: number; forceCompact: boolean; children: (compact: boolean) => ReactNode }) {
+-  const ref = useRef<HTMLDivElement>(null);
+-  const [small, setSmall] = useState(false);
+-  useEffect(() => {
+-    const el = ref.current;
+-    if (!el || forceCompact) return;
+-    const ro = new ResizeObserver(([e]) => {
+-      const share = (e.contentRect.height - 14 * (count - 1)) / count;
+-      setSmall(share < COMPACT_HEIGHT || e.contentRect.width < COMPACT_WIDTH);
+-    });
+-    ro.observe(el);
+-    return () => ro.disconnect();
+-  }, [count, forceCompact]);
+-  return <div ref={ref} className="table-col">{children(forceCompact || small)}</div>;
+-}
+-
+-/** Eine Karte auf dem Schirm */
+-function Card({ id, compact, onCompact, onExpand, children }: {
+-  id: PanelId;
+-  compact: boolean;
+-  onCompact: (id: PanelId, compact: boolean) => void;
+-  onExpand: () => void;
+-  children: ReactNode;
+-}) {
+-  useEffect(() => { onCompact(id, compact); }, [id, compact, onCompact]);
+-  return (
+-    <section className={compact ? 'table-panel compact' : 'table-panel'} aria-label={label(id)}>
+-      <div className="table-panel-head">
+-        <h2 className="table-panel-title">{label(id)}</h2>
+-        {compact && <button type="button" className="btn small ghost" onClick={onExpand}>{t('Groß öffnen')}</button>}
+-      </div>
+-      {children}
+-    </section>
+-  );
+-}
+-
+ /** Ein Modul groß über dem Schirm; schließt mit „Schließen“ oder Escape, der Fokus kehrt zurück */
+@@ -217,5 +103,160 @@ function Popup({ title, onClose, children }: { title: string; onClose: () => voi
+ 
++/** Eine Karte auf dem Schirm; misst selbst, ob sie für die volle Ansicht groß genug ist */
++function Card({ id, forceCompact, onCompact, onExpand, style, children }: {
++  id: PanelId;
++  forceCompact: boolean;
++  onCompact: (id: PanelId, compact: boolean) => void;
++  onExpand: () => void;
++  style?: CSSProperties;
++  children: (compact: boolean) => ReactNode;
++}) {
++  const ref = useRef<HTMLElement>(null);
++  const [small, setSmall] = useState(false);
++  useEffect(() => {
++    const el = ref.current;
++    if (!el || forceCompact) return;
++    // Die Größe gibt das Raster vor, nicht der Inhalt; darum schaukelt sich hier nichts auf
++    const ro = new ResizeObserver(([e]) => setSmall(e.contentRect.height < COMPACT_HEIGHT || e.contentRect.width < COMPACT_WIDTH));
++    ro.observe(el);
++    return () => ro.disconnect();
++  }, [forceCompact]);
++  const compact = forceCompact || small;
++  useEffect(() => { onCompact(id, compact); }, [id, compact, onCompact]);
++  return (
++    <section ref={ref} className={compact ? 'table-panel compact' : 'table-panel'} aria-label={label(id)} style={style}>
++      <div className="table-panel-head">
++        <h2 className="table-panel-title">{label(id)}</h2>
++        {compact && <button type="button" className="btn small ghost" onClick={onExpand}>{t('Groß öffnen')}</button>}
++      </div>
++      {children(compact)}
++    </section>
++  );
++}
++
++const area = (c: CardPos): CSSProperties => ({ gridColumn: `${c.x + 1} / span ${c.w}`, gridRow: `${c.y + 1} / span ${c.h}` });
++const share = (n: number) => ({ 2: '1/3', 3: '1/2', 4: '2/3', 5: '5/6', 6: '1' } as Record<number, string>)[n] ?? `${n}/6`;
++
++interface Drag {
++  id: PanelId;
++  mode: 'move' | 'resize';
++  startX: number;
++  startY: number;
++  orig: CardPos;
++  preview: CardPos;
++  ok: boolean;
++}
++
++/**
++ * Bearbeiten: Karten ziehen (verschieben) oder an der Ecke ziehen (Größe), alles rastet im Raster ein und überlappt nie.
++ * Dieselben Schritte gehen über die Leiste mit Knöpfen, auch ohne Ziehen und mit der Tastatur.
++ */
++function Editor({ layout, onChange, onDone }: { layout: Layout; onChange: (l: Layout) => void; onDone: () => void }) {
++  const grid = useRef<HTMLDivElement>(null);
++  const [selected, setSelected] = useState<PanelId | null>(layout[0]?.id ?? null);
++  const [drag, setDrag] = useState<Drag | null>(null);
++  const dragRef = useRef<Drag | null>(null);
++  dragRef.current = drag;
++  const card = layout.find((c) => c.id === selected) ?? null;
++  const free = unusedPanels(layout);
++
++  const change = (delta: Partial<Omit<CardPos, 'id'>>) => {
++    if (!card) return;
++    const next = tryChange(layout, card.id, delta);
++    if (next) onChange(next);
++  };
++  const can = (delta: Partial<Omit<CardPos, 'id'>>) => !!card && fits(layout, { ...card, ...delta });
++
++  const start = (e: ReactPointerEvent, c: CardPos, mode: Drag['mode']) => {
++    if (e.button !== 0) return;
++    e.preventDefault();
++    e.stopPropagation();
++    setSelected(c.id);
++    (e.target as Element).setPointerCapture?.(e.pointerId);
++    setDrag({ id: c.id, mode, startX: e.clientX, startY: e.clientY, orig: c, preview: c, ok: true });
++  };
++  const move = (e: ReactPointerEvent) => {
++    const d = dragRef.current;
++    const rect = grid.current?.getBoundingClientRect();
++    if (!d || !rect) return;
++    const dx = Math.round((e.clientX - d.startX) / (rect.width / GRID_COLS));
++    const dy = Math.round((e.clientY - d.startY) / (rect.height / GRID_ROWS));
++    const o = d.orig;
++    const preview = d.mode === 'move'
++      ? { ...o, x: Math.min(Math.max(0, o.x + dx), GRID_COLS - o.w), y: Math.min(Math.max(0, o.y + dy), GRID_ROWS - o.h) }
++      : { ...o, w: Math.min(Math.max(MIN_W, o.w + dx), GRID_COLS - o.x), h: Math.min(Math.max(MIN_H, o.h + dy), GRID_ROWS - o.y) };
++    setDrag({ ...d, preview, ok: fits(layout, preview) });
++  };
++  const end = () => {
++    const d = dragRef.current;
++    if (d && d.ok) onChange(layout.map((c) => (c.id === d.id ? d.preview : c)));
++    setDrag(null);
++  };
++
++  const add = (id: PanelId) => {
++    const pos = firstFree(layout, id);
++    if (pos) { onChange([...layout, pos]); setSelected(id); }
++  };
++  const anyRoom = free.length > 0 && !!firstFree(layout, free[0]);
++
++  return (
++    <>
++      <div className="table-edit-bar" role="toolbar" aria-label={t('Schirm einrichten')}>
++        {card ? (
++          <>
++            <strong className="table-edit-name">{label(card.id)} · {t('{w} breit, {h} hoch', { w: share(card.w), h: tn(card.h, '{n} Zeile', '{n} Zeilen') })}</strong>
++            <div className="table-edit-group" role="group" aria-label={t('Verschieben')}>
++              <button type="button" className="btn small ghost" disabled={!can({ x: card.x - 1 })} aria-label={t('{name} nach links', { name: label(card.id) })} onClick={() => change({ x: card.x - 1 })}>←</button>
++              <button type="button" className="btn small ghost" disabled={!can({ x: card.x + 1 })} aria-label={t('{name} nach rechts', { name: label(card.id) })} onClick={() => change({ x: card.x + 1 })}>→</button>
++              <button type="button" className="btn small ghost" disabled={!can({ y: card.y - 1 })} aria-label={t('{name} nach oben', { name: label(card.id) })} onClick={() => change({ y: card.y - 1 })}>↑</button>
++              <button type="button" className="btn small ghost" disabled={!can({ y: card.y + 1 })} aria-label={t('{name} nach unten', { name: label(card.id) })} onClick={() => change({ y: card.y + 1 })}>↓</button>
++            </div>
++            <div className="table-edit-group" role="group" aria-label={t('Größe')}>
++              <button type="button" className="btn small ghost" disabled={!can({ w: card.w - 1 })} onClick={() => change({ w: card.w - 1 })}>{t('Schmaler')}</button>
++              <button type="button" className="btn small ghost" disabled={!can({ w: card.w + 1 })} onClick={() => change({ w: card.w + 1 })}>{t('Breiter')}</button>
++              <button type="button" className="btn small ghost" disabled={!can({ h: card.h - 1 })} onClick={() => change({ h: card.h - 1 })}>{t('Niedriger')}</button>
++              <button type="button" className="btn small ghost" disabled={!can({ h: card.h + 1 })} onClick={() => change({ h: card.h + 1 })}>{t('Höher')}</button>
++            </div>
++            <button type="button" className="btn small ghost" disabled={layout.length <= 1}
++              onClick={() => { onChange(layout.filter((c) => c.id !== card.id)); setSelected(null); }}>{t('Vom Schirm nehmen')}</button>
++          </>
++        ) : <span className="muted small">{t('Tippe eine Karte an, um sie zu verschieben oder ihre Größe zu ändern.')}</span>}
++        <span style={{ flex: 1 }} />
++        <button type="button" className="btn small ghost" onClick={() => { onChange(defaultLayout()); setSelected('plan'); }}>{t('Zurücksetzen')}</button>
++        <button type="button" className="btn small" onClick={onDone}>{t('Fertig')}</button>
++      </div>
++      {free.length > 0 && <div className="table-edit-bar">
++        {free.map((id) => (
++          <button key={id} type="button" className="btn small dashed" disabled={!firstFree(layout, id)} onClick={() => add(id)}>
++            {t('{name} dazulegen', { name: label(id) })}
++          </button>
++        ))}
++        {!anyRoom && <span className="muted small">{t('Kein Platz frei. Mach eine Karte kleiner.')}</span>}
++      </div>}
++      <p className="muted small" style={{ margin: 0 }}>{t('Karte ziehen zum Verschieben, an der Ecke ziehen für die Größe. Gilt nur auf diesem Gerät.')}</p>
++      <div ref={grid} className="table-grid editing" onPointerMove={move} onPointerUp={end} onPointerCancel={() => setDrag(null)}>
++        {Array.from({ length: GRID_COLS * GRID_ROWS }, (_, i) => (
++          <span key={i} className="table-cell" aria-hidden style={{ gridColumn: (i % GRID_COLS) + 1, gridRow: Math.floor(i / GRID_COLS) + 1 }} />
++        ))}
++        {layout.map((c) => {
++          const shown = drag?.id === c.id ? drag.preview : c;
++          const cls = ['table-edit-card', selected === c.id ? 'selected' : '', drag?.id === c.id ? (drag.ok ? 'dragging' : 'dragging blocked') : ''].join(' ');
++          return (
++            <div key={c.id} className={cls} style={area(shown)} onPointerDown={(e) => start(e, c, 'move')}>
++              <button type="button" className="table-edit-select" aria-pressed={selected === c.id} onClick={() => setSelected(c.id)}
++                onPointerDown={(e) => start(e, c, 'move')}>
++                <strong>{label(c.id)}</strong>
++                <span className="small">{share(shown.w)} · {tn(shown.h, '{n} Zeile', '{n} Zeilen')}</span>
++              </button>
++              <span className="table-edit-resize" aria-hidden onPointerDown={(e) => start(e, c, 'resize')} />
++            </div>
++          );
++        })}
++      </div>
++    </>
++  );
++}
++
+ /**
+- * SL-Schirm: alles für den Spielabend auf einen Blick, für Tablet quer oder Laptop. Bis zu 3 Spalten mit je bis zu
+- * 5 Karten; welche, sucht sich die SL aus. Nur für die Spielleitung.
++ * SL-Schirm: alles für den Spielabend auf einen Blick, für Tablet quer oder Laptop. Die SL legt die Karten im Raster
++ * selbst zurecht (Größe und Platz). Nur für die Spielleitung.
+  */
+@@ -227,3 +268,3 @@ export function TablePage() {
+   const [layout, setLayoutState] = useState<Layout>(loadLayout);
+-  const [choosing, setChoosing] = useState(false);
++  const [editing, setEditing] = useState(false);
+   const [popup, setPopup] = useState<PanelId | null>(null);
+@@ -250,3 +291,2 @@ export function TablePage() {
+   const onCompact = useRef((id: PanelId, c: boolean) => { compactRef.current[id] = c; }).current;
+-  const closeChooser = useRef(() => setChoosing(false)).current;
+   const closePopup = useRef(() => { setPopup(null); setRound((r) => r + 1); }).current;
+@@ -255,3 +295,3 @@ export function TablePage() {
+   const show = (id: PanelId) => {
+-    const onScreen = layout.flat().includes(id);
++    const onScreen = layout.some((c) => c.id === id);
+     if (!onScreen || compactRef.current[id] !== false) setPopup(id);
+@@ -286,7 +326,6 @@ export function TablePage() {
+ 
+-  // Schmal: eine Spalte mit allen Karten untereinander, jede als Kurzfassung
+-  const columns: Layout = wide ? layout : [layout.flat()];
++  const gm = campaign?.myRole === 'gm';
+ 
+   return (
+-    <div className="table-screen">
++    <div className={editing ? 'table-screen editing' : 'table-screen'}>
+       <header className="table-header">
+@@ -297,4 +336,4 @@ export function TablePage() {
+         </div>
+-        {campaign?.myRole === 'gm' && (
+-          <button type="button" className="btn small outline" aria-expanded={choosing} onClick={() => setChoosing(!choosing)}>{t('Schirm einrichten')}</button>
++        {gm && wide && !editing && (
++          <button type="button" className="btn small outline" onClick={() => setEditing(true)}>{t('Schirm einrichten')}</button>
+         )}
+@@ -303,20 +342,27 @@ export function TablePage() {
+       {!campaign && !error && <div className="empty">{t('Lade …')}</div>}
+-      {campaign && campaign.myRole !== 'gm' && (
++      {campaign && !gm && (
+         <div className="empty">{t('Den SL-Schirm hat nur die Spielleitung. Was du über die Welt weißt, steht in der Bibel.')}</div>
+       )}
+-      {campaign?.myRole === 'gm' && (
++      {gm && editing && wide && <Editor layout={layout} onChange={setLayout} onDone={() => setEditing(false)} />}
++      {gm && !(editing && wide) && (
+         <>
+           <RecordingBar campaignId={campaign.id} />
+-          {choosing && <Popup title={t('Schirm einrichten')} onClose={closeChooser}><LayoutChooser layout={layout} onChange={setLayout} /></Popup>}
+-          <div className="table-grid" style={{ ['--cols' as string]: columns.length }}>
+-            {columns.map((col, ci) => (
+-              <Column key={ci} count={col.length} forceCompact={!wide}>
+-                {(compact) => col.map((id) => (
+-                  <Card key={`${id}-${round}`} id={id} compact={compact} onCompact={onCompact} onExpand={() => setPopup(id)}>
+-                    {panel(id, compact)}
+-                  </Card>
+-                ))}
+-              </Column>
+-            ))}
+-          </div>
++          {wide ? (
++            <div className="table-grid">
++              {layout.map((c) => (
++                <Card key={`${c.id}-${round}`} id={c.id} forceCompact={false} onCompact={onCompact} onExpand={() => setPopup(c.id)} style={area(c)}>
++                  {(compact) => panel(c.id, compact)}
++                </Card>
++              ))}
++            </div>
++          ) : (
++            // Schmal: alle Karten untereinander, jede als Kurzfassung
++            <div className="table-stack">
++              {readingOrder(layout).map((c) => (
++                <Card key={`${c.id}-${round}`} id={c.id} forceCompact onCompact={onCompact} onExpand={() => setPopup(c.id)}>
++                  {(compact) => panel(c.id, compact)}
++                </Card>
++              ))}
++            </div>
++          )}
+           {popup && <Popup title={label(popup)} onClose={closePopup}>{panel(popup, false)}</Popup>}
+diff --git a/src/table/layout.ts b/src/table/layout.ts
+index a45fa46..3bba4fd 100644
+--- a/src/table/layout.ts
++++ b/src/table/layout.ts
+@@ -1,3 +1,4 @@
+ /*
+- * SL-Schirm: bis zu 3 Spalten mit je bis zu 5 Karten. Jede Ansicht (Modul) liegt höchstens einmal auf dem Schirm.
++ * SL-Schirm: ein Raster aus 6 × 5 Feldern. Jede Karte belegt ein Rechteck darin (mindestens 2 Felder breit = ein
++ * Drittel, mindestens 1 Feld hoch), Karten überlappen nie. Jede Ansicht (Modul) liegt höchstens einmal auf dem Schirm.
+  * Gilt je Gerät (Tablet und Laptop wollen oft Verschiedenes) und bleibt nur im Speicher dieses Geräts.
+@@ -6,24 +7,85 @@
+ 
+-/** Neue Module hier eintragen und in TablePage (MODULES) eine kleine und eine große Ansicht dazu */
++/** Neue Module hier eintragen, dazu in TablePage einen Namen (LABELS) und einen Fall in panel() */
+ export const PANEL_IDS = ['plan', 'docs', 'bible', 'group'] as const;
+ export type PanelId = (typeof PANEL_IDS)[number];
+-/** Spalten von links nach rechts, je Spalte die Karten von oben nach unten */
+-export type Layout = PanelId[][];
+ 
+-export const MAX_COLUMNS = 3;
+-export const MAX_CARDS = 5;
++/** Breite in Feldern: 2 = ein Drittel, 3 = die Hälfte, 4 = zwei Drittel, 6 = ganz */
++export const GRID_COLS = 6;
++export const GRID_ROWS = 5;
++export const MIN_W = 2;
++export const MIN_H = 1;
++
++export interface CardPos {
++  id: PanelId;
++  x: number;
++  y: number;
++  w: number;
++  h: number;
++}
++export type Layout = CardPos[];
+ 
+ const KEY = 'taleward.slSchirm';
+-const DEFAULT: Layout = [['plan'], ['bible'], ['group']];
+ const known = (x: unknown): x is PanelId => (PANEL_IDS as readonly unknown[]).includes(x);
+ 
+-/** Bringt jede gespeicherte Form in Ordnung: alte Liste (eine Karte je Spalte), Unbekanntes und Doppeltes fallen weg */
++export function defaultLayout(): Layout {
++  return [
++    { id: 'plan', x: 0, y: 0, w: 2, h: 5 },
++    { id: 'bible', x: 2, y: 0, w: 2, h: 5 },
++    { id: 'group', x: 4, y: 0, w: 2, h: 5 }
++  ];
++}
++
++/** Liegt die Karte im Raster und überdeckt keine andere? */
++export function fits(layout: Layout, c: CardPos): boolean {
++  if (c.x < 0 || c.y < 0 || c.w < MIN_W || c.h < MIN_H || c.x + c.w > GRID_COLS || c.y + c.h > GRID_ROWS) return false;
++  return layout.every((o) => o.id === c.id || o.x >= c.x + c.w || c.x >= o.x + o.w || o.y >= c.y + c.h || c.y >= o.y + o.h);
++}
++
++/** Erster freier Platz für eine Karte der Größe w × h (von oben links), sonst null */
++export function firstFree(layout: Layout, id: PanelId, w = MIN_W, h = MIN_H): CardPos | null {
++  for (let y = 0; y + h <= GRID_ROWS; y++) {
++    for (let x = 0; x + w <= GRID_COLS; x++) {
++      const c = { id, x, y, w, h };
++      if (fits(layout, c)) return c;
++    }
++  }
++  return null;
++}
++
++/** Ältere Form (Spalten mit Karten übereinander) ins Raster übertragen */
++function fromColumns(cols: unknown[][]): Layout {
++  const usable = cols.slice(0, 3);
++  const w = GRID_COLS / usable.length;
++  const out: Layout = [];
++  usable.forEach((col, ci) => {
++    const ids = col.filter(known).slice(0, GRID_ROWS);
++    let y = 0;
++    ids.forEach((id, i) => {
++      // Zeilen gleichmäßig verteilen, der Rest geht an die oberen Karten
++      const h = Math.floor(GRID_ROWS / ids.length) + (i < GRID_ROWS % ids.length ? 1 : 0);
++      out.push({ id, x: ci * w, y, w, h });
++      y += h;
++    });
++  });
++  return out;
++}
++
++/** Bringt jede gespeicherte Form in Ordnung: alte Formen werden übernommen, Ungültiges, Doppeltes und Überlappendes fällt weg */
+ export function normalizeLayout(raw: unknown): Layout {
+-  if (!Array.isArray(raw)) return DEFAULT;
+-  const seen = new Set<PanelId>();
+-  const cols = raw.slice(0, MAX_COLUMNS).map((col) => (Array.isArray(col) ? col : [col])
+-    .filter((x): x is PanelId => known(x) && !seen.has(x) && !!seen.add(x))
+-    .slice(0, MAX_CARDS));
+-  const kept = cols.filter((c) => c.length > 0);
+-  return kept.length ? kept : DEFAULT;
++  let cards: unknown[] = [];
++  if (Array.isArray(raw) && raw.length && raw.every((c) => Array.isArray(c) || typeof c === 'string')) {
++    cards = fromColumns(raw.map((c) => (Array.isArray(c) ? c : [c])));
++  } else if (Array.isArray(raw)) {
++    cards = raw;
++  }
++  const out: Layout = [];
++  for (const c of cards) {
++    if (!c || typeof c !== 'object') continue;
++    const { id, x, y, w, h } = c as Record<string, unknown>;
++    if (!known(id) || out.some((o) => o.id === id)) continue;
++    if (![x, y, w, h].every((n) => Number.isInteger(n))) continue;
++    const pos = { id, x: x as number, y: y as number, w: w as number, h: h as number };
++    if (fits(out, pos)) out.push(pos);
++  }
++  return out.length ? out : defaultLayout();
+ }
+@@ -34,3 +96,3 @@ export function loadLayout(): Layout {
+   } catch {
+-    return DEFAULT;
++    return defaultLayout();
+   }
+@@ -44,4 +106,16 @@ export function saveLayout(layout: Layout): void {
+ export function unusedPanels(layout: Layout): PanelId[] {
+-  const used = new Set(layout.flat());
+-  return PANEL_IDS.filter((id) => !used.has(id));
++  return PANEL_IDS.filter((id) => !layout.some((c) => c.id === id));
++}
++
++/** Eine Karte ändern, wenn das Ergebnis passt; sonst bleibt alles, wie es war */
++export function tryChange(layout: Layout, id: PanelId, change: Partial<Omit<CardPos, 'id'>>): Layout | null {
++  const card = layout.find((c) => c.id === id);
++  if (!card) return null;
++  const next = { ...card, ...change };
++  return fits(layout, next) ? layout.map((c) => (c.id === id ? next : c)) : null;
++}
++
++/** Reihenfolge zum Lesen (schmale Bildschirme, Screenreader): Zeile für Zeile, links nach rechts */
++export function readingOrder(layout: Layout): Layout {
++  return [...layout].sort((a, b) => a.y - b.y || a.x - b.x);
+ }
