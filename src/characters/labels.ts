@@ -8,6 +8,13 @@ export const STATUS_LABEL: Record<CharacterStatus, string> = {
   deceased: tk('Verstorben')
 };
 
+/** Kurze Namen für den Filter in „Meine Charaktere“ (passt auch auf schmale Handys) */
+export const STATUS_FILTER_LABEL: Record<CharacterStatus, string> = {
+  active: tk('Aktiv'),
+  retired: tk('Ruhestand'),
+  deceased: tk('Verstorben')
+};
+
 /** Stand eines mitgebrachten Eintrags in einer Kampagne, in Worten (null = noch nicht geschickt) */
 export function worldState(item: WorldItem, link: CharacterLink): { label: string; tone: 'seal' | 'ok' | 'muted' } | null {
   const sent = link.submitted?.[item.id];

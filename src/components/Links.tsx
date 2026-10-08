@@ -50,8 +50,21 @@ export async function openLink(link: Link): Promise<void> {
 }
 
 /** Links als Knöpfe; zeigt Name und Adresse */
-export function LinkButtons({ links, small = true }: { links: Link[] | undefined; small?: boolean }) {
+export function LinkButtons({ links, small = true, compact }: { links: Link[] | undefined; small?: boolean; compact?: boolean }) {
   if (!links?.length) return null;
+  // Schmal (Übersicht): nur Name und Pfeil, die Adresse steht in der Rückfrage beim ersten Öffnen und im Screenreader-Namen
+  if (compact) {
+    return (
+      <div className="row wrap" style={{ gap: 6 }}>
+        {links.map((l) => (
+          <button key={l.id} type="button" className="btn small ghost link-chip" onClick={() => openLink(l)}
+            aria-label={t('{label} öffnen ({host})', { label: l.label, host: hostOf(l.url) })}>
+            {l.label} <span aria-hidden>↗</span>
+          </button>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="row wrap" style={{ gap: 6 }}>
       {links.map((l) => (

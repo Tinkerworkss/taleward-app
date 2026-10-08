@@ -3,7 +3,7 @@ import type { SVGProps } from 'react';
 /*
  * Linienicons nach Markenhandbuch: 24 px, Strich 1,75, runde Enden.
  * Fester Wortschatz: Schlüsselloch = nur SL, offenes Auge = öffentlich, Bändchen = Kapitel/Recap,
- * Mikrofon = Aufnahme, Buch = Bibel, Kalender = Termin, Sprechblase = Kommentar.
+ * Mikrofon = Aufnahme, Buch = Bibel, Kalender = Termin, Sprechblase = Kommentar, Schirm = SL-Schirm.
  */
 const base = (size = 24): SVGProps<SVGSVGElement> => ({
   width: size,
@@ -67,4 +67,12 @@ export const IconPaste = ({ size }: { size?: number }) => (
 /** QR-Code scannen (Suchrahmen) */
 export const IconScan = ({ size }: { size?: number }) => (
   <svg {...base(size)}><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16" /><path d="M8 12h8" /></svg>
+);
+/** SL-Schirm: dreiteiliger, aufgestellter Schirm */
+export const IconScreen = ({ size = 18 }: { size?: number }) => (
+  <svg {...base(size)}><path d="M3 6.5 8 4.5v14l-5 2z" /><path d="M8 4.5l8 2v14l-8-2z" /><path d="M16 6.5l5-2v14l-5 2z" /></svg>
+);
+/** Suchen (Lupe) */
+export const IconSearch = ({ size = 18 }: { size?: number }) => (
+  <svg {...base(size)}><circle cx="10.5" cy="10.5" r="6" /><path d="m15 15 5.5 5.5" /></svg>
 );

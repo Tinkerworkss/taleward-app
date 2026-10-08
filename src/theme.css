@@ -22,6 +22,8 @@
   --siegel-soft: #f3dcdc;
   --siegel-text: #9e2a3a;
   --messing: #c49235;
+  /* Schrift auf Messing: bleibt in beiden Themen dunkel (Messing ist hell) */
+  --on-messing: #2a2118;
   --salbei: #3d6a48;
   --on-salbei: #ffffff;
   --focus-ring: var(--siegel);
@@ -47,6 +49,8 @@
   --siegel-soft: #3b1c23;
   --siegel-text: #ec8a9a;
   --messing: #d9ad55;
+  /* Schrift auf Messing: bleibt in beiden Themen dunkel (Messing ist hell) */
+  --on-messing: #2a2118;
   --salbei: #8cc096;
   --on-salbei: #0c1518;
   --focus-ring: var(--siegel);
@@ -72,6 +76,8 @@
     --siegel-soft: #3b1c23;
     --siegel-text: #ec8a9a;
     --messing: #d9ad55;
+    /* Schrift auf Messing: bleibt in beiden Themen dunkel (Messing ist hell) */
+    --on-messing: #2a2118;
     --salbei: #8cc096;
     --on-salbei: #0c1518;
     --focus-ring: var(--siegel);
@@ -485,9 +491,10 @@ h2 {
   flex-shrink: 0;
 }
 
+/* Abzeichen ohne Rahmen, damit es nicht wie ein Knopf aussieht */
 .vis.public {
   color: var(--ink);
-  border: 1px solid var(--line-strong);
+  background: var(--paper-sunken);
 }
 
 .vis.gm {
@@ -536,7 +543,8 @@ h2 {
   gap: 4px;
 }
 
-.field label {
+.field label,
+.field .label {
   font: 500 14px/20px var(--font-sans);
   color: var(--ink);
 }
@@ -1453,7 +1461,7 @@ details.card[open] { padding-bottom: var(--space-4); }
 
 .table-screen mark {
   background: var(--messing);
-  color: #2a2118;
+  color: var(--on-messing);
   border-radius: 3px;
   padding: 0 2px;
 }
@@ -1632,10 +1640,12 @@ details.card[open] { padding-bottom: var(--space-4); }
   flex-wrap: wrap;
 }
 
+/* Leicht hervorgehoben, aber kein Hauptknopf: Umriss in Messing, Schrift in Tinte */
 .btn.accent {
-  background: var(--messing);
-  border-color: var(--messing);
-  color: #2a2118;
+  background: var(--paper-raised);
+  border: 2px solid var(--messing);
+  color: var(--ink);
+  gap: 8px;
 }
 
 .btn.subtle {
@@ -1764,8 +1774,48 @@ button.table-group-face {
   resize: vertical;
 }
 
-/* Übersicht: „Wer war das?“ */
+/* Übersicht: „Wer war das?“ als schmales Suchfeld mit Lupe */
+.overview-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.overview-search svg {
+  position: absolute;
+  left: 14px;
+  color: var(--ink-muted);
+  pointer-events: none;
+}
+
 .overview-search input {
   flex: 1;
   min-width: 0;
+  padding-left: 40px;
+}
+
+/* Übersicht: Links der Gruppe als schmale Zeile */
+.overview-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.btn.link-chip {
+  border-color: var(--line-strong);
+}
+
+/* Verknüpfte Einträge und Unterlagen: kleine Chips statt Knöpfe (Tippfläche bleibt 48 px) */
+.btn.chip {
+  background: var(--paper-sunken);
+  color: var(--ink);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  box-shadow: none;
+  font-weight: 500;
+  padding-inline: 14px;
+}
+
+.btn.chip:hover {
+  border-color: var(--line-strong);
 }

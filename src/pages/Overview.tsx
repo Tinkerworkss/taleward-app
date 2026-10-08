@@ -18,7 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { Campaign, GameSystem, GmNotice, Member, SessionSummary, Usage } from '../api/types';
-import { IconCheck, IconInfo, IconLock } from '../components/Icons';
+import { IconCheck, IconInfo, IconLock, IconScreen, IconSearch } from '../components/Icons';
 import { LinkButtons } from '../components/Links';
 import { MusterBanner } from '../components/Muster';
 import { Divider, ErrorBox, Screen, rememberCampaign } from '../components/Screen';
@@ -69,7 +69,7 @@ export function Overview() {
           {gm && !pickingCover && (
             <div className="overview-tools" style={{ marginTop: hasCover(campaign) ? -6 : 0 }}>
               {!campaign.archivedAt && (
-                <Link className="btn small accent" to={p(`/k/${campaignId}/tisch`)}>{t('SL-Schirm')}</Link>
+                <Link className="btn small accent" to={p(`/k/${campaignId}/tisch`)}><IconScreen /> {t('SL-Schirm')}</Link>
               )}
               <button type="button" className="btn small subtle" onClick={() => setPickingCover(true)}>
                 {hasCover(campaign) ? t('Titelbild ändern') : t('Titelbild wählen')}
@@ -87,6 +87,7 @@ export function Overview() {
           )}
 
           <MusterBanner />
+          <BibleSearch campaignId={campaignId} />
           {campaign.archivedAt && (
             <div className="notice"><strong>{t('Abgeschlossen')}</strong>&nbsp;{t('– nur noch zum Nachlesen, keine neuen Kapitel.')}</div>
           )}
@@ -130,7 +131,6 @@ export function Overview() {
             </Link>
           )}
           {gm && campaign.gmNotices?.map((n) => <GmNoticeCard key={n.id} campaign={campaign} notice={n} onDone={load} />)}
-          <BibleSearch campaignId={campaignId} />
           {/* Nächste Runde */}
           <Link to={p(`/k/${campaignId}/termin`)} className={campaign.datePollNeedsMyVote ? 'card task' : 'card'}>
             <div className="row between">
@@ -145,12 +145,6 @@ export function Overview() {
             </span>
           </Link>
 
-          {(campaign.links ?? []).some((l) => l.shared) && (
-            <section className="card">
-              <span className="overline">{t('Links der Gruppe')}</span>
-              <LinkButtons links={(campaign.links ?? []).filter((l) => l.shared)} small={false} />
-            </section>
-          )}
 
           {latest && (
             <Link to={p(`/s/${latest.id}/recap`)} className="card">
@@ -174,6 +168,12 @@ export function Overview() {
 
           <CloudNotice info={serverInfo} campaign={campaign} />
           <Divider />
+          {(campaign.links ?? []).some((l) => l.shared) && (
+            <section className="overview-links" aria-labelledby="group-links">
+              <span className="overline" id="group-links">{t('Links der Gruppe')}</span>
+              <LinkButtons links={(campaign.links ?? []).filter((l) => l.shared)} compact />
+            </section>
+          )}
           <div id="world"><WorldInfo campaign={campaign} onSaved={setCampaign} /></div>
           </div>
 
@@ -193,17 +193,15 @@ export function Overview() {
   );
 }
 
-/** „Wer war das?“ – Suchfeld, das in die Bibel springt (fehlertolerant, siehe search/fuzzy.ts) */
+/** „Wer war das?“ – schmales Suchfeld oben, springt in die Bibel (fehlertolerant, siehe search/fuzzy.ts) */
 function BibleSearch({ campaignId }: { campaignId: string }) {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   return (
-    <form role="search" className="card overview-search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) navigate(p(`/k/${campaignId}/bibel?q=${encodeURIComponent(q.trim())}`)); }}>
-      <label htmlFor="overview-search" className="overline">{t('Wer war das?')}</label>
-      <div className="row" style={{ gap: 8 }}>
-        <input id="overview-search" type="search" enterKeyHint="search" placeholder={t('Name in der Bibel suchen …')} value={q} onChange={(e) => setQ(e.target.value)} />
-        <button type="submit" className="btn small outline" disabled={!q.trim()}>{t('Suchen')}</button>
-      </div>
+    <form role="search" className="overview-search" aria-label={t('Wer war das?')}
+      onSubmit={(e) => { e.preventDefault(); if (q.trim()) navigate(p(`/k/${campaignId}/bibel?q=${encodeURIComponent(q.trim())}`)); }}>
+      <IconSearch />
+      <input type="search" enterKeyHint="search" aria-label={t('Name in der Bibel suchen …')} placeholder={t('Wer war das? Name suchen …')} value={q} onChange={(e) => setQ(e.target.value)} />
     </form>
   );
 }

@@ -11,7 +11,7 @@ import { BiblePanel } from '../table/BiblePanel';
 import { DocsPanel } from '../table/DocsPanel';
 import { GroupPanel } from '../table/GroupPanel';
 import {
-  GRID_COLS, GRID_ROWS, MIN_H, MIN_W, defaultLayout, firstFree, fits, loadLayout, readingOrder, saveLayout, tryChange, unusedPanels,
+  GRID_COLS, GRID_ROWS, MIN_H, MIN_W, defaultLayout, fits, loadLayout, placeNew, readingOrder, saveLayout, tryChange, unusedPanels,
   type CardPos, type Layout, type PanelId
 } from '../table/layout';
 import { ClockPanel, LinksPanel, NotesPanel } from '../table/ExtraPanels';
@@ -169,11 +169,12 @@ function Editor({ layout, onChange, onDone }: { layout: Layout; onChange: (l: La
     setDrag(null);
   };
 
+  // Ist kein Platz frei, macht placeNew die größte Karte etwas kleiner – das neue Modul ist dann gleich ausgewählt
   const add = (id: PanelId) => {
-    const pos = firstFree(layout, id);
-    if (pos) { onChange([...layout, pos]); setSelected(id); }
+    const next = placeNew(layout, id);
+    if (next) { onChange(next); setSelected(id); }
   };
-  const anyRoom = free.length > 0 && !!firstFree(layout, free[0]);
+  const anyRoom = free.length > 0 && !!placeNew(layout, free[0]);
 
   return (
     <>
@@ -203,11 +204,11 @@ function Editor({ layout, onChange, onDone }: { layout: Layout; onChange: (l: La
       </div>
       {free.length > 0 && <div className="table-edit-bar">
         {free.map((id) => (
-          <button key={id} type="button" className="btn small dashed" disabled={!firstFree(layout, id)} onClick={() => add(id)}>
+          <button key={id} type="button" className="btn small dashed" disabled={!anyRoom} onClick={() => add(id)}>
             {t('{name} dazulegen', { name: label(id) })}
           </button>
         ))}
-        {!anyRoom && <span className="muted small">{t('Kein Platz frei. Mach eine Karte kleiner.')}</span>}
+        {!anyRoom && <span className="muted small">{t('Alle Karten sind schon so klein wie möglich. Nimm erst eine vom Schirm.')}</span>}
       </div>}
       <p className="muted small" style={{ margin: 0 }}>{t('Karte ziehen zum Verschieben, an der Ecke ziehen für die Größe. Gilt nur auf diesem Gerät.')}</p>
       <div ref={grid} className="table-grid editing" onPointerMove={move} onPointerUp={end} onPointerCancel={() => setDrag(null)}>

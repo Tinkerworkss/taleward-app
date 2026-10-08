@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { CharacterStatus } from '../api/types';
 import { CharacterEditor } from '../characters/CharacterEditor';
-import { STATUS_LABEL } from '../characters/labels';
+import { STATUS_FILTER_LABEL, STATUS_LABEL } from '../characters/labels';
 import { CharacterPortrait } from '../characters/Portrait';
 import { listCharacters, onCharactersChanged, STATUS_ORDER } from '../characters/store';
 import { linkOutdated } from '../characters/sync';
@@ -67,7 +67,7 @@ export function CharactersPage() {
             <div className="segmented" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }} role="group" aria-label={t('Anzeigen')}>
               {(['active', 'retired', 'deceased', 'all'] as const).map((s) => (
                 <button key={s} type="button" aria-pressed={filter === s} onClick={() => setFilter(s)}>
-                  {s === 'all' ? t('Alle ({n})', { n: list.length }) : t(STATUS_LABEL[s])}
+                  {s === 'all' ? t('Alle ({n})', { n: list.length }) : t(STATUS_FILTER_LABEL[s])}
                 </button>
               ))}
             </div>
@@ -108,7 +108,7 @@ export function CharactersPage() {
           <details className="card" open={list.length === 0 || undefined}>
             <summary style={{ fontWeight: 700 }}>{t('Sammlung sichern')}</summary>
             <span className="small">{t('Sichere deine Charaktere ab und zu als Datei. Auf einem neuen Gerät holst du sie damit zurück. Die Datei enthält auch deine privaten Notizen – gib sie nicht weiter.')}</span>
-            <span className="muted small">{t('„Aus Datei zurückholen“ nimmt auch einzelne Charakter-Dateien an. Gibt es den Charakter hier schon, gewinnt der neuere Stand; Abschriften und mitgebrachte Welt werden zusammengeführt.')}</span>
+            <span className="muted small">{t('„Aus Datei zurückholen“ nimmt auch einzelne Charakter-Dateien an. Gibt es den Charakter hier schon, gewinnt der neuere Stand; Chroniken und mitgebrachte Welt werden zusammengeführt.')}</span>
             <ErrorBox error={backupError} />
             {restored && <span className="small" role="status">{restored}</span>}
             <div className="row wrap" style={{ gap: 8 }}>

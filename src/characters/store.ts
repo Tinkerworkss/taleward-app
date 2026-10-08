@@ -93,7 +93,7 @@ function persist(list: StoredCharacter[]): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(list));
   } catch {
-    throw new Error(t('Der Speicher der App ist voll. Entferne große Charakterbilder oder alte Abschriften.'));
+    throw new Error(t('Der Speicher der App ist voll. Entferne große Charakterbilder oder alte Chroniken.'));
   }
   listeners.forEach((l) => l());
 }

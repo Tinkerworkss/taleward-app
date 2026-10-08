@@ -75,8 +75,8 @@ export function MyCharacterPage() {
 
   const remove = async () => {
     const q = c.links.length
-      ? t('{name} aus deiner Sammlung löschen? In den Kampagnen bleibt der letzte Stand stehen. Private Notizen und Abschriften sind dann weg.', { name: c.name })
-      : t('{name} aus deiner Sammlung löschen? Private Notizen und Abschriften sind dann weg.', { name: c.name });
+      ? t('{name} aus deiner Sammlung löschen? In den Kampagnen bleibt der letzte Stand stehen. Private Notizen und Chroniken sind dann weg.', { name: c.name })
+      : t('{name} aus deiner Sammlung löschen? Private Notizen und Chroniken sind dann weg.', { name: c.name });
     if (!(await confirmDialog(q, { confirmLabel: t('Löschen'), danger: true }))) return;
     deleteCharacter(c.id);
     navigate('/charaktere', { replace: true });
@@ -90,6 +90,15 @@ export function MyCharacterPage() {
       <ErrorBox error={error} />
       {editing ? (
         <section className="card">
+          {/* Zustand: selten gebraucht, darum nur hier; gilt sofort, oben steht er als Abzeichen */}
+          <div className="field" style={{ margin: '0 0 12px' }}>
+            <span className="label" id="status-label">{t('Status')}</span>
+            <div className="segmented" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }} role="group" aria-labelledby="status-label">
+              {STATUS_ORDER.map((s) => (
+                <button key={s} type="button" aria-pressed={c.status === s} onClick={() => setStatus(s)}>{t(STATUS_LABEL[s])}</button>
+              ))}
+            </div>
+          </div>
           <CharacterEditor character={c} submitLabel={t('Speichern')} onSaved={() => setEditing(false)}
             secondary={{ label: t('Abbrechen'), onClick: () => setEditing(false) }} />
         </section>
@@ -110,11 +119,6 @@ export function MyCharacterPage() {
             </section>
           )}
           <button type="button" className="btn outline" onClick={() => setEditing(true)}>{t('Charakter bearbeiten')}</button>
-          <div className="segmented" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }} role="group" aria-label={t('Status')}>
-            {STATUS_ORDER.map((s) => (
-              <button key={s} type="button" aria-pressed={c.status === s} onClick={() => setStatus(s)}>{t(STATUS_LABEL[s])}</button>
-            ))}
-          </div>
         </>
       )}
 
@@ -184,9 +188,9 @@ export function MyCharacterPage() {
                 )}
                 <button type="button" className="btn small outline" disabled={!!busy}
                   onClick={() => run('chron:' + k, () => fetchChronicle(c.id, l))}>
-                  {busy === 'chron:' + k ? t('Lade …') : t('Abschrift holen')}
+                  {busy === 'chron:' + k ? t('Lade …') : t('Chronik sichern')}
                 </button>
-                <button type="button" className="btn small ghost" disabled={!!busy} onClick={() => release(l)}>{t('Lösen')}</button>
+                <button type="button" className="btn small ghost" disabled={!!busy} onClick={() => release(l)}>{t('Von der Kampagne lösen')}</button>
               </div>
             </div>
           );
@@ -204,7 +208,7 @@ export function MyCharacterPage() {
       {chronicles.length > 0 && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Divider />
-          <h2>{t('Abschriften')}</h2>
+          <h2>{t('Chroniken')}</h2>
           <p className="muted small" style={{ margin: 0 }}>{t('Was dein Charakter erlebt hat – bleibt in der Sammlung, auch wenn die Kampagne endet.')}</p>
           {chronicles.map((ch) => {
             const read = ch.sessions.filter((s) => s.recap);
@@ -238,7 +242,7 @@ export function MyCharacterPage() {
       <Divider />
       <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <h2>{t('Als Datei weitergeben')}</h2>
-        <span className="small">{t('Zum Beispiel auf dein Tablet oder ein neues Handy: Dort unter „Meine Charaktere“ → „Sammlung sichern“ → „Aus Datei zurückholen“. Die Datei enthält auch deine privaten Notizen und Abschriften.')}</span>
+        <span className="small">{t('Zum Beispiel auf dein Tablet oder ein neues Handy: Dort unter „Meine Charaktere“ → „Sammlung sichern“ → „Aus Datei zurückholen“. Die Datei enthält auch deine privaten Notizen und Chroniken.')}</span>
         <ErrorBox error={fileError} />
         <button type="button" className="btn outline" style={{ alignSelf: 'flex-start' }} onClick={shareFile}>{t('{name} als Datei speichern', { name: c.name })}</button>
       </section>

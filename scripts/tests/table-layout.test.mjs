@@ -1,7 +1,7 @@
 // SL-Schirm: Raster, Platzsuche und Übernahme älterer Einrichtungen
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultLayout, firstFree, fits, normalizeLayout, readingOrder, tryChange, unusedPanels } from '../../src/table/layout.ts';
+import { defaultLayout, firstFree, fits, normalizeLayout, placeNew, readingOrder, tryChange, unusedPanels } from '../../src/table/layout.ts';
 
 test('älteste Form (eine Karte je Spalte) wird ins Raster übernommen', () => {
   assert.deepEqual(normalizeLayout(['plan', 'bible']), [
@@ -53,4 +53,24 @@ test('Lesereihenfolge und freie Module', () => {
   const l = [{ id: 'group', x: 2, y: 1, w: 2, h: 1 }, { id: 'plan', x: 0, y: 0, w: 2, h: 2 }, { id: 'bible', x: 2, y: 0, w: 2, h: 1 }];
   assert.deepEqual(readingOrder(l).map((c) => c.id), ['plan', 'bible', 'group']);
   assert.deepEqual(unusedPanels(l), ['docs', 'notes', 'clock', 'links']);
+});
+
+test('neues Modul findet immer Platz, solange Karten kleiner werden können', () => {
+  let l = defaultLayout();
+  for (const id of ['docs', 'notes', 'clock', 'links']) {
+    const next = placeNew(l, id);
+    assert.ok(next, `Platz für ${id}`);
+    assert.ok(next.every((c) => fits(next, c)), 'nichts überlappt');
+    l = next;
+  }
+  assert.equal(l.length, 7);
+  const first = placeNew(defaultLayout(), 'docs');
+  assert.deepEqual(first.find((c) => c.id === 'plan'), { id: 'plan', x: 0, y: 0, w: 2, h: 4 }, 'größte Karte wird eine Zeile niedriger');
+  assert.deepEqual(first.find((c) => c.id === 'docs'), { id: 'docs', x: 0, y: 4, w: 2, h: 1 });
+});
+
+test('kein Platz, wenn alle Karten schon klein sind', () => {
+  const full = [];
+  for (let y = 0; y < 5; y++) for (let x = 0; x < 6; x += 2) full.push({ id: `k${x}${y}`, x, y, w: 2, h: 1 });
+  assert.equal(placeNew(full, 'links'), null);
 });

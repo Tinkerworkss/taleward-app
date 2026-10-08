@@ -119,3 +119,25 @@ export function tryChange(layout: Layout, id: PanelId, change: Partial<Omit<Card
 export function readingOrder(layout: Layout): Layout {
   return [...layout].sort((a, b) => a.y - b.y || a.x - b.x);
 }
+
+/**
+ * Platz für ein weiteres Modul schaffen: erst ein freier Platz; sonst wird die größte Karte, die es verträgt, um eine
+ * Zeile niedriger (oder ein Drittel schmaler) und das neue Modul kommt in die frei gewordene Lücke. null, wenn
+ * wirklich nichts mehr geht (alle Karten schon so klein wie möglich).
+ */
+export function placeNew(layout: Layout, id: PanelId): Layout | null {
+  const free = firstFree(layout, id);
+  if (free) return [...layout, free];
+  const bySize = [...layout].sort((a, b) => b.w * b.h - a.w * a.h || a.y - b.y || a.x - b.x);
+  for (const c of bySize) {
+    const tries: [Partial<CardPos>, CardPos][] = [
+      [{ h: c.h - 1 }, { id, x: c.x, y: c.y + c.h - 1, w: c.w, h: 1 }],
+      [{ w: c.w - MIN_W }, { id, x: c.x + c.w - MIN_W, y: c.y, w: MIN_W, h: c.h }]
+    ];
+    for (const [change, card] of tries) {
+      const smaller = tryChange(layout, c.id, change);
+      if (smaller && fits(smaller, card)) return [...smaller, card];
+    }
+  }
+  return null;
+}

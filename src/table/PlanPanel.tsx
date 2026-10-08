@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, isApiError } from '../api/client';
 import { apiAtLeast } from '../api/connections';
 import { LinkButtons, LinkEditor } from '../components/Links';
+import { IconCheck } from '../components/Icons';
 import type { CampaignDocument, ChapterPlan, Entry, PlanScene } from '../api/types';
 import { confirmDialog } from '../components/confirm';
 import { ErrorBox } from '../components/Screen';
@@ -14,7 +15,6 @@ const SCENE_STATE: Record<NonNullable<PlanScene['state']>, string> = {
   played: tk('gespielt'),
   skipped: tk('übersprungen')
 };
-const NEXT_STATE: Record<NonNullable<PlanScene['state']>, NonNullable<PlanScene['state']>> = { open: 'played', played: 'skipped', skipped: 'open' };
 
 
 /**
@@ -115,9 +115,9 @@ export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc, compact }: {
             {current ? (
               <div className="row between" style={{ gap: 8, alignItems: 'center' }}>
                 <span style={{ flex: 1, minWidth: 0 }}>{t('Jetzt:')} <strong>{current.title}</strong></span>
-                <button type="button" className="btn small outline"
+                <button type="button" className="btn small outline" aria-label={t('{title} als gespielt abhaken', { title: current.title })}
                   onClick={() => setSceneState(current.id, 'played')}>
-                  {t('Gespielt')}
+                  <IconCheck /> {t('Gespielt')}
                 </button>
               </div>
             ) : plan.scenes.length > 0 && <span className="muted small">{t('Alle Szenen erledigt.')}</span>}
@@ -174,20 +174,24 @@ export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc, compact }: {
               <section key={sc.id} className={`table-scene ${state}`}>
                 <div className="row between" style={{ gap: 8, alignItems: 'flex-start' }}>
                   <strong style={{ flex: 1 }}>{i + 1}. {sc.title}</strong>
-                  <button type="button" className="btn small ghost" aria-label={t('Stand der Szene: {s}. Tippen zum Ändern.', { s: t(SCENE_STATE[state]) })}
-                    onClick={() => setSceneState(sc.id, NEXT_STATE[state])}>
-                    {t(SCENE_STATE[state])}
-                  </button>
+                  {/* Überall gleich (auch in der Kurzfassung): Abhaken als Knopf mit Haken, erledigt als Abzeichen */}
+                  {state === 'open'
+                    ? <button type="button" className="btn small outline" aria-label={t('{title} als gespielt abhaken', { title: sc.title })}
+                        onClick={() => setSceneState(sc.id, 'played')}><IconCheck /> {t('Gespielt')}</button>
+                    : <span className="pill">{t(SCENE_STATE[state])}</span>}
                 </div>
                 {sc.notes && <p className="small" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{sc.notes}</p>}
                 <LinkButtons links={sc.links} />
                 {(sc.entryIds?.length ?? 0) > 0 && (
                   <div className="row wrap" style={{ gap: 6 }}>
                     {sc.entryIds!.map((id) => entryName(id) && (
-                      <button key={id} type="button" className="btn small outline" onClick={() => onEntry(id)}>{entryName(id)}</button>
+                      <button key={id} type="button" className="btn small chip" onClick={() => onEntry(id)}>{entryName(id)}</button>
                     ))}
                   </div>
                 )}
+                {state === 'open'
+                  ? <button type="button" className="linklike small muted" style={{ alignSelf: 'flex-start', minHeight: 48 }} onClick={() => setSceneState(sc.id, 'skipped')}>{t('Szene überspringen')}</button>
+                  : <button type="button" className="linklike small muted" style={{ alignSelf: 'flex-start', minHeight: 48 }} onClick={() => setSceneState(sc.id, 'open')}>{t('Wieder offen')}</button>}
               </section>
             );
           })}
@@ -198,7 +202,7 @@ export function PlanPanel({ campaignId, nextNumber, onEntry, onDoc, compact }: {
             <div className="row wrap" style={{ gap: 6 }}>
               {plan.documentIds.map((id) => {
                 const d = docs.find((x) => x.id === id);
-                return d ? <button key={id} type="button" className="btn small outline" onClick={() => onDoc(id)}>{d.title}</button> : null;
+                return d ? <button key={id} type="button" className="btn small chip" onClick={() => onDoc(id)}>{d.title}</button> : null;
               })}
             </div>
           )}
