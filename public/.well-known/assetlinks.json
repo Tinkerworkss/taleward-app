@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.taleward",
+      "sha256_cert_fingerprints": [
+        "6A:3E:3E:F2:21:0C:19:D7:4E:A3:9E:37:2A:03:06:1F:50:96:ED:E1:B3:7A:94:3A:AA:01:21:43:8E:2B:F5:73"
+      ]
+    }
+  }
+]

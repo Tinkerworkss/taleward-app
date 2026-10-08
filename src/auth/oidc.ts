@@ -1,13 +1,25 @@
 import { Capacitor } from '@capacitor/core';
 import { apiFor, fetchServerInfo } from '../api/client';
-import { activeConnections, getConnection, saveConnection, type Connection } from '../api/connections';
+import { activeConnections, getConnection, saveConnection, versionLess, type Connection } from '../api/connections';
 import type { AuthProviderId } from '../api/types';
 
 /*
  * Anmelden mit Google, Discord, Apple, Microsoft (Schnittstelle 0.4.0). Die App spricht nie selbst mit dem Dienst:
  * Sie öffnet /auth/oidc/{provider}/start im Systembrowser (Custom Tabs). Der Server leitet am Ende auf
  * taleward://auth?ticket=… zurück; das Ticket tauscht nur diese App ein, weil nur sie den verifier kennt (PKCE).
+ *
+ * Ab Schnittstelle 0.4.13 führt der Rückweg der Android-App über APP_LINK_RETURN: eine https-Adresse, die Android
+ * dieser App zuordnet (App Link, bestätigt über /.well-known/assetlinks.json).
  */
+
+/** Rückweg der Android-App ab Schnittstelle 0.4.13 (App Link); muss zu setup-android.mjs und public/.well-known passen */
+export const APP_LINK_RETURN = 'https://app.taleward.org/auth/app';
+
+/** Ist das eine Rückkehr vom Anmeldedienst (eigenes Schema oder App Link)? */
+export function isAuthReturnUrl(url: string): boolean {
+  const u = url.toLowerCase();
+  return u.startsWith('taleward://auth') || u === APP_LINK_RETURN || u.startsWith(APP_LINK_RETURN + '?') || u.startsWith(APP_LINK_RETURN + '/');
+}
 
 const PENDING = 'taleward.oidcPending';
 const REGISTER = 'taleward.oidcRegister';
@@ -62,7 +74,12 @@ export async function startProviderLogin(opts: {
   const web = !Capacitor.isNativePlatform() && !MOCK;
   // Pfad der geladenen Seite statt fester Basis: dieselbe Web-Fassung läuft unter /app/ und an der Wurzel
   const path = window.location.pathname.replace(/index\.html$/, '');
-  const returnTo = web ? `${window.location.origin}${path}#/auth` : null;
+  let returnTo = web ? `${window.location.origin}${path}#/auth` : null;
+  // Android-App: App Link statt taleward://, sobald der Server ihn kennt (ab 0.4.13); ältere Server bleiben beim alten Weg
+  if (Capacitor.isNativePlatform() && !MOCK) {
+    const apiVersion = await fetchServerInfo(opts.baseUrl).then((i) => i.apiVersion).catch(() => null);
+    if (apiVersion && !versionLess(apiVersion, '0.4.13')) returnTo = APP_LINK_RETURN;
+  }
   const q = new URLSearchParams({ challenge, purpose: opts.purpose, ...(linkToken ? { linkToken } : {}), ...(returnTo ? { returnTo } : {}) });
   const url = `${opts.baseUrl}/auth/oidc/${opts.provider}/start?${q}`;
 
@@ -93,7 +110,7 @@ export function clearPendingRegister(): void {
   sessionStorage.removeItem(REGISTER);
 }
 
-/** taleward://auth?… verarbeiten; liefert das Ziel, zu dem die App springen soll */
+/** taleward://auth?… bzw. APP_LINK_RETURN?… verarbeiten; liefert das Ziel, zu dem die App springen soll */
 export async function handleAuthUrl(url: string): Promise<string> {
   if (Capacitor.isNativePlatform()) {
     const { Browser } = await import('@capacitor/browser');

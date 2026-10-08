@@ -150,6 +150,16 @@ if (!manifest.includes('android:scheme="taleward"')) {
   console.log('App-Adresse taleward:// eingetragen');
 }
 
+// Rückweg der Anmeldung als App Link (ab Schnittstelle 0.4.13): https://app.taleward.org/auth/app öffnet nur diese App,
+// weil Android die Zuordnung über https://app.taleward.org/.well-known/assetlinks.json prüft (public/.well-known)
+if (!manifest.includes('android:host="app.taleward.org"')) {
+  manifest = manifest.replace(
+    /(<activity[^>]*android:name="\.MainActivity"[\s\S]*?)(<\/activity>)/,
+    `$1    <intent-filter android:autoVerify="true">\n                <action android:name="android.intent.action.VIEW" />\n                <category android:name="android.intent.category.DEFAULT" />\n                <category android:name="android.intent.category.BROWSABLE" />\n                <data android:scheme="https" android:host="app.taleward.org" android:pathPrefix="/auth/app" />\n            </intent-filter>\n        $2`
+  );
+  console.log('App Link https://app.taleward.org/auth/app eingetragen');
+}
+
 // Keine Sicherung der App-Daten: Anmeldungen (Tokens) sollen nicht in Geräte- oder Cloud-Sicherungen landen
 if (/android:allowBackup="true"/.test(manifest)) {
   manifest = manifest.replace('android:allowBackup="true"', 'android:allowBackup="false"');

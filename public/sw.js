@@ -13,6 +13,7 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return; // Server-Anfragen unberührt lassen
+  if (url.pathname.includes('/auth/app')) return; // Rückweg der Anmeldung (Ticket in der Adresse): nie speichern
   if (req.mode === 'navigate') {
     // Seite selbst: immer frisch vom Netz, sonst die zuletzt gesehene Fassung
     e.respondWith(fetch(req).then((res) => {

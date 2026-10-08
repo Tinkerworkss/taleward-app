@@ -1,0 +1,10 @@
+:root { color-scheme: light dark; --papier: #f6efe2; --tinte: #17313b; --text: #2a2118; --leise: #5c5145; }
+@media (prefers-color-scheme: dark) { :root { --papier: #14232a; --text: #efe6d6; --leise: #c2b6a3; --tinte: #e9dcc4; } }
+body { margin: 0; background: var(--papier); color: var(--text); font: 17px/1.5 "Alegreya Sans", system-ui, sans-serif; }
+main { max-width: 34rem; margin: 0 auto; padding: 48px 16px; display: flex; flex-direction: column; gap: 16px; }
+h1 { font: 700 28px/1.2 "Alegreya", Georgia, serif; margin: 0; }
+p { margin: 0; }
+.knopf { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 20px; border-radius: 999px;
+  background: var(--tinte); color: var(--papier); font-weight: 700; text-decoration: none; align-self: flex-start; }
+.knopf:focus-visible, a:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
+.leise, .leise a { color: var(--leise); font-size: 15px; }

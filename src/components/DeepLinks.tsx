@@ -1,4 +1,4 @@
-import { handleAuthUrl } from '../auth/oidc';
+import { handleAuthUrl, isAuthReturnUrl } from '../auth/oidc';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
@@ -42,7 +42,7 @@ export function DeepLinks() {
         return;
       }
       // Rückkehr vom Anmeldedienst
-      if (url.toLowerCase().startsWith('taleward://auth')) {
+      if (isAuthReturnUrl(url)) {
         navigate(await handleAuthUrl(url), { replace: true });
         return;
       }

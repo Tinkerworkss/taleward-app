@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <meta name="referrer" content="no-referrer">
+  <title>Taleward – Anmeldung</title>
+  <link rel="stylesheet" href="seite.css">
+</head>
+<body>
+  <!--
+    Rückweg der Anmeldung für die Android-App (App Link). Normalerweise öffnet Android diese Adresse gleich in der
+    Taleward-App und zeigt die Seite nie. Erscheint sie doch (App nicht installiert, Zuordnung noch nicht bestätigt),
+    geht es mit einem Tipp in der App weiter.
+  -->
+  <main>
+    <h1 data-de="Anmeldung abschließen" data-en="Finish signing in">Anmeldung abschließen</h1>
+    <p id="text" data-de="Tippe auf den Knopf, um die Anmeldung in der Taleward-App abzuschließen. Hast du die Anmeldung nicht selbst in der App begonnen, schließ diese Seite einfach."
+       data-en="Tap the button to finish signing in to the Taleward app. If you didn’t start signing in from the app yourself, just close this page.">Tippe auf den Knopf, um die Anmeldung in der Taleward-App abzuschließen. Hast du die Anmeldung nicht selbst in der App begonnen, schließ diese Seite einfach.</p>
+    <a id="weiter" class="knopf" href="taleward://auth" data-de="In der Taleward-App abschließen" data-en="Finish in the Taleward app">In der Taleward-App abschließen</a>
+    <p class="leise"><a href="/" data-de="Zur Web-Fassung von Taleward" data-en="Go to the Taleward web app">Zur Web-Fassung von Taleward</a></p>
+  </main>
+  <script src="weiter.js"></script>
+</body>
+</html>
