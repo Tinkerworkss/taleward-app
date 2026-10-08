@@ -1,5 +1,6 @@
 import { http, HttpResponse, delay } from 'msw';
 import { DEMO_HOST, DEMO_USERS, musterProbe } from './muster/seed';
+import { textToPdf } from './minipdf';
 
 /** Alle Titelbild-IDs (Schnittstelle 0.4.3) – wie der Server: neue Kampagnen bekommen eines zufällig */
 const COVER_IDS = ['meadow', 'forest', 'desert', 'city', 'cyber', 'mountains', 'coast', 'swamp', 'dungeon', 'space', 'castle', 'dark-fantasy', 'moonwood', 'ancient-ruins', 'tavern', 'battlefield', 'frozen-north', 'arcane-ruins', 'fairy-wilds', 'underworld', 'storm-coast', 'steampunk', 'post-apocalypse', 'western', 'noir', 'space-opera', 'orient', 'necropolis', 'manor', 'riverside-mystery'];
@@ -1138,8 +1139,14 @@ export const handlers = [
   http.get(`${B}/documents/:did/file`, ({ params }) => {
     const d = documents.find((x) => x.id === params.did);
     if (!d || !isGm(d.campaignId)) return err(404, 'not_found', 'Unterlage nicht gefunden.');
-    // Testmodus: statt der Originaldatei der erkannte Text
-    return new HttpResponse((documentTexts[d.id] ?? '').replace(/\f/g, '\n\n'), {
+    const text = documentTexts[d.id] ?? '';
+    // Testmodus: PDF-Unterlagen als echte PDF aus dem erkannten Text, alles andere als Text
+    if (/\.pdf$/i.test(d.fileName)) {
+      return new HttpResponse(textToPdf(text.split('\f'), d.title), {
+        headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${d.fileName.replace(/[^\w.-]/g, '_')}"`, 'Cache-Control': 'no-store' }
+      });
+    }
+    return new HttpResponse(text.replace(/\f/g, '\n\n'), {
       headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }
     });
   }),

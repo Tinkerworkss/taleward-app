@@ -7,7 +7,8 @@ import { p } from '../api/connections';
 import { Link } from 'react-router-dom';
 import { t, tk } from '../i18n';
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { fuzzyFilter } from '../search/fuzzy';
 import { api } from '../api/client';
 import type { Campaign, Entry, EntryType, Member } from '../api/types';
 import { Dialog } from '../components/Dialog';
@@ -34,8 +35,10 @@ export function Bible() {
   const { campaignId = '' } = useParams();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [tab, setTab] = useState<EntryType>('npc');
-  const [query, setQuery] = useState('');
-  const [entries, setEntries] = useState<Entry[] | null>(null);
+  // Suche aus der Übersicht kommt als ?q= mit
+  const [params] = useSearchParams();
+  const [query, setQuery] = useState(() => params.get('q') ?? '');
+  const [all, setAll] = useState<Entry[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [adding, setAdding] = useState(false);
   const [reload, setReload] = useState(0);
@@ -49,13 +52,15 @@ export function Bible() {
     }).catch(setError);
   }, [campaignId]);
 
+  // Die ganze Bibel einmal laden (der Server gibt nur, was diese Person sehen darf) und hier fehlertolerant suchen:
+  // „Kasmürin“ findet „Kasmyrin“, kleine Tippfehler auch
   useEffect(() => {
-    const t = setTimeout(() => {
-      api.entries(campaignId, query ? undefined : tab, query || undefined).then(setEntries).catch(setError);
-    }, query ? 250 : 0);
-    return () => clearTimeout(t);
-  }, [campaignId, tab, query, reload]);
+    api.entries(campaignId).then(setAll).catch(setError);
+  }, [campaignId, reload]);
 
+  const entries = all && (query.trim()
+    ? fuzzyFilter(all, query, (e) => [e.name, e.summary, e.gmNotes ?? ''])
+    : all.filter((e) => e.type === tab));
   const holder = (id: string | null | undefined) => {
     const m = campaign?.members.find((x) => x.id === id);
     return m ? t('Bei {name}', { name: m.characterName ?? m.displayName }) : null;
@@ -92,7 +97,7 @@ export function Bible() {
       {entries?.map((e) => (
         <EntryCard key={e.id} entry={e} gm={campaign?.myRole === 'gm'} holder={holder(e.holderMemberId)} campaign={campaign}
           players={campaign?.members.filter((m) => m.role === 'player' && !isDeletedMember(m)) ?? []}
-          onChanged={(u) => setEntries((list) => (u ? list?.map((x) => (x.id === u.id ? u : x)) : list?.filter((x) => x.id !== e.id)) ?? null)} />
+          onChanged={(u) => setAll((list) => (u ? list?.map((x) => (x.id === u.id ? u : x)) : list?.filter((x) => x.id !== e.id)) ?? null)} />
       ))}
       </div>
 

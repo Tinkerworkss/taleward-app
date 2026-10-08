@@ -20,6 +20,7 @@ import { useAuth } from '../auth/AuthContext';
 import type { Campaign, GameSystem, GmNotice, Member, SessionSummary, Usage } from '../api/types';
 import { IconCheck, IconInfo, IconLock } from '../components/Icons';
 import { LinkButtons } from '../components/Links';
+import { MusterBanner } from '../components/Muster';
 import { Divider, ErrorBox, Screen, rememberCampaign } from '../components/Screen';
 import { formatDateFull, formatDateTime } from '../components/format';
 import { CONSENT_STANDING, CONSENT_SUMMARY } from '../consent';
@@ -85,6 +86,7 @@ export function Overview() {
             </p>
           )}
 
+          <MusterBanner />
           {campaign.archivedAt && (
             <div className="notice"><strong>{t('Abgeschlossen')}</strong>&nbsp;{t('– nur noch zum Nachlesen, keine neuen Kapitel.')}</div>
           )}
@@ -128,6 +130,7 @@ export function Overview() {
             </Link>
           )}
           {gm && campaign.gmNotices?.map((n) => <GmNoticeCard key={n.id} campaign={campaign} notice={n} onDone={load} />)}
+          <BibleSearch campaignId={campaignId} />
           {/* Nächste Runde */}
           <Link to={p(`/k/${campaignId}/termin`)} className={campaign.datePollNeedsMyVote ? 'card task' : 'card'}>
             <div className="row between">
@@ -187,6 +190,21 @@ export function Overview() {
         </>
       )}
     </Screen>
+  );
+}
+
+/** „Wer war das?“ – Suchfeld, das in die Bibel springt (fehlertolerant, siehe search/fuzzy.ts) */
+function BibleSearch({ campaignId }: { campaignId: string }) {
+  const navigate = useNavigate();
+  const [q, setQ] = useState('');
+  return (
+    <form role="search" className="card overview-search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) navigate(p(`/k/${campaignId}/bibel?q=${encodeURIComponent(q.trim())}`)); }}>
+      <label htmlFor="overview-search" className="overline">{t('Wer war das?')}</label>
+      <div className="row" style={{ gap: 8 }}>
+        <input id="overview-search" type="search" enterKeyHint="search" placeholder={t('Name in der Bibel suchen …')} value={q} onChange={(e) => setQ(e.target.value)} />
+        <button type="submit" className="btn small outline" disabled={!q.trim()}>{t('Suchen')}</button>
+      </div>
+    </form>
   );
 }
 

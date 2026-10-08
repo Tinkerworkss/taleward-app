@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { endMuster, musterConnection, musterPath, startMuster } from '../api/musterRuntime';
-import type { MusterRole } from '../api/muster';
+import { isMusterUrl, type MusterRole } from '../api/muster';
+import { currentConnection } from '../api/connections';
 import { t } from '../i18n';
 import { confirmDialog } from './confirm';
 import { ErrorBox } from './Screen';
@@ -49,21 +50,38 @@ export function MusterTry() {
   );
 }
 
+async function askEnd(): Promise<void> {
+  const ok = await confirmDialog(
+    t('Musterkampagne beenden? Sie verschwindet mit ihren Charakteren von diesem Gerät. Deine eigenen Kampagnen und Charaktere bleiben.'),
+    { confirmLabel: t('Beenden'), danger: true }
+  );
+  if (ok) endMuster();
+}
+
 /** Hinweis in der Kampagnenliste, solange die Musterkampagne läuft */
 export function MusterNotice() {
   if (!musterConnection()) return null;
-  const end = async () => {
-    const ok = await confirmDialog(
-      t('Musterkampagne beenden? Sie verschwindet mit ihren Charakteren von diesem Gerät. Deine eigenen Kampagnen und Charaktere bleiben.'),
-      { confirmLabel: t('Beenden'), danger: true }
-    );
-    if (ok) endMuster();
-  };
   return (
     <section className="card" aria-labelledby="muster-notice">
       <strong id="muster-notice">{t('Musterkampagne')}</strong>
       <span className="muted small">{t('Alles darin ist erfunden und bleibt auf diesem Gerät. Was du änderst, ist nach einem Neustart der App wieder wie vorher.')}</span>
-      <button type="button" className="btn small ghost" style={{ alignSelf: 'flex-start' }} onClick={end}>{t('Musterkampagne beenden')}</button>
+      <button type="button" className="btn small ghost" style={{ alignSelf: 'flex-start' }} onClick={askEnd}>{t('Musterkampagne beenden')}</button>
     </section>
+  );
+}
+
+/** Schmaler Hinweis in der Kampagne selbst, damit niemand die Musterkampagne für eine echte hält */
+export function MusterBanner() {
+  let muster = false;
+  try { muster = isMusterUrl(currentConnection().baseUrl); } catch { /* keine Verbindung */ }
+  if (!muster) return null;
+  return (
+    <div className="notice" role="note" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
+      <span>
+        <strong>{t('Musterkampagne')}</strong>{' '}
+        {t('Alles hier ist erfunden und bleibt auf diesem Gerät. Probier ruhig alles aus; nach einem Neustart der App ist es wieder wie vorher.')}
+      </span>
+      <button type="button" className="btn small ghost" onClick={askEnd}>{t('Musterkampagne beenden')}</button>
+    </div>
   );
 }

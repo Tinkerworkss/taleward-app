@@ -1763,3 +1763,9 @@ button.table-group-face {
   min-height: 72px;
   resize: vertical;
 }
+
+/* Übersicht: „Wer war das?“ */
+.overview-search input {
+  flex: 1;
+  min-width: 0;
+}

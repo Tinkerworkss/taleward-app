@@ -1145,4 +1145,6 @@ export const en: Record<string, string> = {
   "Gespeichert im Plan „{title}“. Nur für dich, fließt nie in ein Kapitel.": "Saved in the plan “{title}”. Just for you, never goes into a chapter.",
   "Wird mit der ersten Notiz im Plan der nächsten Runde gespeichert.": "Saved in the next session’s plan as soon as you write something.",
   "Nur auf diesem Gerät gespeichert, bis dein Server Notizen kann.": "Only saved on this device until your server can store notes.",
+  "Name in der Bibel suchen …": "Search the bible for a name …",
+  "Alles hier ist erfunden und bleibt auf diesem Gerät. Probier ruhig alles aus; nach einem Neustart der App ist es wieder wie vorher.": "Everything here is made up and stays on this device. Try whatever you like; after restarting the app it’s back to how it was.",
 };
