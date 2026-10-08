@@ -1,2 +1,0 @@
-- SL-Schirm: Die Uhr zeigt jetzt drei Werte nebeneinander – wie spät es ist, wie lange die Runde läuft und wie viel Zeit bis zum geplanten Ende bleibt –, darunter einen Balken für den Abend. Über der Zeit wird es rot.
-- Kapitelplan: Kein doppelter Kapitelname mehr, und ein leerer Plan sagt, wo du Szenen anlegst.
