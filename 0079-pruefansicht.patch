@@ -1,0 +1,265 @@
+From 852b381e405d8864c3384faf1fc93ee401dbcb4f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 9 Oct 2026 14:43:04 +0200
+Subject: [PATCH] =?UTF-8?q?Ruhigere=20Pr=C3=BCfansicht,=20SL-Schirm-Knopf?=
+ =?UTF-8?q?=20dezenter?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ docs/session-chronik-api.yaml      |  7 ++-
+ src/components/RecapReviewView.tsx | 96 +++++++++++++-----------------
+ src/i18n/en.ts                     | 24 +++-----
+ src/theme.css                      | 44 +++++++-------
+ 4 files changed, 77 insertions(+), 94 deletions(-)
+
+diff --git a/docs/session-chronik-api.yaml b/docs/session-chronik-api.yaml
+index 927afe1..84c6862 100644
+--- a/docs/session-chronik-api.yaml
++++ b/docs/session-chronik-api.yaml
+@@ -3538,3 +3538,8 @@ components:
+                   übersprungen (z. B. Zeitgrenze).
+-              note: { type: [string, "null"], description: "Kurze Begründung des Prüfers für die SL" }
++              note:
++                type: [string, "null"]
++                description: |
++                  Begründung des Prüfers für die SL: ein Satz, für Menschen geschrieben, ohne Zitate oder Zeitangaben
++                  (die stehen in evidence). Die App zeigt sie nur bei contradicted, unsupported und off_game; bei
++                  supported und partial darf sie leer sein. Belege zeigt die App höchstens zwei je Absatz.
+               evidence:
+diff --git a/src/components/RecapReviewView.tsx b/src/components/RecapReviewView.tsx
+index 14deb24..0f127f8 100644
+--- a/src/components/RecapReviewView.tsx
++++ b/src/components/RecapReviewView.tsx
+@@ -3,5 +3,4 @@ import { api } from '../api/client';
+ import type { Member, Recap, ReviewVerdict, TranscriptSegment } from '../api/types';
+-import { t } from '../i18n';
++import { t, tn } from '../i18n';
+ import { Dialog } from './Dialog';
+-import { IconCheck } from './Icons';
+ import { ErrorBox } from './Screen';
+@@ -9,18 +8,18 @@ import { ErrorBox } from './Screen';
+ /*
+- * Gegenprüfung des Recap-Entwurfs (Schnittstelle 0.4.6, nur SL): Prüfbericht als Satz, je Absatz eine Randmarke
+- * mit Symbol und Wort, aufklappbar mit Begründung und Belegstellen. Farben nach Markenhandbuch:
+- * salbei = belegt, messing = teilweise (nur als Rand, nie als Schrift), siegel = nicht belegt / widersprochen,
+- * grau = außerhalb des Spiels / nicht geprüft.
++ * Gegenprüfung des Recap-Entwurfs (Schnittstelle 0.4.6, nur SL). Ruhige Ansicht: Der Text sieht aus wie Text.
++ * Markiert wird nur, wo die SL hinschauen sollte – „widerspricht“ mit einem Randstrich in siegel, „nicht gefunden“ und
++ * „außerhalb des Spiels“ mit einem neutralen Strich. Belegt, teilweise belegt und nicht geprüft bleiben unmarkiert.
++ * Je markiertem Absatz die Begründung des Prüfers als Satz (ohne Begründung ein kurzes Wort zur Art), Belege nur zum
++ * Aufklappen (höchstens zwei).
+  */
+ 
+-const svg = { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.75, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true };
++/** Diese Urteile bekommen eine Markierung */
++const FLAGGED: ReviewVerdict[] = ['contradicted', 'unsupported', 'off_game'];
++const MAX_EVIDENCE = 2;
+ 
+-function VerdictIcon({ verdict }: { verdict: ReviewVerdict }) {
+-  switch (verdict) {
+-    case 'supported': return <IconCheck size={16} />;
+-    case 'partial': return <svg {...svg}><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" /></svg>;
+-    case 'unsupported': return <svg {...svg}><circle cx="12" cy="12" r="8" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.4M12 16.5v.01" /></svg>;
+-    case 'contradicted': return <svg {...svg}><path d="M6 6l12 12M18 6 6 18" /></svg>;
+-    case 'off_game': return <svg {...svg}><path d="M4 12h16" /><path d="M8 8l-4 4 4 4M16 8l4 4-4 4" /></svg>;
+-    default: return <svg {...svg}><path d="M7 12h10" /></svg>;
++function flagLabel(v: ReviewVerdict): string {
++  switch (v) {
++    case 'contradicted': return t('Passt nicht zur Abschrift.');
++    case 'unsupported': return t('In der Abschrift nicht gefunden.');
++    default: return t('Vermutlich außerhalb des Spiels.');
+   }
+@@ -28,11 +27,7 @@ function VerdictIcon({ verdict }: { verdict: ReviewVerdict }) {
+ 
+-function verdictLabel(v: ReviewVerdict): string {
+-  switch (v) {
+-    case 'supported': return t('Belegt');
+-    case 'partial': return t('Teilweise belegt');
+-    case 'unsupported': return t('Nicht belegt');
+-    case 'contradicted': return t('Widerspricht dem Transkript');
+-    case 'off_game': return t('Vermutlich außerhalb des Spiels');
+-    default: return t('Nicht geprüft');
+-  }
++/** Absätze, die die SL ansehen sollte */
++function flagged(recap: Recap) {
++  const r = recap.review;
++  if (!r || r.state !== 'done') return [];
++  return r.paragraphs.filter((p) => FLAGGED.includes(p.verdict));
+ }
+@@ -48,14 +43,7 @@ export function clock(seconds: number): string {
+ 
+-/** Prüfbericht als ein Satz, z. B. „3 Absätze: 1 belegt, 1 teilweise, 1 nicht belegt.“ */
++/** Eine Zeile über dem Entwurf: „3 Stellen zum Ansehen“ bzw. „Nichts aufgefallen“ */
+ export function reportSentence(recap: Recap): string | null {
+-  const r = recap.review?.report;
+-  if (!r) return null;
+-  const parts = [
+-    r.supported ? t('{n} belegt', { n: r.supported }) : '',
+-    r.partial ? t('{n} teilweise', { n: r.partial }) : '',
+-    r.unsupported ? t('{n} nicht belegt', { n: r.unsupported }) : '',
+-    r.contradicted ? t('{n} widersprechen dem Transkript', { n: r.contradicted }) : '',
+-    r.offGame ? t('{n} vermutlich außerhalb des Spiels', { n: r.offGame }) : ''
+-  ].filter(Boolean);
+-  return t('{total} Absätze geprüft: {parts}.', { total: r.total, parts: parts.join(', ') });
++  if (recap.review?.state !== 'done') return null;
++  const n = flagged(recap).length;
++  return n ? tn(n, '{n} Stelle zum Ansehen', '{n} Stellen zum Ansehen') : t('Nichts aufgefallen');
+ }
+@@ -64,4 +52,3 @@ export function reportSentence(recap: Recap): string | null {
+ export function reviewNeedsAttention(recap: Recap): boolean {
+-  const r = recap.review;
+-  return !!r && r.state === 'done' && r.paragraphs.some((p) => p.verdict === 'unsupported' || p.verdict === 'contradicted' || p.verdict === 'partial');
++  return flagged(recap).some((p) => p.verdict !== 'off_game');
+ }
+@@ -108,24 +95,25 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
+       {review.stale && <p className="muted small" style={{ margin: 0 }}>{t('Die Prüfung ist von vor deiner Änderung – die Zuordnung der Absätze kann verrutscht sein.')}</p>}
+-      {review.revised && <p className="muted small" style={{ margin: 0 }}>{t('Beanstandete Absätze wurden einmal neu geschrieben.')}</p>}
+ 
+       {paragraphs.map((para, i) => {
+-        const info = review.paragraphs.find((x) => x.index === i);
+-        const verdict: ReviewVerdict = info?.verdict ?? 'unchecked';
+-        const hasDetails = !!info && (!!info.note || info.evidence.length > 0);
++        const info = review.state === 'done' ? review.paragraphs.find((x) => x.index === i) : undefined;
++        if (!info || !FLAGGED.includes(info.verdict)) {
++          return <div key={i} className="review-para"><div className="recap"><p>{para}</p></div></div>;
++        }
++        const evidence = info.evidence.slice(0, MAX_EVIDENCE);
+         return (
+-          <div key={i} className={`review-para v-${verdict}`}>
+-            <span className="review-mark"><VerdictIcon verdict={verdict} /> {verdictLabel(verdict)}</span>
++          <div key={i} className={`review-para flagged v-${info.verdict}`}>
+             <div className="recap"><p>{para}</p></div>
+-            {hasDetails && (
++            <p className="review-note small">
++              {/* Die Begründung des Prüfers genügt; ohne sie ein kurzes Wort zur Art */}
++              {info.note ? info.note : <strong>{flagLabel(info.verdict)}</strong>}
++            </p>
++            {evidence.length > 0 && (
+               <details>
+-                <summary className="small">{info!.evidence.length ? t('Belege ({n})', { n: info!.evidence.length }) : t('Begründung')}</summary>
+-                {info!.note && <p className="small" style={{ margin: '6px 0' }}>{info!.note}</p>}
+-                {info!.evidence.map((ev, k) => (
+-                  <div key={k} className="review-evidence">
+-                    <span className="small">„{ev.quote}“</span>
+-                    <span className="row wrap small muted" style={{ gap: 8 }}>
+-                      <span>{clock(ev.start)}{speaker(ev.speakerMemberId) ? ' · ' + speaker(ev.speakerMemberId) : ''}</span>
+-                      <button type="button" className="btn small ghost" onClick={() => showExcerpt(ev.start)}>{t('Im Transkript zeigen')}</button>
+-                    </span>
+-                  </div>
++                <summary className="small">{t('Belege ansehen')}</summary>
++                {evidence.map((ev, k) => (
++                  <button key={k} type="button" className="review-evidence linklike small" onClick={() => showExcerpt(ev.start)}
++                    aria-label={t('Abschrift um {time} zeigen: {quote}', { time: clock(ev.start), quote: ev.quote })}>
++                    <span className="muted">{clock(ev.start)}{speaker(ev.speakerMemberId) ? ' · ' + speaker(ev.speakerMemberId) : ''}</span>
++                    <span>{t('„{q}“', { q: ev.quote })}</span>
++                  </button>
+                 ))}
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index af403d4..88a2243 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -701,14 +701,2 @@ export const en: Record<string, string> = {
+   "Beleg im Transkript nicht gefunden": "Evidence not found in the transcript",
+-  "Belegt": "Supported",
+-  "Teilweise belegt": "Partly supported",
+-  "Nicht belegt": "Not supported",
+-  "Widerspricht dem Transkript": "Contradicts the transcript",
+-  "Vermutlich außerhalb des Spiels": "Probably out of game",
+-  "Nicht geprüft": "Not checked",
+-  "{n} belegt": "{n} supported",
+-  "{n} teilweise": "{n} partly",
+-  "{n} nicht belegt": "{n} not supported",
+-  "{n} widersprechen dem Transkript": "{n} contradict the transcript",
+-  "{n} vermutlich außerhalb des Spiels": "{n} probably out of game",
+-  "{total} Absätze geprüft: {parts}.": "{total} paragraphs checked: {parts}.",
+   "SL": "GM",
+@@ -716,6 +704,2 @@ export const en: Record<string, string> = {
+   "Die Prüfung ist von vor deiner Änderung – die Zuordnung der Absätze kann verrutscht sein.": "The check is from before your edit – paragraphs may no longer line up.",
+-  "Beanstandete Absätze wurden einmal neu geschrieben.": "Flagged paragraphs were rewritten once.",
+-  "Belege ({n})": "Evidence ({n})",
+-  "Begründung": "Reason",
+-  "Im Transkript zeigen": "Show in transcript",
+   "Transkript um {time}": "Transcript at {time}",
+@@ -1171,2 +1155,10 @@ export const en: Record<string, string> = {
+   "Zusammenfassung über {provider} für „{campaign}“ auf „{server}“ erlauben? Text der Runde und Unterlagen gehen dann dorthin, keine Stimmen. Sag es vorher allen am Tisch.": "Allow summaries via {provider} for “{campaign}” on “{server}”? Session text and documents will then go there, no voices. Tell everyone at the table first.",
++  "Passt nicht zur Abschrift.": "Doesn’t match the transcript.",
++  "In der Abschrift nicht gefunden.": "Not found in the transcript.",
++  "Vermutlich außerhalb des Spiels.": "Probably outside the game.",
++  "{n} Stelle zum Ansehen": "{n} spot to look at",
++  "{n} Stellen zum Ansehen": "{n} spots to look at",
++  "Nichts aufgefallen": "Nothing stood out",
++  "Belege ansehen": "Show evidence",
++  "Abschrift um {time} zeigen: {quote}": "Show transcript at {time}: {quote}",
+ };
+diff --git a/src/theme.css b/src/theme.css
+index fda9fee..be3c48c 100644
+--- a/src/theme.css
++++ b/src/theme.css
+@@ -896,3 +896,3 @@ details.card[open] { padding-bottom: var(--space-4); }
+ 
+-/* Gegenprüfung des Recaps (nur SL, ab Schnittstelle 0.4.6): Randmarke je Absatz, immer Symbol plus Wort */
++/* Gegenprüfung des Recaps (nur SL, ab Schnittstelle 0.4.6): ruhig – nur auffällige Absätze bekommen einen Randstrich */
+ .review {
+@@ -903,3 +903,3 @@ details.card[open] { padding-bottom: var(--space-4); }
+ .review-para {
+-  border-left: 4px solid var(--line-strong);
++  border-left: 3px solid transparent;
+   padding-left: 12px;
+@@ -909,25 +909,19 @@ details.card[open] { padding-bottom: var(--space-4); }
+ }
+-.review-mark {
+-  display: inline-flex;
+-  align-items: center;
+-  gap: 6px;
+-  font: 600 13px/18px var(--font-sans);
+-  color: var(--ink-muted);
+-}
+-.review-para.v-supported { border-left-color: var(--salbei); }
+-.review-para.v-supported .review-mark { color: var(--salbei); }
+-.review-para.v-partial { border-left-color: var(--messing); }
+-.review-para.v-partial .review-mark { color: var(--ink); }
+-.review-para.v-unsupported,
++.review-para.flagged { border-left-color: var(--line-strong); }
+ .review-para.v-contradicted { border-left-color: var(--siegel); }
+-.review-para.v-unsupported .review-mark,
+-.review-para.v-contradicted .review-mark { color: var(--siegel-text); }
+-.review-para.v-off_game,
+-.review-para.v-unchecked { border-left-style: dashed; }
+-.review-para summary { cursor: pointer; padding: 6px 0; color: var(--ink-muted); }
+-.review-evidence {
++.review-note { margin: 0; color: var(--ink-muted); }
++.review-note strong { color: var(--ink); font-weight: 600; }
++.review-para.v-contradicted .review-note { color: var(--siegel-text); }
++/* „Belege ansehen“ folgt dem Muster für Aufklappbares (Pfeil rechts) */
++.review-para summary { color: var(--ink-muted); }
++.review-para .review-evidence {
+   display: flex;
+   flex-direction: column;
++  align-items: flex-start;
+   gap: 2px;
++  width: 100%;
++  min-height: 48px;
+   padding: 6px 0;
++  text-align: left;
++  text-decoration: none;
+   border-top: 1px solid var(--line);
+@@ -1643,9 +1637,12 @@ details.card[open] { padding-bottom: var(--space-4); }
+ 
+-/* Leicht hervorgehoben, aber kein Hauptknopf: Umriss in Messing, Schrift in Tinte */
++/* Werkzeug-Link oben auf der Übersicht (SL-Schirm): ruhig wie „Titelbild ändern“, nur mit Symbol und ohne Unterstrich */
+ .btn.accent {
+-  background: var(--paper-raised);
+-  border: 2px solid var(--messing);
++  background: none;
++  border-color: transparent;
++  box-shadow: none;
+   color: var(--ink);
+-  gap: 8px;
++  font-weight: 600;
++  gap: 6px;
+ }
++.btn.accent:hover { background: var(--paper-sunken); }
