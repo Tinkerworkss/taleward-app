@@ -1,40 +1,35 @@
 import { useState } from 'react';
 import { api } from '../api/client';
 import type { Member, Recap, ReviewVerdict, TranscriptSegment } from '../api/types';
-import { t } from '../i18n';
+import { t, tn } from '../i18n';
 import { Dialog } from './Dialog';
-import { IconCheck } from './Icons';
 import { ErrorBox } from './Screen';
 
 /*
- * Gegenprüfung des Recap-Entwurfs (Schnittstelle 0.4.6, nur SL): Prüfbericht als Satz, je Absatz eine Randmarke
- * mit Symbol und Wort, aufklappbar mit Begründung und Belegstellen. Farben nach Markenhandbuch:
- * salbei = belegt, messing = teilweise (nur als Rand, nie als Schrift), siegel = nicht belegt / widersprochen,
- * grau = außerhalb des Spiels / nicht geprüft.
+ * Gegenprüfung des Recap-Entwurfs (Schnittstelle 0.4.6, nur SL). Ruhige Ansicht: Der Text sieht aus wie Text.
+ * Markiert wird nur, wo die SL hinschauen sollte – „widerspricht“ mit einem Randstrich in siegel, „nicht gefunden“ und
+ * „außerhalb des Spiels“ mit einem neutralen Strich. Belegt, teilweise belegt und nicht geprüft bleiben unmarkiert.
+ * Je markiertem Absatz die Begründung des Prüfers als Satz (ohne Begründung ein kurzes Wort zur Art), Belege nur zum
+ * Aufklappen (höchstens zwei).
  */
 
-const svg = { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.75, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true };
+/** Diese Urteile bekommen eine Markierung */
+const FLAGGED: ReviewVerdict[] = ['contradicted', 'unsupported', 'off_game'];
+const MAX_EVIDENCE = 2;
 
-function VerdictIcon({ verdict }: { verdict: ReviewVerdict }) {
-  switch (verdict) {
-    case 'supported': return <IconCheck size={16} />;
-    case 'partial': return <svg {...svg}><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" /></svg>;
-    case 'unsupported': return <svg {...svg}><circle cx="12" cy="12" r="8" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.4M12 16.5v.01" /></svg>;
-    case 'contradicted': return <svg {...svg}><path d="M6 6l12 12M18 6 6 18" /></svg>;
-    case 'off_game': return <svg {...svg}><path d="M4 12h16" /><path d="M8 8l-4 4 4 4M16 8l4 4-4 4" /></svg>;
-    default: return <svg {...svg}><path d="M7 12h10" /></svg>;
+function flagLabel(v: ReviewVerdict): string {
+  switch (v) {
+    case 'contradicted': return t('Passt nicht zur Abschrift.');
+    case 'unsupported': return t('In der Abschrift nicht gefunden.');
+    default: return t('Vermutlich außerhalb des Spiels.');
   }
 }
 
-function verdictLabel(v: ReviewVerdict): string {
-  switch (v) {
-    case 'supported': return t('Belegt');
-    case 'partial': return t('Teilweise belegt');
-    case 'unsupported': return t('Nicht belegt');
-    case 'contradicted': return t('Widerspricht dem Transkript');
-    case 'off_game': return t('Vermutlich außerhalb des Spiels');
-    default: return t('Nicht geprüft');
-  }
+/** Absätze, die die SL ansehen sollte */
+function flagged(recap: Recap) {
+  const r = recap.review;
+  if (!r || r.state !== 'done') return [];
+  return r.paragraphs.filter((p) => FLAGGED.includes(p.verdict));
 }
 
 /** Sekunden → 1:02:03 bzw. 12:34 */
@@ -46,24 +41,16 @@ export function clock(seconds: number): string {
   return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
 }
 
-/** Prüfbericht als ein Satz, z. B. „3 Absätze: 1 belegt, 1 teilweise, 1 nicht belegt.“ */
+/** Eine Zeile über dem Entwurf: „3 Stellen zum Ansehen“ bzw. „Nichts aufgefallen“ */
 export function reportSentence(recap: Recap): string | null {
-  const r = recap.review?.report;
-  if (!r) return null;
-  const parts = [
-    r.supported ? t('{n} belegt', { n: r.supported }) : '',
-    r.partial ? t('{n} teilweise', { n: r.partial }) : '',
-    r.unsupported ? t('{n} nicht belegt', { n: r.unsupported }) : '',
-    r.contradicted ? t('{n} widersprechen dem Transkript', { n: r.contradicted }) : '',
-    r.offGame ? t('{n} vermutlich außerhalb des Spiels', { n: r.offGame }) : ''
-  ].filter(Boolean);
-  return t('{total} Absätze geprüft: {parts}.', { total: r.total, parts: parts.join(', ') });
+  if (recap.review?.state !== 'done') return null;
+  const n = flagged(recap).length;
+  return n ? tn(n, '{n} Stelle zum Ansehen', '{n} Stellen zum Ansehen') : t('Nichts aufgefallen');
 }
 
 /** Braucht der Entwurf Aufmerksamkeit? (dann klappt die Ansicht von selbst auf) */
 export function reviewNeedsAttention(recap: Recap): boolean {
-  const r = recap.review;
-  return !!r && r.state === 'done' && r.paragraphs.some((p) => p.verdict === 'unsupported' || p.verdict === 'contradicted' || p.verdict === 'partial');
+  return flagged(recap).some((p) => p.verdict !== 'off_game');
 }
 
 export function RecapReviewView({ sessionId, recap, members = [], showReport = true }: {
@@ -106,28 +93,29 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
       {review.state === 'pending' && <p className="muted small" style={{ margin: 0 }}>{t('Die Gegenprüfung läuft noch.')}</p>}
       {showReport && review.state === 'done' && <p className="small" style={{ margin: 0 }}><strong>{reportSentence(recap)}</strong></p>}
       {review.stale && <p className="muted small" style={{ margin: 0 }}>{t('Die Prüfung ist von vor deiner Änderung – die Zuordnung der Absätze kann verrutscht sein.')}</p>}
-      {review.revised && <p className="muted small" style={{ margin: 0 }}>{t('Beanstandete Absätze wurden einmal neu geschrieben.')}</p>}
 
       {paragraphs.map((para, i) => {
-        const info = review.paragraphs.find((x) => x.index === i);
-        const verdict: ReviewVerdict = info?.verdict ?? 'unchecked';
-        const hasDetails = !!info && (!!info.note || info.evidence.length > 0);
+        const info = review.state === 'done' ? review.paragraphs.find((x) => x.index === i) : undefined;
+        if (!info || !FLAGGED.includes(info.verdict)) {
+          return <div key={i} className="review-para"><div className="recap"><p>{para}</p></div></div>;
+        }
+        const evidence = info.evidence.slice(0, MAX_EVIDENCE);
         return (
-          <div key={i} className={`review-para v-${verdict}`}>
-            <span className="review-mark"><VerdictIcon verdict={verdict} /> {verdictLabel(verdict)}</span>
+          <div key={i} className={`review-para flagged v-${info.verdict}`}>
             <div className="recap"><p>{para}</p></div>
-            {hasDetails && (
+            <p className="review-note small">
+              {/* Die Begründung des Prüfers genügt; ohne sie ein kurzes Wort zur Art */}
+              {info.note ? info.note : <strong>{flagLabel(info.verdict)}</strong>}
+            </p>
+            {evidence.length > 0 && (
               <details>
-                <summary className="small">{info!.evidence.length ? t('Belege ({n})', { n: info!.evidence.length }) : t('Begründung')}</summary>
-                {info!.note && <p className="small" style={{ margin: '6px 0' }}>{info!.note}</p>}
-                {info!.evidence.map((ev, k) => (
-                  <div key={k} className="review-evidence">
-                    <span className="small">„{ev.quote}“</span>
-                    <span className="row wrap small muted" style={{ gap: 8 }}>
-                      <span>{clock(ev.start)}{speaker(ev.speakerMemberId) ? ' · ' + speaker(ev.speakerMemberId) : ''}</span>
-                      <button type="button" className="btn small ghost" onClick={() => showExcerpt(ev.start)}>{t('Im Transkript zeigen')}</button>
-                    </span>
-                  </div>
+                <summary className="small">{t('Belege ansehen')}</summary>
+                {evidence.map((ev, k) => (
+                  <button key={k} type="button" className="review-evidence linklike small" onClick={() => showExcerpt(ev.start)}
+                    aria-label={t('Abschrift um {time} zeigen: {quote}', { time: clock(ev.start), quote: ev.quote })}>
+                    <span className="muted">{clock(ev.start)}{speaker(ev.speakerMemberId) ? ' · ' + speaker(ev.speakerMemberId) : ''}</span>
+                    <span>{t('„{q}“', { q: ev.quote })}</span>
+                  </button>
                 ))}
               </details>
             )}

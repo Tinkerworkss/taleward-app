@@ -3536,7 +3536,12 @@ components:
                   supported = alle Aussagen belegt; partial = teilweise; unsupported = kein Beleg; contradicted =
                   Transkript sagt etwas anderes; off_game = vermutlich Witz oder außerhalb des Spiels; unchecked =
                   übersprungen (z. B. Zeitgrenze).
-              note: { type: [string, "null"], description: "Kurze Begründung des Prüfers für die SL" }
+              note:
+                type: [string, "null"]
+                description: |
+                  Begründung des Prüfers für die SL: ein Satz, für Menschen geschrieben, ohne Zitate oder Zeitangaben
+                  (die stehen in evidence). Die App zeigt sie nur bei contradicted, unsupported und off_game; bei
+                  supported und partial darf sie leer sein. Belege zeigt die App höchstens zwei je Absatz.
               evidence:
                 type: array
                 description: Belegstellen im Transkript (echte Zeitpunkte)

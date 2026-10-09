@@ -894,42 +894,36 @@ details.card[open] { padding-bottom: var(--space-4); }
   overflow: hidden;
 }
 
-/* Gegenprüfung des Recaps (nur SL, ab Schnittstelle 0.4.6): Randmarke je Absatz, immer Symbol plus Wort */
+/* Gegenprüfung des Recaps (nur SL, ab Schnittstelle 0.4.6): ruhig – nur auffällige Absätze bekommen einen Randstrich */
 .review {
   display: flex;
   flex-direction: column;
   gap: var(--space-3, 12px);
 }
 .review-para {
-  border-left: 4px solid var(--line-strong);
+  border-left: 3px solid transparent;
   padding-left: 12px;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
-.review-mark {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font: 600 13px/18px var(--font-sans);
-  color: var(--ink-muted);
-}
-.review-para.v-supported { border-left-color: var(--salbei); }
-.review-para.v-supported .review-mark { color: var(--salbei); }
-.review-para.v-partial { border-left-color: var(--messing); }
-.review-para.v-partial .review-mark { color: var(--ink); }
-.review-para.v-unsupported,
+.review-para.flagged { border-left-color: var(--line-strong); }
 .review-para.v-contradicted { border-left-color: var(--siegel); }
-.review-para.v-unsupported .review-mark,
-.review-para.v-contradicted .review-mark { color: var(--siegel-text); }
-.review-para.v-off_game,
-.review-para.v-unchecked { border-left-style: dashed; }
-.review-para summary { cursor: pointer; padding: 6px 0; color: var(--ink-muted); }
-.review-evidence {
+.review-note { margin: 0; color: var(--ink-muted); }
+.review-note strong { color: var(--ink); font-weight: 600; }
+.review-para.v-contradicted .review-note { color: var(--siegel-text); }
+/* „Belege ansehen“ folgt dem Muster für Aufklappbares (Pfeil rechts) */
+.review-para summary { color: var(--ink-muted); }
+.review-para .review-evidence {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 2px;
+  width: 100%;
+  min-height: 48px;
   padding: 6px 0;
+  text-align: left;
+  text-decoration: none;
   border-top: 1px solid var(--line);
 }
 .transcript-line { margin: 0; padding: 6px 8px; border-radius: var(--radius-sm); }
@@ -1641,12 +1635,14 @@ details.card[open] { padding-bottom: var(--space-4); }
   flex-wrap: wrap;
 }
 
-/* Leicht hervorgehoben, aber kein Hauptknopf: Umriss in Messing, Schrift in Tinte */
+/* Werkzeug-Link oben auf der Übersicht (SL-Schirm): ruhig wie „Titelbild ändern“, nur mit Symbol und ohne Unterstrich */
 .btn.accent {
-  background: var(--paper-raised);
-  border: 2px solid var(--messing);
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
   color: var(--ink);
-  gap: 8px;
+  font-weight: 600;
+  gap: 6px;
 }
 
 .btn.subtle {
