@@ -5,7 +5,7 @@ import { InviteBox } from '../components/InviteBox';
 import { confirmDialog } from '../components/confirm';
 import { PENDING_LABEL } from './Chronicle';
 import { GameSystemFields, systemLabel } from '../components/GameSystemFields';
-import { apiAtLeast, p } from '../api/connections';
+import { apiAtLeast, currentConnection, p } from '../api/connections';
 import { MemberJoinedCard, OpenSeatDialog, OrphanNoticeCard, SeatClaimedCard } from '../components/Seats';
 import { characterIncomplete } from '../components/CharacterForm';
 import { Avatar } from '../components/Avatar';
@@ -17,7 +17,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
-import type { Campaign, GameSystem, GmNotice, Member, SessionSummary, Usage } from '../api/types';
+import type { Campaign, GameSystem, GmNotice, Member, ServerInfo, SessionSummary, Usage } from '../api/types';
 import { IconCheck, IconInfo, IconLock, IconScreen, IconSearch } from '../components/Icons';
 import { LinkButtons, safeLinks } from '../components/Links';
 import { MusterBanner } from '../components/Muster';
@@ -184,7 +184,7 @@ export function Overview() {
 
           {gm && <div id="invite"><InviteBox campaignId={campaignId} campaignTitle={campaign.title} /></div>}
           {gm && <UsageLine campaignId={campaignId} />}
-          {me && <CampaignManage campaign={campaign} me={me} onChanged={load} />}
+          {me && <CampaignManage campaign={campaign} me={me} info={serverInfo} onChanged={load} />}
           </div>
           </div>
         </>
@@ -318,12 +318,6 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved: 
   const [language, setLanguage] = useState<'de' | 'en'>(campaign.language ?? 'de');
   const [system, setSystem] = useState<GameSystem | null>(campaign.system ?? null);
   const [systemName, setSystemName] = useState(campaign.systemName ?? '');
-  const [allowExternal, setAllowExternal] = useState(!!campaign.allowExternalTranscription);
-  // Nur wenn der Betreiber einen externen Dienst freigegeben hat, gibt es den Schalter überhaupt
-  const [externalProvider, setExternalProvider] = useState<string | null>(null);
-  const [primary, setPrimary] = useState(false);
-  const [summaryProvider, setSummaryProvider] = useState<string | null>(null);
-  const [allowSummary, setAllowSummary] = useState(!!campaign.allowCloudSummary);
   // Namenshilfe (ab 0.4.6): nur vorhanden, wenn der Server sie der SL mitschickt
   const [hotwords, setHotwords] = useState<string[]>(campaign.hotwords ?? []);
   const [newWord, setNewWord] = useState('');
@@ -332,13 +326,6 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved: 
     if (w && !hotwords.includes(w) && hotwords.length < 200) setHotwords([...hotwords, w]);
     setNewWord('');
   };
-  useEffect(() => {
-    if (editing) api.info().then((i) => {
-      setExternalProvider(providerLabel(i.externalTranscription, i.externalTranscriptionInfo));
-      setPrimary(i.externalTranscriptionMode === 'primary');
-      setSummaryProvider(providerLabel(i.cloudSummary, i.cloudSummaryInfo));
-    }).catch(() => undefined);
-  }, [editing]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -364,8 +351,6 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved: 
       onSaved(await api.updateCampaign(campaign.id, {
         description: description.trim(), worldInfo: world.trim(), language,
         system, systemName: system === 'other' ? systemName.trim() || null : null,
-        ...(externalProvider ? { allowExternalTranscription: allowExternal } : {}),
-        ...(summaryProvider ? { allowCloudSummary: allowSummary } : {}),
         ...(campaign.hotwords !== undefined ? { hotwords } : {})
       }));
       setEditing(false);
@@ -391,30 +376,6 @@ export function WorldInfo({ campaign, onSaved }: { campaign: Campaign; onSaved: 
         </div>
         <GameSystemFields idPrefix="w" system={system} systemName={systemName}
           onChange={(s, n) => { setSystem(s); setSystemName(n); }} />
-        {externalProvider && (
-          <div className="field">
-            <label className="check" style={{ alignItems: 'flex-start' }}>
-              <input type="checkbox" checked={allowExternal} onChange={(e) => setAllowExternal(e.target.checked)} style={{ marginTop: 3 }} />
-              <span>{t('Transkription über {provider} erlauben', { provider: externalProvider })}</span>
-            </label>
-            <span className="muted small">
-              {primary
-                ? t('Dieser Server transkribiert Aufnahmen direkt über {provider}. Die Stimmen verlassen dann den Verein – sag es vorher allen am Tisch.', { provider: externalProvider })
-                : t('Ist 24 Stunden lang kein Worker erreichbar, darf der Server als Ausweichlösung {provider} nutzen (kostet wenige Cent pro Stunde Aufnahme). Die Stimmen verlassen dann den Verein – sag es vorher allen am Tisch.', { provider: externalProvider })}
-            </span>
-          </div>
-        )}
-        {summaryProvider && (
-          <div className="field">
-            <label className="check" style={{ alignItems: 'flex-start' }}>
-              <input type="checkbox" checked={allowSummary} onChange={(e) => setAllowSummary(e.target.checked)} style={{ marginTop: 3 }} />
-              <span>{t('Zusammenfassung und Unterlagen über {provider} erlauben', { provider: summaryProvider })}</span>
-            </label>
-            <span className="muted small">
-              {t('Für Recap, Vorschläge und das Auswerten von Unterlagen geht Text an {provider} – Namen und Gespräche der Runde bzw. der Inhalt der Unterlage, keine Stimmen. Ohne Erlaubnis wartet beides auf ein lokales Modell.', { provider: summaryProvider })}
-            </span>
-          </div>
-        )}
         <div className="field">
           <label htmlFor="w-lang">{t('Sprache der Runde (für Recaps)')}</label>
           <select id="w-lang" value={language} onChange={(e) => setLanguage(e.target.value as 'de' | 'en')}>
@@ -611,10 +572,11 @@ function UsageLine({ campaignId }: { campaignId: string }) {
 export { InviteBox };
 
 /**
- * Unten auf der Übersicht: Kampagne abschließen/wieder aufnehmen oder löschen (SL), Kampagne verlassen (alle,
- * die letzte SL nur, wenn es eine zweite gibt). Schnittstelle 0.4.5.
+ * Unten auf der Übersicht: Cloud-Dienste der Kampagne erlauben (SL, nur wenn der Betreiber sie eingerichtet hat),
+ * Kampagne abschließen/wieder aufnehmen oder löschen (SL), Kampagne verlassen (alle, die letzte SL nur, wenn es eine
+ * zweite gibt). Schnittstelle 0.4.5.
  */
-function CampaignManage({ campaign, me, onChanged }: { campaign: Campaign; me: Member; onChanged: () => void }) {
+function CampaignManage({ campaign, me, info, onChanged }: { campaign: Campaign; me: Member; info: ServerInfo | null; onChanged: () => void }) {
   const navigate = useNavigate();
   const gm = me.role === 'gm';
   const otherGms = campaign.members.filter((m) => m.role === 'gm' && m.id !== me.id && !isDeletedMember(m)).length;
@@ -645,6 +607,21 @@ function CampaignManage({ campaign, me, onChanged }: { campaign: Campaign; me: M
     }
   };
 
+  // Cloud-Dienste: Einschalten nur nach Rückfrage, Ausschalten sofort
+  const externalProvider = providerLabel(info?.externalTranscription, info?.externalTranscriptionInfo);
+  const primary = info?.externalTranscriptionMode === 'primary';
+  const summaryProvider = providerLabel(info?.cloudSummary, info?.cloudSummaryInfo);
+  const server = currentConnection().name;
+  const setCloud = async (field: 'allowExternalTranscription' | 'allowCloudSummary', value: boolean, provider: string) => {
+    if (value) {
+      const q = field === 'allowExternalTranscription'
+        ? t('Transkription über {provider} für „{campaign}“ auf „{server}“ erlauben? Die Stimmen der Runde verlassen dann den Verein. Sag es vorher allen am Tisch.', { provider, campaign: campaign.title, server })
+        : t('Zusammenfassung über {provider} für „{campaign}“ auf „{server}“ erlauben? Text der Runde und Unterlagen gehen dann dorthin, keine Stimmen. Sag es vorher allen am Tisch.', { provider, campaign: campaign.title, server });
+      if (!(await confirmDialog(q, { confirmLabel: t('Erlauben') }))) return;
+    }
+    run(() => api.updateCampaign(campaign.id, { [field]: value }));
+  };
+
   const leave = async () => {
     if (await confirmDialog(t('Kampagne verlassen? Du siehst sie danach nicht mehr. Deine Kommentare bleiben stehen. Zurück geht es nur mit einer neuen Einladung.'), { confirmLabel: t('Verlassen'), danger: true })) {
       run(() => api.removeMember(campaign.id, me.id), () => navigate('/', { replace: true }));
@@ -656,7 +633,38 @@ function CampaignManage({ campaign, me, onChanged }: { campaign: Campaign; me: M
       <summary style={{ fontWeight: 700 }}>{gm ? t('Kampagne verwalten') : t('Kampagne verlassen')}</summary>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
       <ErrorBox error={error} />
-      {gm && <span className="overline">{t('Weitergeben')}</span>}
+      {gm && (externalProvider || summaryProvider) && (
+        <>
+          <span className="overline">{t('Cloud-Dienste')}</span>
+          {externalProvider && (
+            <div className="field">
+              <label className="check" style={{ alignItems: 'flex-start' }}>
+                <input type="checkbox" checked={!!campaign.allowExternalTranscription} disabled={busy}
+                  onChange={(e) => setCloud('allowExternalTranscription', e.target.checked, externalProvider)} style={{ marginTop: 3, flexShrink: 0 }} />
+                <span>{t('Transkription über {provider} erlauben', { provider: externalProvider })}</span>
+              </label>
+              <span className="muted small">
+                {primary
+                  ? t('Dieser Server transkribiert Aufnahmen direkt über {provider}. Die Stimmen verlassen dann den Verein – sag es vorher allen am Tisch.', { provider: externalProvider })
+                  : t('Ist 24 Stunden lang kein Worker erreichbar, darf der Server als Ausweichlösung {provider} nutzen (kostet wenige Cent pro Stunde Aufnahme). Die Stimmen verlassen dann den Verein – sag es vorher allen am Tisch.', { provider: externalProvider })}
+              </span>
+            </div>
+          )}
+          {summaryProvider && (
+            <div className="field">
+              <label className="check" style={{ alignItems: 'flex-start' }}>
+                <input type="checkbox" checked={!!campaign.allowCloudSummary} disabled={busy}
+                  onChange={(e) => setCloud('allowCloudSummary', e.target.checked, summaryProvider)} style={{ marginTop: 3, flexShrink: 0 }} />
+                <span>{t('Zusammenfassung und Unterlagen über {provider} erlauben', { provider: summaryProvider })}</span>
+              </label>
+              <span className="muted small">
+                {t('Für Recap, Vorschläge und das Auswerten von Unterlagen geht Text an {provider} – Namen und Gespräche der Runde bzw. der Inhalt der Unterlage, keine Stimmen. Ohne Erlaubnis wartet beides auf ein lokales Modell.', { provider: summaryProvider })}
+              </span>
+            </div>
+          )}
+        </>
+      )}
+      {gm && <span className="overline" style={(externalProvider || summaryProvider) ? { marginTop: 6 } : undefined}>{t('Weitergeben')}</span>}
       {gm && (
         <Link className="btn outline" to={p(`/k/${campaign.id}/spielleitung`)}>{t('Spielleitung übergeben')}</Link>
       )}

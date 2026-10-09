@@ -1166,4 +1166,7 @@ export const en: Record<string, string> = {
   "Kennst du die Person? Sonst entferne sie wieder.": "Do you know this person? If not, remove them again.",
   "Die Datei ließ sich nicht öffnen.": "The file couldn’t be opened.",
   "Ungültige Kennung. Die Daten passen nicht zu diesem Server.": "Invalid ID. The data doesn’t match this server.",
+  "Cloud-Dienste": "Cloud services",
+  "Transkription über {provider} für „{campaign}“ auf „{server}“ erlauben? Die Stimmen der Runde verlassen dann den Verein. Sag es vorher allen am Tisch.": "Allow transcription via {provider} for “{campaign}” on “{server}”? The voices from your sessions will then leave the club. Tell everyone at the table first.",
+  "Zusammenfassung über {provider} für „{campaign}“ auf „{server}“ erlauben? Text der Runde und Unterlagen gehen dann dorthin, keine Stimmen. Sag es vorher allen am Tisch.": "Allow summaries via {provider} for “{campaign}” on “{server}”? Session text and documents will then go there, no voices. Tell everyone at the table first.",
 };
