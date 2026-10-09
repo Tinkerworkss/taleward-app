@@ -437,7 +437,7 @@ export const handlers = [
     const nachbar = new URL(request.url).hostname === NACHBAR_HOST;
     if (hostKey(request) === DEMO_HOST) {
       return HttpResponse.json({
-        name: 'Taleward', operator: 'Euer Verein e. V.', contact: null, apiVersion: '0.4.13', registration: 'invite_only',
+        name: 'Taleward', operator: 'Euer Verein e. V.', contact: null, apiVersion: '0.4.14', registration: 'invite_only',
         authMethods: ['password'], privacyPolicyUrl: null, minAge: 16, externalTranscription: null,
         minAppVersion: null, latestAppVersion: null, appDownloadUrl: null, releaseNotes: null
       });
@@ -447,7 +447,7 @@ export const handlers = [
       operator: nachbar ? 'Spielgemeinschaft Nachbarort e. V.' : 'Rollenspielverein (Testmodus)',
       contact: nachbar ? 'vorstand@nachbarverein.test' : null,
       // Eingebauter Testserver kann alles bis 0.4.7; der Nachbarverein bleibt alt (zeigt das Ausblenden neuer Funktionen)
-      apiVersion: nachbar ? '0.3.9' : '0.4.13',
+      apiVersion: nachbar ? '0.3.9' : '0.4.14',
       registration: 'invite_only',
       authMethods: ['password'],
       privacyPolicyUrl: null,
@@ -700,6 +700,8 @@ export const handlers = [
       const partly = entries.filter((e) => e.campaignId === c.id && (e.hiddenFromMemberIds ?? []).length > 0);
       partly.forEach((e) => e.hiddenFromMemberIds!.push(m.id));
       if (partly.length) (gmNotices[c.id] ??= []).push({ id: 'gn-' + crypto.randomUUID().slice(0, 8), code: 'hidden_entries_for_newcomer', memberId: m.id, entryIds: partly.map((e) => e.id), createdAt: new Date().toISOString() });
+      // Ab 0.4.14: Hinweis an die SL bei jedem Beitritt
+      (gmNotices[c.id] ??= []).push({ id: 'gn-' + crypto.randomUUID().slice(0, 8), code: 'member_joined', memberId: m.id, entryIds: [], createdAt: new Date().toISOString() });
       seen.chronicle[c.id] = seen.bible[c.id] = new Date().toISOString();
     }
     return HttpResponse.json({ ...summary(c), links: visibleLinks(c.links, isGm(c.id)), description: c.description, worldInfo: c.worldInfo, language: c.language, system: c.system ?? null, systemName: c.systemName ?? null, allowExternalTranscription: !!c.allowExternalTranscription, allowCloudSummary: !!c.allowCloudSummary, members: membersFor(c) });
@@ -999,6 +1001,8 @@ export const handlers = [
       return err(409, 'last_gm', 'Die Kampagne braucht mindestens eine Spielleitung. Ernenne erst eine zweite oder lösche die Kampagne.');
     }
     m.leftAt = new Date().toISOString();
+    // Ab 0.4.14: „ist beigetreten“ erledigt sich mit dem Austritt
+    gmNotices[c.id] = (gmNotices[c.id] ?? []).filter((n) => !(n.code === 'member_joined' && n.memberId === m.id));
     // Ab 0.4.9: Hinweis an die SL, was mit der Figur passieren soll
     const pcs = entries.filter((e) => e.campaignId === c.id && e.type === 'pc' && e.holderMemberId === m.id);
     if (pcs.length && m.role === 'player') {

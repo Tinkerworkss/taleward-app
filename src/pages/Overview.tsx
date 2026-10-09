@@ -6,7 +6,7 @@ import { confirmDialog } from '../components/confirm';
 import { PENDING_LABEL } from './Chronicle';
 import { GameSystemFields, systemLabel } from '../components/GameSystemFields';
 import { apiAtLeast, p } from '../api/connections';
-import { OpenSeatDialog, OrphanNoticeCard, SeatClaimedCard } from '../components/Seats';
+import { MemberJoinedCard, OpenSeatDialog, OrphanNoticeCard, SeatClaimedCard } from '../components/Seats';
 import { characterIncomplete } from '../components/CharacterForm';
 import { Avatar } from '../components/Avatar';
 import { hasCover } from '../covers/CampaignCover';
@@ -701,6 +701,7 @@ function CampaignManage({ campaign, me, onChanged }: { campaign: Campaign; me: M
 function GmNoticeCard({ campaign, notice, onDone }: { campaign: Campaign; notice: GmNotice; onDone: () => void }) {
   if (notice.code === 'seat_claimed') return <SeatClaimedCard campaign={campaign} notice={notice} onDone={onDone} />;
   if (notice.code === 'character_orphaned') return <OrphanNoticeCard campaign={campaign} notice={notice} onDone={onDone} />;
+  if (notice.code === 'member_joined') return <MemberJoinedCard campaign={campaign} notice={notice} onDone={onDone} />;
   return <NewcomerNoticeCard campaign={campaign} notice={notice} onDone={onDone} />;
 }
 

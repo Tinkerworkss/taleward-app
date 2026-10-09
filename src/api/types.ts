@@ -138,8 +138,9 @@ export interface GmNotice {
   /**
    * seat_claimed (ab 0.4.8): jemand hat per Beitritt mit Charakter einen offenen Platz eingenommen.
    * character_orphaned (ab 0.4.9): ein Spieler ist ausgetreten; entryIds = seine Figuren (pc ohne Halter).
+   * member_joined (ab 0.4.14): jemand ist beigetreten oder wieder eingetreten (memberId).
    */
-  code: 'hidden_entries_for_newcomer' | 'seat_claimed' | 'character_orphaned' | string;
+  code: 'hidden_entries_for_newcomer' | 'seat_claimed' | 'character_orphaned' | 'member_joined' | string;
   memberId: string | null;
   entryIds: string[];
   createdAt: string;

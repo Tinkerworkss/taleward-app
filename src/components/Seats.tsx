@@ -6,7 +6,7 @@ import { t } from '../i18n';
 import { copyText, inviteLink, shareInvite } from '../invite';
 import { confirmDialog } from './confirm';
 import { Dialog } from './Dialog';
-import { formatDateFull } from './format';
+import { formatDate, formatDateFull } from './format';
 import { ErrorBox } from './Screen';
 
 /*
@@ -14,6 +14,7 @@ import { ErrorBox } from './Screen';
  * - offene Plätze nach einem Umzug: Einladung für genau diesen Platz oder „Das bin ich“
  * - Hinweis „Platz eingenommen“ (seat_claimed)
  * - Figur eines ausgetretenen Spielers: als NSC weiterführen oder einem anderen Spieler geben (character_orphaned)
+ * - Hinweis „ist beigetreten“ (member_joined, ab 0.4.14): passt oder wieder entfernen
  */
 
 /** Spieler, die eine Figur übernehmen können: aktiv, Rolle player, noch ohne eigene Figur */
@@ -158,6 +159,52 @@ export function SeatClaimedCard({ campaign, notice, onDone }: { campaign: Campai
       <div className="row wrap" style={{ gap: 8 }}>
         <button type="button" className="btn small" disabled={busy} onClick={() => run(() => api.dismissGmNotice(campaign.id, notice.id))}>{t('Passt')}</button>
         <button type="button" className="btn small danger outline" disabled={busy} onClick={release}>{t('Platz freigeben')}</button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Jemand ist der Kampagne beigetreten (member_joined, ab Schnittstelle 0.4.14). Die SL bestätigt oder entfernt die
+ * Person wieder.
+ */
+export function MemberJoinedCard({ campaign, notice, onDone }: { campaign: Campaign; notice: GmNotice; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const m = campaign.members.find((x) => x.id === notice.memberId);
+  if (!m || isDeletedMember(m)) return null;
+
+  const run = async (action: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+      onDone();
+    } catch (e) {
+      setError(e);
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    const ok = await confirmDialog(
+      t('{person} aus „{campaign}“ auf „{server}“ entfernen? {person} sieht danach nichts mehr aus der Kampagne und braucht für die Rückkehr eine neue Einladung.', { person: m.displayName, campaign: campaign.title, server: currentConnection().name }),
+      { confirmLabel: t('Entfernen'), danger: true }
+    );
+    if (ok) run(() => api.removeMember(campaign.id, m.id));
+  };
+
+  return (
+    <div className="card">
+      <strong>{t('{person} ist der Kampagne beigetreten', { person: m.displayName })}</strong>
+      <span className="muted small">
+        {formatDate(notice.createdAt)}{m.characterName ? ' · ' + t('spielt {figure}', { figure: m.characterName }) : ''}
+        {' · '}{t('Kennst du die Person? Sonst entferne sie wieder.')}
+      </span>
+      <ErrorBox error={error} />
+      <div className="row wrap" style={{ gap: 8 }}>
+        <button type="button" className="btn small" disabled={busy} onClick={() => run(() => api.dismissGmNotice(campaign.id, notice.id))}>{t('Passt')}</button>
+        <button type="button" className="btn small danger outline" disabled={busy} onClick={remove}>{t('Entfernen')}</button>
       </div>
     </div>
   );

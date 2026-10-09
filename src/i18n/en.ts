@@ -1160,4 +1160,8 @@ export const en: Record<string, string> = {
   "Noch bis {end}": "Left until {end}",
   "Verlauf des Abends": "Progress of the evening",
   "Noch keine Szenen. Unter „Bearbeiten“ legst du welche an.": "No scenes yet. Add some under “Edit”.",
+  "{person} aus „{campaign}“ auf „{server}“ entfernen? {person} sieht danach nichts mehr aus der Kampagne und braucht für die Rückkehr eine neue Einladung.": "Remove {person} from “{campaign}” on “{server}”? {person} won’t see anything from the campaign afterwards and needs a new invitation to come back.",
+  "{person} ist der Kampagne beigetreten": "{person} joined the campaign",
+  "spielt {figure}": "plays {figure}",
+  "Kennst du die Person? Sonst entferne sie wieder.": "Do you know this person? If not, remove them again.",
 };

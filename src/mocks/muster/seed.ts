@@ -246,6 +246,9 @@ export function seedMuster(lang: Lang): void {
     id: `gn-${cid}-sina`, code: 'hidden_entries_for_newcomer', memberId: m('sina'), entryIds: [e('turmzeichen')], createdAt: at('2026-07-25T21:00:00Z')
   });
 
+  // Ab Schnittstelle 0.4.14: Sina ist neu beigetreten (Hinweis „Passt“ / „Entfernen“)
+  gmNotices[cid].push({ id: `gn-${cid}-sina-neu`, code: 'member_joined', memberId: m('sina'), entryIds: [], createdAt: at('2026-07-25T20:55:00Z') });
+
   // Keine Ungelesen-Punkte zum Start
   seen.chronicle[cid] = '2099-01-01T00:00:00Z';
   seen.bible[cid] = '2099-01-01T00:00:00Z';
