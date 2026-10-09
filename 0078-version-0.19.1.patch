@@ -1,0 +1,35 @@
+From 15e9b40dea87d54dbe917a4444a3a1128a4aacf6 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 9 Oct 2026 07:19:20 +0200
+Subject: [PATCH] Version 0.19.1
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ package-lock.json | 4 ++--
+ package.json      | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/package-lock.json b/package-lock.json
+index c04230d..4b4ded5 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -2,3 +2,3 @@
+   "name": "taleward-app",
+-  "version": "0.19.0",
++  "version": "0.19.1",
+   "lockfileVersion": 3,
+@@ -8,3 +8,3 @@
+       "name": "taleward-app",
+-      "version": "0.19.0",
++      "version": "0.19.1",
+       "dependencies": {
+diff --git a/package.json b/package.json
+index be33d70..0e6f4e2 100644
+--- a/package.json
++++ b/package.json
+@@ -3,3 +3,3 @@
+   "private": true,
+-  "version": "0.19.0",
++  "version": "0.19.1",
+   "type": "module",
