@@ -1,3 +1,0 @@
-- Kapitel prüfen ist ruhiger: Der Text sieht aus wie Text. Markiert sind nur noch Stellen, die du dir ansehen solltest, mit einem Satz, warum. Belege gibt es zum Aufklappen, höchstens zwei.
-- Oben steht nur noch, wie viele Stellen es sind, oder „Nichts aufgefallen“.
-- Der Knopf „SL-Schirm“ auf der Übersicht drängt sich nicht mehr auf.
