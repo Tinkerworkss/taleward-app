@@ -1,3 +1,0 @@
-- Neu in der Gruppe: Tritt jemand der Kampagne bei, sieht die Spielleitung das auf der Übersicht. Mit „Passt“ ist der Hinweis erledigt, mit „Entfernen“ geht die Person nach einer Rückfrage wieder. Das kommt, sobald euer Server die neue Fassung hat.
-- Unterlagen: „Original öffnen“ zeigt PDF und Textdateien direkt an. Andere Dateien, etwa Word, bietet die App zum Speichern an.
-- Charakter-Dateien und Links werden beim Einlesen gründlicher geprüft. Was nicht passt, bleibt draußen.
