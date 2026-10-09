@@ -1,4 +1,4 @@
-From 852b381e405d8864c3384faf1fc93ee401dbcb4f Mon Sep 17 00:00:00 2001
+From 808a4bc1b501d647f222af577a7fbcdacf3a6a32 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 9 Oct 2026 14:43:04 +0200
 Subject: [PATCH] =?UTF-8?q?Ruhigere=20Pr=C3=BCfansicht,=20SL-Schirm-Knopf?=
@@ -14,7 +14,7 @@ Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
  src/components/RecapReviewView.tsx | 96 +++++++++++++-----------------
  src/i18n/en.ts                     | 24 +++-----
  src/theme.css                      | 44 +++++++-------
- 4 files changed, 77 insertions(+), 94 deletions(-)
+ 4 files changed, 76 insertions(+), 95 deletions(-)
 
 diff --git a/docs/session-chronik-api.yaml b/docs/session-chronik-api.yaml
 index 927afe1..84c6862 100644
@@ -196,7 +196,7 @@ index af403d4..88a2243 100644
 +  "Abschrift um {time} zeigen: {quote}": "Show transcript at {time}: {quote}",
  };
 diff --git a/src/theme.css b/src/theme.css
-index fda9fee..be3c48c 100644
+index fda9fee..41da210 100644
 --- a/src/theme.css
 +++ b/src/theme.css
 @@ -896,3 +896,3 @@ details.card[open] { padding-bottom: var(--space-4); }
@@ -247,7 +247,7 @@ index fda9fee..be3c48c 100644
 +  text-align: left;
 +  text-decoration: none;
    border-top: 1px solid var(--line);
-@@ -1643,9 +1637,12 @@ details.card[open] { padding-bottom: var(--space-4); }
+@@ -1643,8 +1637,10 @@ details.card[open] { padding-bottom: var(--space-4); }
  
 -/* Leicht hervorgehoben, aber kein Hauptknopf: Umriss in Messing, Schrift in Tinte */
 +/* Werkzeug-Link oben auf der Übersicht (SL-Schirm): ruhig wie „Titelbild ändern“, nur mit Symbol und ohne Unterstrich */
@@ -262,4 +262,3 @@ index fda9fee..be3c48c 100644
 +  font-weight: 600;
 +  gap: 6px;
  }
-+.btn.accent:hover { background: var(--paper-sunken); }
