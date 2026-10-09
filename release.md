@@ -1,0 +1,2 @@
+- Die Schalter für Cloud-Transkription und Cloud-Zusammenfassung sind umgezogen: Du findest sie jetzt unter „Kampagne verwalten“ ganz unten auf der Übersicht, nicht mehr beim Bearbeiten der Welt. Beim Einschalten fragt die App einmal nach.
+- Dazu alles aus 0.19.0: Hinweis an die Spielleitung, wenn jemand der Kampagne beitritt, und Unterlagen öffnen nur noch PDF und Text direkt.
