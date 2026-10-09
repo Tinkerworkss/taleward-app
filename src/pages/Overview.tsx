@@ -19,7 +19,7 @@ import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { Campaign, GameSystem, GmNotice, Member, SessionSummary, Usage } from '../api/types';
 import { IconCheck, IconInfo, IconLock, IconScreen, IconSearch } from '../components/Icons';
-import { LinkButtons } from '../components/Links';
+import { LinkButtons, safeLinks } from '../components/Links';
 import { MusterBanner } from '../components/Muster';
 import { Divider, ErrorBox, Screen, rememberCampaign } from '../components/Screen';
 import { formatDateFull, formatDateTime } from '../components/format';
@@ -168,7 +168,7 @@ export function Overview() {
 
           <CloudNotice info={serverInfo} campaign={campaign} />
           <Divider />
-          {(campaign.links ?? []).some((l) => l.shared) && (
+          {safeLinks(campaign.links).some((l) => l.shared) && (
             <section className="overview-links" aria-labelledby="group-links">
               <span className="overline" id="group-links">{t('Links der Gruppe')}</span>
               <LinkButtons links={(campaign.links ?? []).filter((l) => l.shared)} compact />

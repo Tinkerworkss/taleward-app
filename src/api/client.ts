@@ -1,4 +1,5 @@
 import { withSafeLinks } from './safeUrl';
+import { isSafePath } from './pathGuard';
 import { getLang, t, tk } from '../i18n';
 import { APP_VERSION, currentConnection, hasValidToken, serverKnowsAppVersion, updateConnection, type Connection } from './connections';
 import type { InvitePreview,
@@ -88,6 +89,8 @@ interface RequestOptions {
 }
 
 async function requestOn<T>(conn: Connection, method: string, path: string, opts: RequestOptions = {}): Promise<T> {
+  // Pfade nur aus Teilen nach dem Muster der Schnittstelle (0.4.14)
+  if (!isSafePath(path)) throw new ApiRequestError(0, { code: 'invalid_id', message: t('Ungültige Kennung. Die Daten passen nicht zu diesem Server.') });
   // Der Server antwortet mit message in dieser Sprache
   const headers: Record<string, string> = { 'Accept-Language': getLang(), ...opts.headers };
   // Eigene Version nur an Server schicken, die den Header kennen (CORS) – ab Schnittstelle 0.3.9

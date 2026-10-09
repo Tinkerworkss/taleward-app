@@ -6,6 +6,7 @@
 import { APP_VERSION, listConnections } from '../api/connections';
 import { t } from '../i18n';
 import { mergeCharacter } from './merge';
+import { sanitizeCharacter } from './sanitize';
 import { allStoredCharacters, listCharacters, myAccountKeys, putCharacters, type StoredCharacter } from './store';
 
 export const BACKUP_FORMAT = 'taleward-charaktere/1';
@@ -58,16 +59,6 @@ export async function saveOrShare(file: File, title: string): Promise<void> {
   window.setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
 }
 
-const isText = (v: unknown) => typeof v === 'string';
-
-/** Grobe Prüfung eines Charakters aus einer fremden Datei – alles Unbekannte wird verworfen */
-function valid(c: unknown): c is StoredCharacter {
-  if (!c || typeof c !== 'object') return false;
-  const x = c as Record<string, unknown>;
-  return isText(x.id) && isText(x.name) && (x.name as string).trim() !== '' && isText(x.updatedAt)
-    && Array.isArray(x.world) && Array.isArray(x.links) && typeof x.chronicles === 'object' && x.chronicles !== null
-    && (x.portrait === null || x.portrait === undefined || (isText(x.portrait) && (x.portrait as string).startsWith('data:image/')));
-}
 
 export interface RestoreResult { added: number; updated: number; unchanged: number }
 
@@ -95,8 +86,7 @@ export function restoreBackup(text: string): RestoreResult {
   const all = new Map(allStoredCharacters().map((c) => [c.id, c]));
   const result: RestoreResult = { added: 0, updated: 0, unchanged: 0 };
   const take: StoredCharacter[] = [];
-  for (const raw of incoming.filter(valid)) {
-    const c: StoredCharacter = { ...raw, notes: isText(raw.notes) ? raw.notes : '' };
+  for (const c of incoming.map(sanitizeCharacter).filter((x): x is StoredCharacter => !!x)) {
     const old = all.get(c.id);
     const { result: merged, outcome } = mergeCharacter(old, c, known);
     result[outcome]++;

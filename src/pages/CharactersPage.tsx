@@ -30,6 +30,8 @@ export function CharactersPage() {
     setBackupError(null);
     setRestored(null);
     try {
+      // Eine Sicherung mit Bildern ist selten größer als ein paar MB
+      if (file.size > 30 * 1024 * 1024) throw new Error(t('Die Datei ist zu groß (höchstens {n} MB).', { n: 30 }));
       const r = restoreBackup(await file.text());
       setRestored(t('Zurückgeholt: {a} neu, {u} aktualisiert, {s} schon aktuell.', { a: r.added, u: r.updated, s: r.unchanged }));
     } catch (e) {

@@ -1164,4 +1164,6 @@ export const en: Record<string, string> = {
   "{person} ist der Kampagne beigetreten": "{person} joined the campaign",
   "spielt {figure}": "plays {figure}",
   "Kennst du die Person? Sonst entferne sie wieder.": "Do you know this person? If not, remove them again.",
+  "Die Datei ließ sich nicht öffnen.": "The file couldn’t be opened.",
+  "Ungültige Kennung. Die Daten passen nicht zu diesem Server.": "Invalid ID. The data doesn’t match this server.",
 };

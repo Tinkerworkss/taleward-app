@@ -77,7 +77,9 @@ export async function startProviderLogin(opts: {
   let returnTo = web ? `${window.location.origin}${path}#/auth` : null;
   // Android-App: App Link statt taleward://, sobald der Server ihn kennt (ab 0.4.13); ältere Server bleiben beim alten Weg
   if (Capacitor.isNativePlatform() && !MOCK) {
-    const apiVersion = await fetchServerInfo(opts.baseUrl).then((i) => i.apiVersion).catch(() => null);
+    // Ist der Server gerade nicht zu fragen, gilt der zuletzt bekannte Stand einer Verbindung zu ihm
+    const known = opts.conn?.apiVersion ?? activeConnections().find((c) => c.baseUrl === opts.baseUrl)?.apiVersion ?? null;
+    const apiVersion = await fetchServerInfo(opts.baseUrl).then((i) => i.apiVersion).catch(() => known);
     if (apiVersion && !versionLess(apiVersion, '0.4.13')) returnTo = APP_LINK_RETURN;
   }
   const q = new URLSearchParams({ challenge, purpose: opts.purpose, ...(linkToken ? { linkToken } : {}), ...(returnTo ? { returnTo } : {}) });

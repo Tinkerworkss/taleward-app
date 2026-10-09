@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { p } from '../api/connections';
 import { DOC_STATE, MAX_MB } from '../pages/DocumentsPage';
+import { downloadName, originalKind } from './docKind';
 import { api } from '../api/client';
 import type { CampaignDocument, DocumentText } from '../api/types';
 import { ErrorBox } from '../components/Screen';
@@ -86,11 +87,22 @@ export function DocsPanel({ campaignId, docId, onDoc, compact }: {
     api.documentText(docId).then(setText).catch(setError);
   }, [docId, compact]);
 
+  /* Original öffnen: PDF und Text zeigt die App selbst an, alles andere (z. B. Word) bietet sie zum Speichern an (docKind.ts) */
   const openOriginal = async (d: CampaignDocument) => {
     try {
-      const blob = await api.documentFile(d.id);
+      const data = await api.documentFile(d.id);
+      if (!(data instanceof Blob)) throw new Error(t('Die Datei ließ sich nicht öffnen.'));
+      const kind = originalKind(d.fileName);
+      const blob = new Blob([await data.arrayBuffer()], { type: kind ?? 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
-      window.open(url, '_blank', 'noopener');
+      if (kind) {
+        window.open(url, '_blank', 'noopener');
+      } else {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = downloadName(d.fileName);
+        a.click();
+      }
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (e) {
       setError(e);

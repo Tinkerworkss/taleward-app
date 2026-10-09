@@ -35,7 +35,10 @@ function seenHosts(): string[] {
 
 /** Link außerhalb von Taleward öffnen; beim ersten Mal je Adresse vorher fragen */
 export async function openLink(link: Link): Promise<void> {
-  const host = hostOf(link.url);
+  // Vor dem Öffnen dieselbe Prüfung wie bei der Eingabe (nur http/https, keine Zugangsdaten)
+  const url = cleanUrl(link.url);
+  if (!url) return;
+  const host = hostOf(url);
   if (!seenHosts().includes(host)) {
     const ok = await confirmDialog(t('„{label}“ öffnen? Das führt zu {host}, außerhalb von Taleward.', { label: link.label, host }), { confirmLabel: t('Öffnen') });
     if (!ok) return;
@@ -43,15 +46,21 @@ export async function openLink(link: Link): Promise<void> {
   }
   if (Capacitor.isNativePlatform()) {
     const { Browser } = await import('@capacitor/browser');
-    await Browser.open({ url: link.url, toolbarColor: '#17313b' });
+    await Browser.open({ url, toolbarColor: '#17313b' });
   } else {
-    window.open(link.url, '_blank', 'noopener,noreferrer');
+    window.open(url, '_blank', 'noopener,noreferrer');
   }
 }
 
 /** Links als Knöpfe; zeigt Name und Adresse */
-export function LinkButtons({ links, small = true, compact }: { links: Link[] | undefined; small?: boolean; compact?: boolean }) {
-  if (!links?.length) return null;
+/** Nur Links mit gültiger Adresse anzeigen */
+export function safeLinks(links: Link[] | undefined): Link[] {
+  return (links ?? []).filter((l) => l && typeof l.label === 'string' && typeof l.url === 'string' && cleanUrl(l.url) !== null);
+}
+
+export function LinkButtons({ links: raw, small = true, compact }: { links: Link[] | undefined; small?: boolean; compact?: boolean }) {
+  const links = safeLinks(raw);
+  if (!links.length) return null;
   // Schmal (Übersicht): nur Name und Pfeil, die Adresse steht in der Rückfrage beim ersten Öffnen und im Screenreader-Namen
   if (compact) {
     return (
