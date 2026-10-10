@@ -11,6 +11,7 @@ import { IconLock } from '../components/Icons';
 import { ErrorBox, Screen } from '../components/Screen';
 import { RecapReviewView, reportSentence, reviewNeedsAttention } from '../components/RecapReviewView';
 import { namesSkipped, serverHasNameCheck } from './NamesPage';
+import { RevisionBox, RevisionDraft, revisionOpen } from '../review/Revision';
 
 export function Review() {
   const { sessionId = '' } = useParams();
@@ -206,6 +207,7 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
   const [text, setText] = useState(recap.text);
   const [threads, setThreads] = useState(recap.openThreads.join('\n'));
   const [busy, setBusy] = useState(false);
+  const canRevise = apiAtLeast('0.4.15') && !recap.publishedAt;
 
   const save = async () => {
     setBusy(true);
@@ -247,26 +249,33 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
   }
 
   return (
-    <details className="card" open={reviewNeedsAttention(recap) || undefined}>
+    <details className="card" open={reviewNeedsAttention(recap) || !!recap.revision || undefined}>
       <summary>
         <span style={{ flex: 1 }}>
           <strong>{t('Recap-Entwurf:')}</strong> {recap.title}
           {recap.review?.state === 'done' && <span className="muted small" style={{ display: 'block' }}>{reportSentence(recap)}</span>}
         </span>
       </summary>
-      {/* Mit Gegenprüfung (ab 0.4.6) je Absatz eine Randmarke mit Belegen, sonst der reine Text */}
+      {/* Mit Gegenprüfung (ab 0.4.6) je Absatz eine Randmarke mit Belegen, sonst der reine Text; liegt ein
+          Korrektur-Entwurf vor (ab 0.4.15), das Kapitel mit den Änderungen im Text */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-        <RecapReviewView sessionId={sessionId} recap={recap} members={members} showReport={false} />
+        {recap.revision?.state === 'ready'
+          ? <RevisionDraft recap={recap} />
+          : <RecapReviewView sessionId={sessionId} recap={recap} members={members} showReport={false} />}
       </div>
       {recap.openThreads.length > 0 && (
         <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
           {recap.openThreads.map((x) => <li key={x}>{x}</li>)}
         </ul>
       )}
-      <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start', marginTop: 10 }}
-        onClick={() => { setTitle(recap.title); setText(recap.text); setThreads(recap.openThreads.join('\n')); setEditing(true); }}>
-        {t('Recap bearbeiten')}
-      </button>
+      {/* Ab 0.4.15: ein Feld, in dem die SL in eigenen Worten schreibt, was nicht stimmt oder fehlt */}
+      {canRevise && <div style={{ marginTop: 12 }}><RevisionBox sessionId={sessionId} recap={recap} onRecap={onSaved} /></div>}
+      {!revisionOpen(recap) && (
+        <button type="button" className={canRevise ? 'btn small subtle' : 'btn small outline'} style={{ alignSelf: 'flex-start', marginTop: 10 }}
+          onClick={() => { setTitle(recap.title); setText(recap.text); setThreads(recap.openThreads.join('\n')); setEditing(true); }}>
+          {canRevise ? t('Selbst bearbeiten') : t('Recap bearbeiten')}
+        </button>
+      )}
     </details>
   );
 }

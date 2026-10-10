@@ -8,13 +8,15 @@ import { ErrorBox } from './Screen';
 /*
  * Gegenprüfung des Recap-Entwurfs (Schnittstelle 0.4.6, nur SL). Ruhige Ansicht: Der Text sieht aus wie Text.
  * Markiert wird nur, wo die SL hinschauen sollte – „widerspricht“ mit einem Randstrich in siegel, „nicht gefunden“ und
- * „außerhalb des Spiels“ mit einem neutralen Strich. Belegt, teilweise belegt und nicht geprüft bleiben unmarkiert.
+ * „außerhalb des Spiels“ mit einem neutralen Strich, ebenso „teilweise“ mit Begründung. Belegt, teilweise ohne
+ * Begründung und nicht geprüft bleiben unmarkiert.
  * Je markiertem Absatz die Begründung des Prüfers als Satz (ohne Begründung ein kurzes Wort zur Art), Belege nur zum
  * Aufklappen (höchstens zwei).
  */
 
-/** Diese Urteile bekommen eine Markierung */
+/** Diese Urteile bekommen eine Markierung; „teilweise“ nur, wenn der Server einen Satz dazu hat (z. B. „Nicht erzählt: …“) */
 const FLAGGED: ReviewVerdict[] = ['contradicted', 'unsupported', 'off_game'];
+const isFlagged = (p: { verdict: ReviewVerdict; note: string | null }) => FLAGGED.includes(p.verdict) || (p.verdict === 'partial' && !!p.note);
 const MAX_EVIDENCE = 2;
 
 function flagLabel(v: ReviewVerdict): string {
@@ -29,7 +31,7 @@ function flagLabel(v: ReviewVerdict): string {
 function flagged(recap: Recap) {
   const r = recap.review;
   if (!r || r.state !== 'done') return [];
-  return r.paragraphs.filter((p) => FLAGGED.includes(p.verdict));
+  return r.paragraphs.filter(isFlagged);
 }
 
 /** Sekunden → 1:02:03 bzw. 12:34 */
@@ -96,7 +98,7 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
 
       {paragraphs.map((para, i) => {
         const info = review.state === 'done' ? review.paragraphs.find((x) => x.index === i) : undefined;
-        if (!info || !FLAGGED.includes(info.verdict)) {
+        if (!info || !isFlagged(info)) {
           return <div key={i} className="review-para"><div className="recap"><p>{para}</p></div></div>;
         }
         const evidence = info.evidence.slice(0, MAX_EVIDENCE);

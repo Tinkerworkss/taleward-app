@@ -926,6 +926,15 @@ details.card[open] { padding-bottom: var(--space-4); }
   text-decoration: none;
   border-top: 1px solid var(--line);
 }
+/* Korrektur per Hinweis (ab Schnittstelle 0.4.15): ein Feld, danach Änderungen wie auf Papier */
+.revision-box { display: flex; flex-direction: column; gap: 8px; }
+.revision-draft del { text-decoration: line-through; color: var(--ink-faint); }
+.revision-draft ins {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--salbei);
+}
 .transcript-line { margin: 0; padding: 6px 8px; border-radius: var(--radius-sm); }
 .transcript-line.hit { background: var(--paper-sunken); }
 
