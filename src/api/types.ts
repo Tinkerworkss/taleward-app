@@ -334,6 +334,17 @@ export interface Recap {
   publishedAt: string | null;
   /** Prüfteil – nur für die SL, Spieler bekommen das Feld nicht (ab 0.4.6) */
   review?: RecapReview;
+  /** Offener Korrektur-Entwurf aus einem Hinweis der SL (ab 0.4.15, nur SL) */
+  revision?: RecapRevision | null;
+}
+
+/** Korrektur per Hinweis (ab 0.4.15): der Server schreibt nur betroffene Absätze neu, die SL übernimmt oder verwirft */
+export interface RecapRevision {
+  state: 'running' | 'ready' | 'failed';
+  message?: string | null;
+  createdAt?: string;
+  changes: { index: number; before: string; after: string }[];
+  notes: { text: string; applied: boolean; indexes: number[] }[];
 }
 
 export type ReviewVerdict = 'supported' | 'partial' | 'unsupported' | 'contradicted' | 'off_game' | 'unchecked';

@@ -194,9 +194,49 @@ function transcriptFor(sessionId: string) {
 
 /** Recap so, wie diese Person ihn sehen darf: den Prüfteil bekommt nur die SL */
 function recapFor(r: Recap, gm: boolean): Recap {
-  if (gm) return r;
-  const { review: _r, ...rest } = r;
+  if (gm) return withRevision(r);
+  const { review: _r, revision: _v, ...rest } = r;
   return rest;
+}
+
+// ---------------- Korrektur per Hinweis (0.4.15): Entwurf nach kurzer Wartezeit, nur betroffene Absätze
+
+const revisionJobs: Record<string, { readyAt: number; result: NonNullable<Recap['revision']> }> = {};
+const revisionCount: Record<string, number[]> = {};
+
+/** Läuft der Auftrag lange genug, liegt der Entwurf vor */
+function withRevision(r: Recap): Recap {
+  const job = revisionJobs[r.sessionId];
+  if (job && r.revision?.state === 'running' && Date.now() >= job.readyAt) {
+    r.revision = job.result;
+    delete revisionJobs[r.sessionId];
+  }
+  return r;
+}
+
+/**
+ * Testmodus: jeder Satz des Hinweises ist ein eigener Hinweis. Er landet in dem Absatz, mit dem er die meisten Wörter
+ * teilt („fehlt …“ im letzten Absatz); ohne gemeinsames Wort bleibt er unumgesetzt. Absatzzahl bleibt gleich.
+ */
+function mockRevision(text: string, note: string): NonNullable<Recap['revision']> {
+  const paras = text.split(/\n\s*\n/);
+  const after = [...paras];
+  const words = (x: string) => new Set(x.toLowerCase().match(/[\p{L}]{4,}/gu) ?? []);
+  const notes = (note.match(/[^.!?]+[.!?]?/g) ?? []).map((x) => x.trim()).filter(Boolean).map((sentence) => {
+    const w = words(sentence);
+    let best = -1, score = 0;
+    paras.forEach((p, i) => {
+      const hit = [...words(p)].filter((x) => w.has(x)).length;
+      if (hit > score) { score = hit; best = i; }
+    });
+    if (best < 0 && /fehlt|missing/i.test(sentence)) best = paras.length - 1;
+    if (best < 0) return { text: sentence, applied: false, indexes: [] as number[] };
+    const fix = sentence.replace(/^(es )?fehlt[:,]?\s*/i, '').replace(/\s*fehlt\.?$/i, '.');
+    after[best] = `${after[best]} ${fix.charAt(0).toUpperCase()}${fix.slice(1)}`.replace(/\s+/g, ' ');
+    return { text: sentence, applied: true, indexes: [best] };
+  });
+  const changes = paras.map((before, index) => ({ index, before, after: after[index] })).filter((c) => c.before !== c.after);
+  return { state: 'ready', message: null, createdAt: new Date().toISOString(), changes, notes };
 }
 
 function replaceWord(text: string, heard: string, correct: string): string {
@@ -437,7 +477,7 @@ export const handlers = [
     const nachbar = new URL(request.url).hostname === NACHBAR_HOST;
     if (hostKey(request) === DEMO_HOST) {
       return HttpResponse.json({
-        name: 'Taleward', operator: 'Euer Verein e. V.', contact: null, apiVersion: '0.4.14', registration: 'invite_only',
+        name: 'Taleward', operator: 'Euer Verein e. V.', contact: null, apiVersion: '0.4.15', registration: 'invite_only',
         authMethods: ['password'], privacyPolicyUrl: null, minAge: 16, externalTranscription: null,
         minAppVersion: null, latestAppVersion: null, appDownloadUrl: null, releaseNotes: null
       });
@@ -446,8 +486,8 @@ export const handlers = [
       name: nachbar ? 'Chronik des Nachbarvereins' : 'Testserver',
       operator: nachbar ? 'Spielgemeinschaft Nachbarort e. V.' : 'Rollenspielverein (Testmodus)',
       contact: nachbar ? 'vorstand@nachbarverein.test' : null,
-      // Eingebauter Testserver kann alles bis 0.4.7; der Nachbarverein bleibt alt (zeigt das Ausblenden neuer Funktionen)
-      apiVersion: nachbar ? '0.3.9' : '0.4.14',
+      // Eingebauter Testserver kann alles bis zur aktuellen Schnittstelle; der Nachbarverein bleibt alt (zeigt das Ausblenden neuer Funktionen)
+      apiVersion: nachbar ? '0.3.9' : '0.4.15',
       registration: 'invite_only',
       authMethods: ['password'],
       privacyPolicyUrl: null,
@@ -1637,9 +1677,55 @@ export const handlers = [
     if (body.title !== undefined) r.title = body.title;
     if (body.openThreads !== undefined) r.openThreads = body.openThreads;
     if (body.text !== undefined && body.text !== r.text) {
+      if (withRevision(r).revision?.state === 'running') return err(409, 'revision_running', 'Die Korrektur läuft noch. Warte kurz, bevor du von Hand änderst.');
       r.text = body.text;
       if (r.review) r.review.stale = true; // Absätze können verrutscht sein
+      r.revision = null; // ab 0.4.15: Bearbeiten von Hand verwirft einen offenen Korrektur-Entwurf
+      delete revisionJobs[r.sessionId];
     }
+    return HttpResponse.json(r);
+  }),
+
+  http.post(`${B}/sessions/:id/recap/revision`, async ({ params, request }) => {
+    const s = sessions.find((x) => x.id === params.id);
+    const r = recaps[params.id as string];
+    if (!s || !r || !isGm(s.campaignId)) return err(404, 'not_found', 'Für diese Session gibt es noch keinen Recap.');
+    if (s.state !== 'awaiting_review') return err(409, 'wrong_state', 'Korrigieren geht nur, solange das Kapitel auf deine Prüfung wartet.');
+    withRevision(r);
+    if (r.revision?.state === 'running') return err(409, 'revision_running', 'Die Korrektur läuft noch.');
+    const body = (await request.json().catch(() => ({}))) as { note?: string; baseText?: string };
+    const note = (body.note ?? '').trim();
+    if (!note || note.length > 2000) return err(400, 'invalid_input', 'Schreib kurz, was nicht stimmt oder fehlt.');
+    if (body.baseText !== r.text) return err(409, 'recap_changed', 'Das Kapitel hat sich inzwischen geändert. Lies es noch einmal und schreib den Hinweis dazu.');
+    const now = Date.now();
+    const recent = (revisionCount[s.id] ?? []).filter((t0) => now - t0 < 864e5);
+    if (recent.length >= 10) return err(409, 'revision_limit', 'Dieses Kapitel wurde heute schon zehnmal korrigiert. Morgen geht es wieder.');
+    revisionCount[s.id] = [...recent, now];
+    revisionJobs[s.id] = { readyAt: now + 2500, result: mockRevision(r.text, note) };
+    r.revision = { state: 'running', message: null, createdAt: new Date(now).toISOString(), changes: [], notes: [] };
+    return HttpResponse.json(r, { status: 202 });
+  }),
+
+  http.post(`${B}/sessions/:id/recap/revision/decision`, async ({ params, request }) => {
+    const s = sessions.find((x) => x.id === params.id);
+    const r = recaps[params.id as string];
+    if (!s || !r || !isGm(s.campaignId)) return err(404, 'not_found', 'Für diese Session gibt es noch keinen Recap.');
+    withRevision(r);
+    const v = r.revision;
+    if (!v) return err(409, 'no_revision', 'Es gibt keinen offenen Korrektur-Entwurf.');
+    if (v.state === 'running') return err(409, 'revision_running', 'Die Korrektur läuft noch.');
+    const { accept } = (await request.json().catch(() => ({}))) as { accept?: boolean };
+    if (accept) {
+      if (v.state !== 'ready') return err(409, 'no_revision', 'Es gibt keinen fertigen Korrektur-Entwurf.');
+      const paras = r.text.split(/\n\s*\n/);
+      if (v.changes.some((c) => paras[c.index] !== c.before)) return err(409, 'recap_changed', 'Das Kapitel hat sich inzwischen geändert. Nichts wurde übernommen.');
+      for (const c of v.changes) paras[c.index] = c.after;
+      r.text = paras.join('\n\n');
+      if (r.review) {
+        r.review.paragraphs = r.review.paragraphs.map((x) => v.changes.some((c) => c.index === x.index) ? { ...x, verdict: 'unchecked', note: null, evidence: [] } : x);
+      }
+    }
+    r.revision = null;
     return HttpResponse.json(r);
   }),
 
