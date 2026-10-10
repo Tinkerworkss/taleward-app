@@ -19,14 +19,16 @@ interface Props {
   hero?: { campaign: CoverInfo | null | undefined; large?: boolean };
   /** Schmale Seiten (Aufnahme, Formulare) bleiben auch auf breiten Bildschirmen mittig und schmal */
   narrow?: boolean;
+  /** Arbeitsplatz (z. B. Kapitel prüfen): ab 1200 px volle Breite, Spalten scrollen für sich */
+  wide?: boolean;
   children: ReactNode;
 }
 
-export function Screen({ overline, title, back, backTo, nav = true, hero, narrow, children }: Props) {
+export function Screen({ overline, title, back, backTo, nav = true, hero, narrow, wide, children }: Props) {
   const navigate = useNavigate();
   const withHero = !!hero?.campaign && hasCover(hero.campaign);
   // Breite Bildschirme: Navigation links statt unten (siehe theme.css, .screen.with-nav)
-  const cls = ['screen', nav ? 'with-nav' : '', narrow ? 'narrow' : ''].filter(Boolean).join(' ');
+  const cls = ['screen', nav ? 'with-nav' : '', narrow ? 'narrow' : '', wide ? 'wide' : ''].filter(Boolean).join(' ');
   if (withHero) {
     return (
       <div className={cls}>
@@ -69,6 +71,20 @@ export function Screen({ overline, title, back, backTo, nav = true, hero, narrow
       {nav && <BottomNav />}
     </div>
   );
+}
+
+/** Breiter Bildschirm (Arbeitsplatz ab 1200 px), folgt Größenänderungen */
+export const WORKSPACE = '(min-width: 1200px)';
+export function useWorkspace(): boolean {
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(WORKSPACE).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(WORKSPACE);
+    if (!mq) return;
+    const on = () => setWide(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return wide;
 }
 
 /**

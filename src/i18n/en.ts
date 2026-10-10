@@ -1179,4 +1179,7 @@ export const en: Record<string, string> = {
   "{n} Hinweis an einem Absatz. Der Pfeil schickt alles auf einmal.": "{n} note on a paragraph. The arrow sends everything at once.",
   "{n} Hinweise an Absätzen. Der Pfeil schickt alles auf einmal.": "{n} notes on paragraphs. The arrow sends everything at once.",
   "Tipp: Tippe einen Absatz an, um genau dort etwas anzumerken.": "Tip: tap a paragraph to leave a note right there.",
+  "Vorschläge ({n})": "Suggestions ({n})",
+  "Vorschläge": "Suggestions",
+  "ausgefüllt": "filled in",
 };

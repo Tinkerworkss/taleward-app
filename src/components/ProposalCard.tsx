@@ -143,14 +143,6 @@ export function ProposalCard({ proposal: p, players = [], onChange, onError }: {
               </span>
             </div>
           )}
-          <div className="row wrap" style={{ gap: 8 }}>
-            {players.length > 0 && (
-              <button type="button" className="btn small outline" onClick={() => { setPick(visibleIds); setPicking(true); }}>
-                <IconEye size={16} /> {t('Sichtbar für …')}
-              </button>
-            )}
-            <button type="button" className="btn small outline" onClick={() => setEditing(true)}>{t('Bearbeiten')}</button>
-          </div>
           {picking && (
             <Dialog title={t('Sichtbar für')} onClose={() => setPicking(false)}>
               <PlayerPicker players={players} selected={pick} onChange={setPick} />
@@ -164,16 +156,25 @@ export function ProposalCard({ proposal: p, players = [], onChange, onError }: {
         </>
       )}
 
+      {/* Eine Zeile: die Entscheidung als Knöpfe, Sichtbarkeit und Bearbeiten als leise Links daneben */}
       {!editing && (
-        <div className="row" style={{ gap: 8 }}>
-          <button type="button" className={p.decision === 'accepted' ? 'btn small moss' : 'btn small moss outline'} style={{ flex: 1 }}
+        <div className="proposal-actions">
+          <button type="button" className={p.decision === 'accepted' ? 'btn small moss' : 'btn small moss outline'}
             aria-pressed={p.decision === 'accepted'} onClick={() => decide('accepted')}>
             {t('Übernehmen')}
           </button>
-          <button type="button" className={p.decision === 'rejected' ? 'btn small' : 'btn small outline'} style={{ flex: 1 }}
+          <button type="button" className={p.decision === 'rejected' ? 'btn small' : 'btn small outline'}
             aria-pressed={p.decision === 'rejected'} onClick={() => decide('rejected')}>
             {t('Verwerfen')}
           </button>
+          <span className="proposal-links">
+            {players.length > 0 && (
+              <button type="button" className="btn small subtle" onClick={() => { setPick(visibleIds); setPicking(true); }}>
+                <IconEye size={16} /> {t('Sichtbar für …')}
+              </button>
+            )}
+            <button type="button" className="btn small subtle" onClick={() => setEditing(true)}>{t('Bearbeiten')}</button>
+          </span>
         </div>
       )}
     </div>

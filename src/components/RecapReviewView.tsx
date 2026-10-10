@@ -55,7 +55,7 @@ export function reviewNeedsAttention(recap: Recap): boolean {
   return flagged(recap).some((p) => p.verdict !== 'off_game');
 }
 
-export function RecapReviewView({ sessionId, recap, members = [], showReport = true, onPick, after }: {
+export function RecapReviewView({ sessionId, recap, members = [], showReport = true, onPick, after, highlight }: {
   sessionId: string;
   recap: Recap;
   members?: Member[];
@@ -65,6 +65,8 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
   onPick?: (index: number, text: string) => void;
   /** Ab 0.4.15: was unter einem Absatz stehen soll (die wandernde Hinweis-Zeile) */
   after?: (index: number) => ReactNode;
+  /** Arbeitsplatz: Absätze hervorheben, in denen der gerade angesehene Vorschlag vorkommt */
+  highlight?: ((paragraph: string) => boolean) | null;
 }) {
   const review = recap.review;
   const paragraphs = recap.text.split(/\n\s*\n/);
@@ -87,6 +89,8 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
     }
   };
 
+  const hl = (para: string, cls: string) => (highlight && highlight(para) ? `${cls} hl` : cls);
+
   // Text eines Absatzes; mit onPick antippbar (nur Zeiger und Finger – mit Tastatur gibt es die Zeile am Ende)
   const text = (para: string, i: number) => (
     <div className={onPick ? 'recap pickable' : 'recap'} onClick={onPick ? () => onPick(i, para) : undefined}><p>{para}</p></div>
@@ -95,7 +99,7 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
   if (!review || review.state === 'skipped') {
     return (
       <div className="review">
-        {paragraphs.map((para, i) => <div key={i} className="review-para">{text(para, i)}{after?.(i)}</div>)}
+        {paragraphs.map((para, i) => <div key={i} className={hl(para, 'review-para')}>{text(para, i)}{after?.(i)}</div>)}
       </div>
     );
   }
@@ -112,11 +116,11 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
       {paragraphs.map((para, i) => {
         const info = review.state === 'done' ? review.paragraphs.find((x) => x.index === i) : undefined;
         if (!info || !isFlagged(info)) {
-          return <div key={i} className="review-para">{text(para, i)}{after?.(i)}</div>;
+          return <div key={i} className={hl(para, 'review-para')}>{text(para, i)}{after?.(i)}</div>;
         }
         const evidence = info.evidence.slice(0, MAX_EVIDENCE);
         return (
-          <div key={i} className={`review-para flagged v-${info.verdict}`}>
+          <div key={i} className={hl(para, `review-para flagged v-${info.verdict}`)}>
             {text(para, i)}
             <p className="review-note small">
               {/* Die Begründung des Prüfers genügt; ohne sie ein kurzes Wort zur Art */}

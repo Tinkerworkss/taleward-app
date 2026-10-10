@@ -8,10 +8,11 @@ import { api, isApiError } from '../api/client';
 import type { Member, Proposal, Recap, Session } from '../api/types';
 import { ProposalCard } from '../components/ProposalCard';
 import { IconLock } from '../components/Icons';
-import { ErrorBox, Screen } from '../components/Screen';
+import { ErrorBox, Screen, useWorkspace } from '../components/Screen';
 import { RecapReviewView, reportSentence, reviewNeedsAttention } from '../components/RecapReviewView';
 import { namesSkipped, serverHasNameCheck } from './NamesPage';
 import { ParagraphHint, RevisionBox, RevisionDraft, paragraphRef, revisionOpen } from '../review/Revision';
+import { mentions } from '../review/mentions';
 
 export function Review() {
   const { sessionId = '' } = useParams();
@@ -103,45 +104,69 @@ export function Review() {
     }
   };
 
+  // Breit (ab 1200 px, Arbeitsplatz): links das Kapitel, rechts die Vorschläge mit fester Fußzeile; beide scrollen für sich.
+  // Schmal: alles untereinander in dieser Reihenfolge.
+  const wide = useWorkspace();
+  // Fährt man über einen Vorschlag, werden die Absätze hervorgehoben, in denen er vorkommt
+  const [hoverTitle, setHoverTitle] = useState<string | null>(null);
+
+  const tools = [
+    termCount > 0 && (
+      <button key="names" type="button" className="btn small subtle" onClick={() => navigate(p(`/s/${sessionId}/namen`))}>
+        {tn(termCount, '{n} unsicheren Namen prüfen', '{n} unsichere Namen prüfen')}
+      </button>
+    ),
+    canRewrite && (
+      <button key="voices" type="button" className="btn small subtle" onClick={() => navigate(p(`/s/${sessionId}/stimmen`))}>
+        {t('Stimmen prüfen')}
+      </button>
+    ),
+    canRewrite && proposals && (
+      <button key="rewrite" type="button" className="btn small subtle" disabled={busy} onClick={rewrite}>
+        {t('Kapitel neu schreiben')}
+      </button>
+    )
+  ].filter(Boolean);
+
   return (
     <Screen
       back
+      wide
       overline={<span className="row" style={{ gap: 6 }}><IconLock size={14} /> {session ? t('Kapitel {n}', { n: session.number }) + ' · ' + t('nur für dich') : t('Nur für dich')}</span>}
       title={t('Vorschläge prüfen')}
     >
       <ErrorBox error={error} />
 
-      {/* Breit: links Recap, Notiz und Veröffentlichen – rechts die Vorschläge; schmal in dieser Reihenfolge untereinander */}
-      <div className="split">
+      <div className="split review-split">
       <div className="a">
-      {termCount > 0 && (
-        <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start' }} onClick={() => navigate(p(`/s/${sessionId}/namen`))}>
-          {tn(termCount, '{n} unsicheren Namen prüfen', '{n} unsichere Namen prüfen')}
-        </button>
-      )}
-      {canRewrite && (
-        <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start' }} onClick={() => navigate(p(`/s/${sessionId}/stimmen`))}>
-          {t('Stimmen prüfen')}
-        </button>
-      )}
-      {recap && <RecapEditor sessionId={sessionId} recap={recap} members={members} onSaved={setRecap} onError={setError} />}
+      {/* Werkzeuge als eine schmale Zeile */}
+      {tools.length > 0 && <div className="review-tools">{tools}</div>}
+      {recap && <RecapEditor sessionId={sessionId} recap={recap} members={members} onSaved={setRecap} onError={setError}
+        alwaysOpen={wide} highlight={hoverTitle} />}
       </div>
 
       <div className="b">
-      <p className="muted small" style={{ margin: 0 }}>
-        {t('Nur Übernommenes kommt in die Bibel.')}
-      </p>
-
-      {/* Bei vielen Vorschlägen: alles Offene auf einmal entscheiden */}
-      {proposals && openCount > 1 && (
-        <div className="row wrap" style={{ gap: 8 }}>
-          <button type="button" className="btn small moss outline" onClick={() => bulk('accepted')}>{t('Alle offenen übernehmen')}</button>
-          <button type="button" className="btn small outline" onClick={() => bulk('rejected')}>{t('Alle offenen verwerfen')}</button>
+      <div className="review-proposals-head">
+        <div className="row between wrap" style={{ gap: 8 }}>
+          <strong>{proposals ? t('Vorschläge ({n})', { n: proposals.length }) : t('Vorschläge')}</strong>
+          {/* Bei vielen Vorschlägen: alles Offene auf einmal entscheiden */}
+          {proposals && openCount > 1 && (
+            <span className="row wrap" style={{ gap: 4 }}>
+              <button type="button" className="btn small subtle" onClick={() => bulk('accepted')}>{t('Alle offenen übernehmen')}</button>
+              <button type="button" className="btn small subtle" onClick={() => bulk('rejected')}>{t('Alle offenen verwerfen')}</button>
+            </span>
+          )}
         </div>
-      )}
+        <p className="muted small" style={{ margin: 0 }}>{t('Nur Übernommenes kommt in die Bibel.')}</p>
+      </div>
+
+      <div className="review-proposals">
       {proposals?.map((p) => (
-        <ProposalCard key={p.id} proposal={p} players={players} onError={setError}
-          onChange={(u) => setProposals((list) => list?.map((x) => (x.id === u.id ? u : x)) ?? null)} />
+        <div key={p.id} onMouseEnter={() => setHoverTitle(p.title)} onMouseLeave={() => setHoverTitle(null)}
+          onFocus={() => setHoverTitle(p.title)} onBlur={() => setHoverTitle(null)}>
+          <ProposalCard proposal={p} players={players} onError={setError}
+            onChange={(u) => setProposals((list) => list?.map((x) => (x.id === u.id ? u : x)) ?? null)} />
+        </div>
       ))}
 
       {proposals?.length === 0 && (
@@ -149,41 +174,37 @@ export function Review() {
       )}
       </div>
 
-      <div className="c">
-
+      {/* Fußzeile: SL-Notiz zum Aufklappen, Stand und Veröffentlichen – im Arbeitsplatz immer sichtbar */}
       {proposals && (
-        <div className="card secret">
-          <label htmlFor="gm-note" className="row" style={{ gap: 8, fontFamily: 'var(--display)', fontWeight: 700 }}>
-            <IconLock /> {t('Geheime SL-Notiz')}
-          </label>
-          <textarea
-            id="gm-note"
-            value={note}
-            onChange={(e) => {
-              setNote(e.target.value);
-              setNoteSaved(false);
-            }}
-            onBlur={saveNote}
-            style={{ background: 'var(--paper-raised)' }}
-          />
-          <div className="muted small">{t('Erscheint nie im Recap oder in der Spieleransicht.')}{noteSaved ? '' : ' ' + t('Wird beim Verlassen des Feldes gespeichert.')}</div>
-        </div>
-      )}
-
-      {proposals && (
-        <>
-          <p className="muted" style={{ margin: 0, textAlign: 'center' }}>
-            {t('{done} von {total} Vorschlägen geprüft', { done: proposals.length - openCount, total: proposals.length })}
-          </p>
-          <button type="button" className="btn" disabled={busy} onClick={publish}>
-            {busy ? t('Wird veröffentlicht …') : t('Recap veröffentlichen')}
-          </button>
-          {canRewrite && (
-            <button type="button" className="btn small ghost" style={{ alignSelf: 'center' }} disabled={busy} onClick={rewrite}>
-              {t('Kapitel neu schreiben')}
+        <div className="review-foot">
+          {/* Schmal offen, wenn schon etwas drinsteht; im Arbeitsplatz zu, damit die Vorschläge Platz haben */}
+          <details className="card secret" open={(!wide && !!note.trim()) || undefined}>
+            <summary className="row" style={{ gap: 8, fontFamily: 'var(--display)', fontWeight: 700 }}>
+              <IconLock /> {t('Geheime SL-Notiz')}
+              {note.trim() && <span className="muted small" style={{ fontFamily: 'var(--font-sans)', fontWeight: 400 }}>· {t('ausgefüllt')}</span>}
+            </summary>
+            <textarea
+              id="gm-note"
+              aria-label={t('Geheime SL-Notiz')}
+              value={note}
+              onChange={(e) => {
+                setNote(e.target.value);
+                setNoteSaved(false);
+              }}
+              onBlur={saveNote}
+              style={{ background: 'var(--paper-raised)' }}
+            />
+            <div className="muted small">{t('Erscheint nie im Recap oder in der Spieleransicht.')}{noteSaved ? '' : ' ' + t('Wird beim Verlassen des Feldes gespeichert.')}</div>
+          </details>
+          <div className="review-publish">
+            <span className="muted">
+              {t('{done} von {total} Vorschlägen geprüft', { done: proposals.length - openCount, total: proposals.length })}
+            </span>
+            <button type="button" className="btn" disabled={busy} onClick={publish}>
+              {busy ? t('Wird veröffentlicht …') : t('Recap veröffentlichen')}
             </button>
-          )}
-        </>
+          </div>
+        </div>
       )}
       </div>
       </div>
@@ -195,10 +216,14 @@ export function Review() {
  * Recap-Entwurf vor dem Veröffentlichen: lesen und bei Bedarf korrigieren (Titel, Text, offene Fäden) –
  * z. B. falsch geschriebene Namen. Der Server nimmt Änderungen nur bis zum Veröffentlichen an.
  */
-function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
+function RecapEditor({ sessionId, recap, members, onSaved, onError, alwaysOpen = false, highlight = null }: {
   sessionId: string;
   recap: Recap;
   members: Member[];
+  /** Arbeitsplatz: Kapitel immer offen, nicht zum Zuklappen */
+  alwaysOpen?: boolean;
+  /** Titel eines Vorschlags – Absätze, in denen er vorkommt, werden hervorgehoben */
+  highlight?: string | null;
   onSaved: (r: Recap) => void;
   onError: (e: unknown) => void;
 }) {
@@ -262,20 +287,21 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
     );
   }
 
-  return (
-    <details className="card" open={reviewNeedsAttention(recap) || !!recap.revision || undefined}>
-      <summary>
+  const head = (
         <span style={{ flex: 1 }}>
           <strong>{t('Recap-Entwurf:')}</strong> {recap.title}
           {recap.review?.state === 'done' && <span className="muted small" style={{ display: 'block' }}>{reportSentence(recap)}</span>}
         </span>
-      </summary>
+  );
+  const body = (
+    <>
       {/* Mit Gegenprüfung (ab 0.4.6) je Absatz eine Randmarke mit Belegen, sonst der reine Text; liegt ein
           Korrektur-Entwurf vor (ab 0.4.15), das Kapitel mit den Änderungen im Text */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
         {recap.revision?.state === 'ready'
           ? <RevisionDraft recap={recap} />
           : <RecapReviewView sessionId={sessionId} recap={recap} members={members} showReport={false}
+              highlight={highlight ? mentions(highlight) : undefined}
               onPick={canRevise && !revisionOpen(recap) ? pick : undefined}
               after={(i) => (canRevise && !revisionOpen(recap) && i in hints ? (
                 <ParagraphHint value={hints[i]} focusKey={focus?.index === i ? focus.key : 0}
@@ -300,6 +326,17 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
           {t('Recap bearbeiten')}
         </button>
       )}
+    </>
+  );
+
+  // Arbeitsplatz: Kapitel immer offen; sonst zum Aufklappen (klappt bei Stellen zum Ansehen von selbst auf)
+  if (alwaysOpen) {
+    return <section className="card recap-sheet"><div className="recap-sheet-head">{head}</div>{body}</section>;
+  }
+  return (
+    <details className="card" open={reviewNeedsAttention(recap) || !!recap.revision || undefined}>
+      <summary>{head}</summary>
+      {body}
     </details>
   );
 }
