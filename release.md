@@ -1,1 +1,0 @@
-- Kapitel korrigieren ist ruhiger: Unter dem Kapitel steht nur noch eine Zeile. Tippe einen Absatz an und schreib direkt darunter, was dort nicht stimmt, an so vielen Stellen, wie du magst. Ein Pfeil am Ende schickt alles auf einmal. Das kommt, sobald euer Server die neue Fassung hat.
