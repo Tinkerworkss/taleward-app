@@ -1,0 +1,3 @@
+- Kapitel korrigieren in eigenen Worten: Unter dem Kapitel schreibst du, was nicht stimmt oder fehlt, zum Beispiel „Pipo stirbt nicht, er bleibt verletzt zurück“. Taleward ändert nur die betroffenen Absätze und zeigt dir die Änderungen im Text. Du übernimmst oder verwirfst sie. Das kommt, sobald euer Server die neue Fassung hat.
+- Beim Prüfen sind auch Stellen markiert, an denen etwas Wichtiges nicht erzählt wurde.
+- „Recap bearbeiten“ heißt jetzt „Selbst bearbeiten“ und steht dezenter darunter.
