@@ -1,0 +1,373 @@
+From d13b5efaa2fbb84d09f598c537d51e7dbef0e369 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 11 Oct 2026 00:34:03 +0200
+Subject: [PATCH] Korrektur-Hinweise je Absatz sammeln, einmal abschicken
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ src/components/Icons.tsx           |   4 +
+ src/components/RecapReviewView.tsx |  24 +++--
+ src/i18n/en.ts                     |   9 +-
+ src/mocks/handlers.ts              |   3 +-
+ src/pages/Review.tsx               |  40 +++++++--
+ src/review/Revision.tsx            | 135 +++++++++++++++++++++++++----
+ src/theme.css                      |  42 +++++++++
+ 7 files changed, 224 insertions(+), 33 deletions(-)
+
+diff --git a/src/components/Icons.tsx b/src/components/Icons.tsx
+index 214c9d8..c9ddbb6 100644
+--- a/src/components/Icons.tsx
++++ b/src/components/Icons.tsx
+@@ -74,2 +74,6 @@ export const IconScreen = ({ size = 18 }: { size?: number }) => (
+ );
++/** Absenden (Pfeil nach oben, z. B. Korrektur-Hinweis) */
++export const IconSend = ({ size = 18 }: { size?: number }) => (
++  <svg {...base(size)}><path d="M12 19V5" /><path d="m6 11 6-6 6 6" /></svg>
++);
+ /** Suchen (Lupe) */
+diff --git a/src/components/RecapReviewView.tsx b/src/components/RecapReviewView.tsx
+index 196dbff..4653433 100644
+--- a/src/components/RecapReviewView.tsx
++++ b/src/components/RecapReviewView.tsx
+@@ -1,2 +1,2 @@
+-import { useState } from 'react';
++import { useState, type ReactNode } from 'react';
+ import { api } from '../api/client';
+@@ -57,3 +57,3 @@ export function reviewNeedsAttention(recap: Recap): boolean {
+ 
+-export function RecapReviewView({ sessionId, recap, members = [], showReport = true }: {
++export function RecapReviewView({ sessionId, recap, members = [], showReport = true, onPick, after }: {
+   sessionId: string;
+@@ -63,2 +63,6 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
+   showReport?: boolean;
++  /** Ab 0.4.15: Antippen eines Absatzes (Text) – dort einen Korrektur-Hinweis schreiben */
++  onPick?: (index: number, text: string) => void;
++  /** Ab 0.4.15: was unter einem Absatz stehen soll (die wandernde Hinweis-Zeile) */
++  after?: (index: number) => ReactNode;
+ }) {
+@@ -85,4 +89,13 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
+ 
++  // Text eines Absatzes; mit onPick antippbar (nur Zeiger und Finger – mit Tastatur gibt es die Zeile am Ende)
++  const text = (para: string, i: number) => (
++    <div className={onPick ? 'recap pickable' : 'recap'} onClick={onPick ? () => onPick(i, para) : undefined}><p>{para}</p></div>
++  );
++
+   if (!review || review.state === 'skipped') {
+-    return <div className="recap" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{paragraphs.map((para, i) => <p key={i}>{para}</p>)}</div>;
++    return (
++      <div className="review">
++        {paragraphs.map((para, i) => <div key={i} className="review-para">{text(para, i)}{after?.(i)}</div>)}
++      </div>
++    );
+   }
+@@ -101,3 +114,3 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
+         if (!info || !isFlagged(info)) {
+-          return <div key={i} className="review-para"><div className="recap"><p>{para}</p></div></div>;
++          return <div key={i} className="review-para">{text(para, i)}{after?.(i)}</div>;
+         }
+@@ -106,3 +119,3 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
+           <div key={i} className={`review-para flagged v-${info.verdict}`}>
+-            <div className="recap"><p>{para}</p></div>
++            {text(para, i)}
+             <p className="review-note small">
+@@ -123,2 +136,3 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
+             )}
++            {after?.(i)}
+           </div>
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 89a7cf0..d1ffc78 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -1170,3 +1170,2 @@ export const en: Record<string, string> = {
+   "Stimmt etwas nicht oder fehlt etwas?": "Is something wrong or missing?",
+-  "In deinen Worten, z. B.: Das Schwert heißt Eisenschwert. Pipo stirbt nicht, er bleibt verletzt zurück.": "In your own words, e.g.: The sword is called Ironbrand. Pipo doesn’t die, he stays behind wounded.",
+   "Nur du siehst das. Geändert werden nur die betroffenen Absätze, und du entscheidest danach.": "Only you see this. Only the paragraphs concerned are changed, and you decide afterwards.",
+@@ -1174,2 +1173,10 @@ export const en: Record<string, string> = {
+   "Selbst bearbeiten": "Edit it yourself",
++  "Stimmt etwas nicht? Schreib es einfach hier hin …": "Something wrong? Just write it here …",
++  "Zu {q}: ": "About {q}: ",
++  "Was stimmt in diesem Absatz nicht?": "What’s wrong in this paragraph?",
++  "Was stimmt hier nicht?": "What’s wrong here?",
++  "Sonst noch etwas, z. B. was fehlt? …": "Anything else, e.g. something missing? …",
++  "{n} Hinweis an einem Absatz. Der Pfeil schickt alles auf einmal.": "{n} note on a paragraph. The arrow sends everything at once.",
++  "{n} Hinweise an Absätzen. Der Pfeil schickt alles auf einmal.": "{n} notes on paragraphs. The arrow sends everything at once.",
++  "Tipp: Tippe einen Absatz an, um genau dort etwas anzumerken.": "Tip: tap a paragraph to leave a note right there.",
+ };
+diff --git a/src/mocks/handlers.ts b/src/mocks/handlers.ts
+index 21ae6f7..8cbf6fe 100644
+--- a/src/mocks/handlers.ts
++++ b/src/mocks/handlers.ts
+@@ -233,3 +233,4 @@ function mockRevision(text: string, note: string): NonNullable<Recap['revision']
+     if (best < 0) return { text: sentence, applied: false, indexes: [] as number[] };
+-    const fix = sentence.replace(/^(es )?fehlt[:,]?\s*/i, '').replace(/\s*fehlt\.?$/i, '.');
++    // Bezug „Zu „…“:“ aus der App gehört nicht in den Text
++    const fix = sentence.replace(/^(zu|about)\s+[„"“][^“"”]*[“"”]:\s*/i, '').replace(/^(es )?fehlt[:,]?\s*/i, '').replace(/\s*fehlt\.?$/i, '.');
+     after[best] = `${after[best]} ${fix.charAt(0).toUpperCase()}${fix.slice(1)}`.replace(/\s+/g, ' ');
+diff --git a/src/pages/Review.tsx b/src/pages/Review.tsx
+index 9231d9d..b9119c7 100644
+--- a/src/pages/Review.tsx
++++ b/src/pages/Review.tsx
+@@ -13,3 +13,3 @@ import { RecapReviewView, reportSentence, reviewNeedsAttention } from '../compon
+ import { namesSkipped, serverHasNameCheck } from './NamesPage';
+-import { RevisionBox, RevisionDraft, revisionOpen } from '../review/Revision';
++import { ParagraphHint, RevisionBox, RevisionDraft, paragraphRef, revisionOpen } from '../review/Revision';
+ 
+@@ -210,2 +210,14 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
+   const canRevise = apiAtLeast('0.4.15') && !recap.publishedAt;
++  // Korrektur per Hinweis (ab 0.4.15): Hinweise je Absatz sammeln, dazu die Zeile am Ende; abgeschickt wird alles auf einmal
++  const [hints, setHints] = useState<Record<number, string>>({});
++  const [endHint, setEndHint] = useState('');
++  const [focus, setFocus] = useState<{ index: number; key: number } | null>(null);
++  const paras = recap.text.split(/\n\s*\n/);
++  const pick = (index: number) => {
++    setHints((h) => (index in h ? h : { ...h, [index]: '' }));
++    setFocus((f) => ({ index, key: (f?.key ?? 0) + 1 }));
++  };
++  const filled = Object.entries(hints).filter(([, v]) => v.trim()).sort(([a], [b]) => Number(a) - Number(b));
++  const collected = filled.map(([i, v]) => paragraphRef(paras[Number(i)] ?? '') + v.trim()).join('\n');
++  const clearHints = () => { setHints({}); setEndHint(''); setFocus(null); };
+ 
+@@ -225,2 +237,4 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
+ 
++  const selfEdit = () => { setTitle(recap.title); setText(recap.text); setThreads(recap.openThreads.join('\n')); setEditing(true); };
++
+   if (editing) {
+@@ -263,3 +277,9 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
+           ? <RevisionDraft recap={recap} />
+-          : <RecapReviewView sessionId={sessionId} recap={recap} members={members} showReport={false} />}
++          : <RecapReviewView sessionId={sessionId} recap={recap} members={members} showReport={false}
++              onPick={canRevise && !revisionOpen(recap) ? pick : undefined}
++              after={(i) => (canRevise && !revisionOpen(recap) && i in hints ? (
++                <ParagraphHint value={hints[i]} focusKey={focus?.index === i ? focus.key : 0}
++                  onChange={(v) => setHints((h) => ({ ...h, [i]: v }))}
++                  onRemove={() => setHints((h) => { const { [i]: _gone, ...rest } = h; return rest; })} />
++              ) : null)} />}
+       </div>
+@@ -270,8 +290,12 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
+       )}
+-      {/* Ab 0.4.15: ein Feld, in dem die SL in eigenen Worten schreibt, was nicht stimmt oder fehlt */}
+-      {canRevise && <div style={{ marginTop: 12 }}><RevisionBox sessionId={sessionId} recap={recap} onRecap={onSaved} /></div>}
+-      {!revisionOpen(recap) && (
+-        <button type="button" className={canRevise ? 'btn small subtle' : 'btn small outline'} style={{ alignSelf: 'flex-start', marginTop: 10 }}
+-          onClick={() => { setTitle(recap.title); setText(recap.text); setThreads(recap.openThreads.join('\n')); setEditing(true); }}>
+-          {canRevise ? t('Selbst bearbeiten') : t('Recap bearbeiten')}
++      {/* Ab 0.4.15: die ruhige Zeile am Ende (oder der laufende Auftrag / die Entscheidung) */}
++      {canRevise && (
++        <div style={{ marginTop: 12 }}>
++          <RevisionBox sessionId={sessionId} recap={recap} onRecap={onSaved} note={endHint} setNote={setEndHint}
++            collected={collected} count={filled.length} onSent={clearHints} onSelfEdit={selfEdit} />
++        </div>
++      )}
++      {!canRevise && (
++        <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start', marginTop: 10 }} onClick={selfEdit}>
++          {t('Recap bearbeiten')}
+         </button>
+diff --git a/src/review/Revision.tsx b/src/review/Revision.tsx
+index 49a1fee..8949220 100644
+--- a/src/review/Revision.tsx
++++ b/src/review/Revision.tsx
+@@ -1,2 +1,2 @@
+-import { useEffect, useState } from 'react';
++import { useEffect, useRef, useState } from 'react';
+ import { api, isApiError } from '../api/client';
+@@ -5,2 +5,3 @@ import { t, tn } from '../i18n';
+ import { ErrorBox } from '../components/Screen';
++import { IconSend } from '../components/Icons';
+ import { wordDiff } from './wordDiff';
+@@ -8,5 +9,8 @@ import { wordDiff } from './wordDiff';
+ /*
+- * Kapitel per Hinweis korrigieren (Schnittstelle 0.4.15, nur SL). Bewusst schmal: ein Feld, ein Knopf. Der Server
+- * ordnet die Hinweise selbst den Absätzen zu und legt einen Entwurf vor; die App zeigt ihn wie eine Korrektur auf
+- * Papier (neu unterstrichen, gestrichen durchgestrichen) mit „Übernehmen“ / „Verwerfen“ für das Ganze.
++ * Kapitel per Hinweis korrigieren (Schnittstelle 0.4.15, nur SL). Bewusst schmal: eine ruhige Zeile am Ende des
++ * Kapitels („Stimmt etwas nicht? …“), der Pfeil zum Absenden erscheint erst mit Text. Tippt die SL einen Absatz an,
++ * bekommt er darunter eine eigene Zeile; alle Hinweise werden gesammelt und mit dem einen Pfeil am Ende zusammen
++ * abgeschickt (jeweils mit dem Absatz als Bezug). Der Server ordnet die Hinweise den Absätzen zu und legt
++ * einen Entwurf vor; die App zeigt ihn wie eine Korrektur auf Papier (neu unterstrichen, gestrichen durchgestrichen)
++ * mit „Übernehmen“ / „Verwerfen“ für das Ganze.
+  */
+@@ -18,2 +22,93 @@ export function revisionOpen(recap: Recap): boolean {
+ 
++/** Bezug auf einen Absatz für den Hinweis: „Zu „Pipo bricht zusammen …“: “ */
++export function paragraphRef(para: string): string {
++  const words = para.trim().split(/\s+/);
++  const head = words.slice(0, 6).join(' ') + (words.length > 6 ? ' …' : '');
++  return t('Zu {q}: ', { q: t('„{q}“', { q: head }) });
++}
++
++/** Ruhiges Eingabefeld: nur ein Strich darunter, wächst beim Schreiben; Pfeil zum Absenden nur, wenn erlaubt */
++function HintInput({ value, onChange, label, placeholder, focusKey = 0, busy = false, onSend, onFocusChange, onBlurEmpty }: {
++  value: string;
++  onChange: (v: string) => void;
++  label: string;
++  placeholder: string;
++  focusKey?: number;
++  busy?: boolean;
++  onSend?: () => void;
++  onFocusChange?: (focused: boolean) => void;
++  onBlurEmpty?: () => void;
++}) {
++  const ref = useRef<HTMLTextAreaElement>(null);
++  // Höhe dem Text anpassen
++  useEffect(() => {
++    const el = ref.current;
++    if (!el) return;
++    el.style.height = 'auto';
++    el.style.height = `${el.scrollHeight}px`;
++  }, [value]);
++  // Nach dem Antippen eines Absatzes: Fokus und Schreibmarke ans Ende
++  useEffect(() => {
++    const el = ref.current;
++    if (!el || !focusKey) return;
++    el.focus();
++    el.setSelectionRange(el.value.length, el.value.length);
++    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
++  }, [focusKey]);
++  return (
++    <div className="revision-input">
++      <textarea ref={ref} rows={1} maxLength={2000} value={value} disabled={busy} aria-label={label} placeholder={placeholder}
++        onChange={(e) => onChange(e.target.value)}
++        onFocus={() => onFocusChange?.(true)}
++        onBlur={() => { onFocusChange?.(false); if (!value.trim()) onBlurEmpty?.(); }} />
++      {onSend && (
++        <button type="button" className="revision-send" disabled={busy} onClick={onSend} aria-label={t('Korrigieren lassen')} title={t('Korrigieren lassen')}>
++          <IconSend />
++        </button>
++      )}
++    </div>
++  );
++}
++
++/** Hinweis direkt unter einem angetippten Absatz – wird gesammelt, abgeschickt wird erst am Ende */
++export function ParagraphHint({ value, onChange, onRemove, focusKey }: {
++  value: string;
++  onChange: (v: string) => void;
++  onRemove: () => void;
++  focusKey: number;
++}) {
++  return (
++    <div className="revision-line paragraph-hint">
++      <HintInput value={value} onChange={onChange} focusKey={focusKey} onBlurEmpty={onRemove}
++        label={t('Was stimmt in diesem Absatz nicht?')} placeholder={t('Was stimmt hier nicht?')} />
++    </div>
++  );
++}
++
++/** Die Zeile am Ende: eigener Hinweis (z. B. was fehlt) und der eine Pfeil, der alles Gesammelte abschickt */
++function RevisionLine({ note, setNote, count, busy, onSend, onSelfEdit, }: {
++  note: string;
++  setNote: (v: string) => void;
++  count: number;
++  busy: boolean;
++  onSend: () => void;
++  onSelfEdit?: () => void;
++}) {
++  const [focused, setFocused] = useState(false);
++  const ready = note.trim().length > 0 || count > 0;
++  return (
++    <div className="revision-line">
++      <HintInput value={note} onChange={setNote} busy={busy} onSend={ready ? onSend : undefined} onFocusChange={setFocused}
++        label={t('Stimmt etwas nicht oder fehlt etwas?')}
++        placeholder={count ? t('Sonst noch etwas, z. B. was fehlt? …') : t('Stimmt etwas nicht? Schreib es einfach hier hin …')} />
++      {count > 0
++        ? <span className="muted small">{tn(count, '{n} Hinweis an einem Absatz. Der Pfeil schickt alles auf einmal.', '{n} Hinweise an Absätzen. Der Pfeil schickt alles auf einmal.')}</span>
++        : focused || ready
++          ? <span className="muted small">{t('Nur du siehst das. Geändert werden nur die betroffenen Absätze, und du entscheidest danach.')}</span>
++          : onSelfEdit && <button type="button" className="btn small subtle revision-self" onClick={onSelfEdit}>{t('Selbst bearbeiten')}</button>}
++      {count === 0 && !focused && !ready && <span className="muted small revision-tip">{t('Tipp: Tippe einen Absatz an, um genau dort etwas anzumerken.')}</span>}
++    </div>
++  );
++}
++
+ /** Das Kapitel mit den vorgeschlagenen Änderungen im Text */
+@@ -42,5 +137,17 @@ export function RevisionDraft({ recap }: { recap: Recap }) {
+ 
+-/** Feld „Stimmt etwas nicht oder fehlt etwas?“ bzw. Stand des Auftrags und die Entscheidung */
+-export function RevisionBox({ sessionId, recap, onRecap }: { sessionId: string; recap: Recap; onRecap: (r: Recap) => void }) {
+-  const [note, setNote] = useState('');
++/**
++ * Die Zeile bzw. Stand des Auftrags und die Entscheidung. Die Texte liegen beim Aufrufer: `note` ist die Zeile am Ende,
++ * `collected` die gesammelten Hinweise an Absätzen (schon mit Bezug „Zu „…“:“), `count` ihre Zahl.
++ */
++export function RevisionBox({ sessionId, recap, onRecap, note, setNote, collected, count, onSent, onSelfEdit }: {
++  sessionId: string;
++  recap: Recap;
++  onRecap: (r: Recap) => void;
++  note: string;
++  setNote: (v: string) => void;
++  collected: string;
++  count: number;
++  onSent: () => void;
++  onSelfEdit?: () => void;
++}) {
+   const [busy, setBusy] = useState(false);
+@@ -92,3 +199,3 @@ export function RevisionBox({ sessionId, recap, onRecap }: { sessionId: string;
+           {v.changes.length > 0 && (
+-            <button type="button" className="btn small" disabled={busy} onClick={() => run(() => api.decideRevision(sessionId, true), () => setNote(''))}>{t('Übernehmen')}</button>
++            <button type="button" className="btn small" disabled={busy} onClick={() => run(() => api.decideRevision(sessionId, true))}>{t('Übernehmen')}</button>
+           )}
+@@ -108,12 +215,4 @@ export function RevisionBox({ sessionId, recap, onRecap }: { sessionId: string;
+       <ErrorBox error={error} />
+-      <div className="field">
+-        <label htmlFor={`rev-${sessionId}`}>{t('Stimmt etwas nicht oder fehlt etwas?')}</label>
+-        <textarea id={`rev-${sessionId}`} rows={3} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)}
+-          placeholder={t('In deinen Worten, z. B.: Das Schwert heißt Eisenschwert. Pipo stirbt nicht, er bleibt verletzt zurück.')} />
+-        <span className="muted small">{t('Nur du siehst das. Geändert werden nur die betroffenen Absätze, und du entscheidest danach.')}</span>
+-      </div>
+-      <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start' }} disabled={busy || !note.trim()}
+-        onClick={() => run(() => api.requestRevision(sessionId, note.trim(), recap.text))}>
+-        {t('Korrigieren lassen')}
+-      </button>
++      <RevisionLine note={note} setNote={setNote} count={count} busy={busy} onSelfEdit={onSelfEdit}
++        onSend={() => run(() => api.requestRevision(sessionId, [collected, note.trim()].filter(Boolean).join('\n'), recap.text), onSent)} />
+     </div>
+diff --git a/src/theme.css b/src/theme.css
+index 330fbaf..04f8292 100644
+--- a/src/theme.css
++++ b/src/theme.css
+@@ -930,2 +930,44 @@ details.card[open] { padding-bottom: var(--space-4); }
+ .revision-box { display: flex; flex-direction: column; gap: 8px; }
++/* Die ruhige Zeile: nur ein Strich darunter, Pfeil rechts erst mit Text */
++.revision-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
++.revision-input { position: relative; flex: 1 1 220px; }
++.revision-input textarea {
++  display: block;
++  width: 100%;
++  min-height: 48px;
++  resize: none;
++  overflow: hidden;
++  background: none;
++  border: 0;
++  border-bottom: 1px solid var(--line-strong);
++  border-radius: 0;
++  box-shadow: none;
++  padding: 12px 56px 10px 0;
++  font: inherit;
++  color: var(--ink);
++}
++.revision-input textarea::placeholder { color: var(--ink-muted); font-style: italic; }
++.revision-input textarea:focus,
++.revision-input textarea:focus-visible { outline: none; border-bottom: 2px solid var(--tinte); }
++.revision-send {
++  position: absolute;
++  right: 0;
++  bottom: 0;
++  width: 48px;
++  height: 48px;
++  display: grid;
++  place-items: center;
++  border: 0;
++  border-radius: 50%;
++  background: var(--tinte);
++  color: var(--on-tinte, #fff);
++  cursor: pointer;
++}
++.revision-send:disabled { opacity: 0.5; }
++.revision-self { margin-left: auto; }
++.paragraph-hint { margin-top: 2px; }
++.revision-tip { flex-basis: 100%; }
++/* Absätze zum Antippen (ab 0.4.15): ganz leise Rückmeldung, kein Rahmen */
++.recap.pickable { cursor: text; border-radius: var(--radius-sm); }
++@media (hover: hover) { .recap.pickable:hover { background: var(--paper-sunken); } }
+ .revision-draft del { text-decoration: line-through; color: var(--ink-faint); }
