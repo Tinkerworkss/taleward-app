@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { api } from '../api/client';
 import type { Member, Recap, ReviewVerdict, TranscriptSegment } from '../api/types';
 import { t, tn } from '../i18n';
@@ -55,12 +55,16 @@ export function reviewNeedsAttention(recap: Recap): boolean {
   return flagged(recap).some((p) => p.verdict !== 'off_game');
 }
 
-export function RecapReviewView({ sessionId, recap, members = [], showReport = true }: {
+export function RecapReviewView({ sessionId, recap, members = [], showReport = true, onPick, after }: {
   sessionId: string;
   recap: Recap;
   members?: Member[];
   /** Prüfbericht-Satz zeigen (aus, wenn er schon in der Überschrift steht) */
   showReport?: boolean;
+  /** Ab 0.4.15: Antippen eines Absatzes (Text) – dort einen Korrektur-Hinweis schreiben */
+  onPick?: (index: number, text: string) => void;
+  /** Ab 0.4.15: was unter einem Absatz stehen soll (die wandernde Hinweis-Zeile) */
+  after?: (index: number) => ReactNode;
 }) {
   const review = recap.review;
   const paragraphs = recap.text.split(/\n\s*\n/);
@@ -83,8 +87,17 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
     }
   };
 
+  // Text eines Absatzes; mit onPick antippbar (nur Zeiger und Finger – mit Tastatur gibt es die Zeile am Ende)
+  const text = (para: string, i: number) => (
+    <div className={onPick ? 'recap pickable' : 'recap'} onClick={onPick ? () => onPick(i, para) : undefined}><p>{para}</p></div>
+  );
+
   if (!review || review.state === 'skipped') {
-    return <div className="recap" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{paragraphs.map((para, i) => <p key={i}>{para}</p>)}</div>;
+    return (
+      <div className="review">
+        {paragraphs.map((para, i) => <div key={i} className="review-para">{text(para, i)}{after?.(i)}</div>)}
+      </div>
+    );
   }
 
   const excerpt = excerptAt === null || !transcript ? [] : transcript.filter((s) => s.end >= excerptAt - 60 && s.start <= excerptAt + 60);
@@ -99,12 +112,12 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
       {paragraphs.map((para, i) => {
         const info = review.state === 'done' ? review.paragraphs.find((x) => x.index === i) : undefined;
         if (!info || !isFlagged(info)) {
-          return <div key={i} className="review-para"><div className="recap"><p>{para}</p></div></div>;
+          return <div key={i} className="review-para">{text(para, i)}{after?.(i)}</div>;
         }
         const evidence = info.evidence.slice(0, MAX_EVIDENCE);
         return (
           <div key={i} className={`review-para flagged v-${info.verdict}`}>
-            <div className="recap"><p>{para}</p></div>
+            {text(para, i)}
             <p className="review-note small">
               {/* Die Begründung des Prüfers genügt; ohne sie ein kurzes Wort zur Art */}
               {info.note ? info.note : <strong>{flagLabel(info.verdict)}</strong>}
@@ -121,6 +134,7 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
                 ))}
               </details>
             )}
+            {after?.(i)}
           </div>
         );
       })}

@@ -11,7 +11,7 @@ import { IconLock } from '../components/Icons';
 import { ErrorBox, Screen } from '../components/Screen';
 import { RecapReviewView, reportSentence, reviewNeedsAttention } from '../components/RecapReviewView';
 import { namesSkipped, serverHasNameCheck } from './NamesPage';
-import { RevisionBox, RevisionDraft, revisionOpen } from '../review/Revision';
+import { ParagraphHint, RevisionBox, RevisionDraft, paragraphRef, revisionOpen } from '../review/Revision';
 
 export function Review() {
   const { sessionId = '' } = useParams();
@@ -208,6 +208,18 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
   const [threads, setThreads] = useState(recap.openThreads.join('\n'));
   const [busy, setBusy] = useState(false);
   const canRevise = apiAtLeast('0.4.15') && !recap.publishedAt;
+  // Korrektur per Hinweis (ab 0.4.15): Hinweise je Absatz sammeln, dazu die Zeile am Ende; abgeschickt wird alles auf einmal
+  const [hints, setHints] = useState<Record<number, string>>({});
+  const [endHint, setEndHint] = useState('');
+  const [focus, setFocus] = useState<{ index: number; key: number } | null>(null);
+  const paras = recap.text.split(/\n\s*\n/);
+  const pick = (index: number) => {
+    setHints((h) => (index in h ? h : { ...h, [index]: '' }));
+    setFocus((f) => ({ index, key: (f?.key ?? 0) + 1 }));
+  };
+  const filled = Object.entries(hints).filter(([, v]) => v.trim()).sort(([a], [b]) => Number(a) - Number(b));
+  const collected = filled.map(([i, v]) => paragraphRef(paras[Number(i)] ?? '') + v.trim()).join('\n');
+  const clearHints = () => { setHints({}); setEndHint(''); setFocus(null); };
 
   const save = async () => {
     setBusy(true);
@@ -222,6 +234,8 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
       setBusy(false);
     }
   };
+
+  const selfEdit = () => { setTitle(recap.title); setText(recap.text); setThreads(recap.openThreads.join('\n')); setEditing(true); };
 
   if (editing) {
     return (
@@ -261,19 +275,29 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
         {recap.revision?.state === 'ready'
           ? <RevisionDraft recap={recap} />
-          : <RecapReviewView sessionId={sessionId} recap={recap} members={members} showReport={false} />}
+          : <RecapReviewView sessionId={sessionId} recap={recap} members={members} showReport={false}
+              onPick={canRevise && !revisionOpen(recap) ? pick : undefined}
+              after={(i) => (canRevise && !revisionOpen(recap) && i in hints ? (
+                <ParagraphHint value={hints[i]} focusKey={focus?.index === i ? focus.key : 0}
+                  onChange={(v) => setHints((h) => ({ ...h, [i]: v }))}
+                  onRemove={() => setHints((h) => { const { [i]: _gone, ...rest } = h; return rest; })} />
+              ) : null)} />}
       </div>
       {recap.openThreads.length > 0 && (
         <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
           {recap.openThreads.map((x) => <li key={x}>{x}</li>)}
         </ul>
       )}
-      {/* Ab 0.4.15: ein Feld, in dem die SL in eigenen Worten schreibt, was nicht stimmt oder fehlt */}
-      {canRevise && <div style={{ marginTop: 12 }}><RevisionBox sessionId={sessionId} recap={recap} onRecap={onSaved} /></div>}
-      {!revisionOpen(recap) && (
-        <button type="button" className={canRevise ? 'btn small subtle' : 'btn small outline'} style={{ alignSelf: 'flex-start', marginTop: 10 }}
-          onClick={() => { setTitle(recap.title); setText(recap.text); setThreads(recap.openThreads.join('\n')); setEditing(true); }}>
-          {canRevise ? t('Selbst bearbeiten') : t('Recap bearbeiten')}
+      {/* Ab 0.4.15: die ruhige Zeile am Ende (oder der laufende Auftrag / die Entscheidung) */}
+      {canRevise && (
+        <div style={{ marginTop: 12 }}>
+          <RevisionBox sessionId={sessionId} recap={recap} onRecap={onSaved} note={endHint} setNote={setEndHint}
+            collected={collected} count={filled.length} onSent={clearHints} onSelfEdit={selfEdit} />
+        </div>
+      )}
+      {!canRevise && (
+        <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start', marginTop: 10 }} onClick={selfEdit}>
+          {t('Recap bearbeiten')}
         </button>
       )}
     </details>

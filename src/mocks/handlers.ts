@@ -231,7 +231,8 @@ function mockRevision(text: string, note: string): NonNullable<Recap['revision']
     });
     if (best < 0 && /fehlt|missing/i.test(sentence)) best = paras.length - 1;
     if (best < 0) return { text: sentence, applied: false, indexes: [] as number[] };
-    const fix = sentence.replace(/^(es )?fehlt[:,]?\s*/i, '').replace(/\s*fehlt\.?$/i, '.');
+    // Bezug „Zu „…“:“ aus der App gehört nicht in den Text
+    const fix = sentence.replace(/^(zu|about)\s+[„"“][^“"”]*[“"”]:\s*/i, '').replace(/^(es )?fehlt[:,]?\s*/i, '').replace(/\s*fehlt\.?$/i, '.');
     after[best] = `${after[best]} ${fix.charAt(0).toUpperCase()}${fix.slice(1)}`.replace(/\s+/g, ' ');
     return { text: sentence, applied: true, indexes: [best] };
   });

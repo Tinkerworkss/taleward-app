@@ -72,6 +72,10 @@ export const IconScan = ({ size }: { size?: number }) => (
 export const IconScreen = ({ size = 18 }: { size?: number }) => (
   <svg {...base(size)}><path d="M3 6.5 8 4.5v14l-5 2z" /><path d="M8 4.5l8 2v14l-8-2z" /><path d="M16 6.5l5-2v14l-5 2z" /></svg>
 );
+/** Absenden (Pfeil nach oben, z. B. Korrektur-Hinweis) */
+export const IconSend = ({ size = 18 }: { size?: number }) => (
+  <svg {...base(size)}><path d="M12 19V5" /><path d="m6 11 6-6 6 6" /></svg>
+);
 /** Suchen (Lupe) */
 export const IconSearch = ({ size = 18 }: { size?: number }) => (
   <svg {...base(size)}><circle cx="10.5" cy="10.5" r="6" /><path d="m15 15 5.5 5.5" /></svg>

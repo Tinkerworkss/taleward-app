@@ -928,6 +928,48 @@ details.card[open] { padding-bottom: var(--space-4); }
 }
 /* Korrektur per Hinweis (ab Schnittstelle 0.4.15): ein Feld, danach Änderungen wie auf Papier */
 .revision-box { display: flex; flex-direction: column; gap: 8px; }
+/* Die ruhige Zeile: nur ein Strich darunter, Pfeil rechts erst mit Text */
+.revision-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.revision-input { position: relative; flex: 1 1 220px; }
+.revision-input textarea {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  resize: none;
+  overflow: hidden;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--line-strong);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 12px 56px 10px 0;
+  font: inherit;
+  color: var(--ink);
+}
+.revision-input textarea::placeholder { color: var(--ink-muted); font-style: italic; }
+.revision-input textarea:focus,
+.revision-input textarea:focus-visible { outline: none; border-bottom: 2px solid var(--tinte); }
+.revision-send {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--tinte);
+  color: var(--on-tinte, #fff);
+  cursor: pointer;
+}
+.revision-send:disabled { opacity: 0.5; }
+.revision-self { margin-left: auto; }
+.paragraph-hint { margin-top: 2px; }
+.revision-tip { flex-basis: 100%; }
+/* Absätze zum Antippen (ab 0.4.15): ganz leise Rückmeldung, kein Rahmen */
+.recap.pickable { cursor: text; border-radius: var(--radius-sm); }
+@media (hover: hover) { .recap.pickable:hover { background: var(--paper-sunken); } }
 .revision-draft del { text-decoration: line-through; color: var(--ink-faint); }
 .revision-draft ins {
   text-decoration: underline;
