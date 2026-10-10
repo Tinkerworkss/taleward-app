@@ -1,0 +1,462 @@
+From 7ed2ead0549789298b232e6276ab371da9b53153 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 11 Oct 2026 00:56:43 +0200
+Subject: [PATCH] =?UTF-8?q?Kapitel=20pr=C3=BCfen=20als=20Arbeitsplatz=20au?=
+ =?UTF-8?q?f=20breiten=20Bildschirmen?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018aiEzsk3JkKj9Ft8xrcuW2
+---
+ scripts/tests/mentions.test.mjs    |  20 ++++
+ src/components/ProposalCard.tsx    |  23 ++--
+ src/components/RecapReviewView.tsx |  12 ++-
+ src/components/Screen.tsx          |  20 +++-
+ src/i18n/en.ts                     |   3 +
+ src/pages/Review.tsx               | 165 ++++++++++++++++++-----------
+ src/review/mentions.ts             |  14 +++
+ src/theme.css                      |  50 ++++++++-
+ 8 files changed, 225 insertions(+), 82 deletions(-)
+ create mode 100644 scripts/tests/mentions.test.mjs
+ create mode 100644 src/review/mentions.ts
+
+diff --git a/scripts/tests/mentions.test.mjs b/scripts/tests/mentions.test.mjs
+new file mode 100644
+index 0000000..4f2e971
+--- /dev/null
++++ b/scripts/tests/mentions.test.mjs
+@@ -0,0 +1,20 @@
++// Arbeitsplatz: Vorschlag im Kapitel wiederfinden
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { mentions } from '../../src/review/mentions.ts';
++
++test('Name im Absatz', () => {
++  const m = mentions('Hauptfrau Veyra Dornfeld');
++  assert.ok(m('Erst Veyra ließ sie passieren.'));
++  assert.ok(!m('Sie fanden einen Schlüssel.'));
++});
++
++test('Artikel und kleine Wörter zählen nicht', () => {
++  const m = mentions('Das gestohlene Siegel');
++  assert.ok(m('… das Zeichen wie das gestohlene Siegel.'));
++  assert.ok(!m('Das Tor war zu.'));
++});
++
++test('ohne brauchbares Wort', () => {
++  assert.equal(mentions('der Ort'), null);
++});
+diff --git a/src/components/ProposalCard.tsx b/src/components/ProposalCard.tsx
+index 7af6c80..d0b5a0a 100644
+--- a/src/components/ProposalCard.tsx
++++ b/src/components/ProposalCard.tsx
+@@ -145,10 +145,2 @@ export function ProposalCard({ proposal: p, players = [], onChange, onError }: {
+           )}
+-          <div className="row wrap" style={{ gap: 8 }}>
+-            {players.length > 0 && (
+-              <button type="button" className="btn small outline" onClick={() => { setPick(visibleIds); setPicking(true); }}>
+-                <IconEye size={16} /> {t('Sichtbar für …')}
+-              </button>
+-            )}
+-            <button type="button" className="btn small outline" onClick={() => setEditing(true)}>{t('Bearbeiten')}</button>
+-          </div>
+           {picking && (
+@@ -166,5 +158,6 @@ export function ProposalCard({ proposal: p, players = [], onChange, onError }: {
+ 
++      {/* Eine Zeile: die Entscheidung als Knöpfe, Sichtbarkeit und Bearbeiten als leise Links daneben */}
+       {!editing && (
+-        <div className="row" style={{ gap: 8 }}>
+-          <button type="button" className={p.decision === 'accepted' ? 'btn small moss' : 'btn small moss outline'} style={{ flex: 1 }}
++        <div className="proposal-actions">
++          <button type="button" className={p.decision === 'accepted' ? 'btn small moss' : 'btn small moss outline'}
+             aria-pressed={p.decision === 'accepted'} onClick={() => decide('accepted')}>
+@@ -172,3 +165,3 @@ export function ProposalCard({ proposal: p, players = [], onChange, onError }: {
+           </button>
+-          <button type="button" className={p.decision === 'rejected' ? 'btn small' : 'btn small outline'} style={{ flex: 1 }}
++          <button type="button" className={p.decision === 'rejected' ? 'btn small' : 'btn small outline'}
+             aria-pressed={p.decision === 'rejected'} onClick={() => decide('rejected')}>
+@@ -176,2 +169,10 @@ export function ProposalCard({ proposal: p, players = [], onChange, onError }: {
+           </button>
++          <span className="proposal-links">
++            {players.length > 0 && (
++              <button type="button" className="btn small subtle" onClick={() => { setPick(visibleIds); setPicking(true); }}>
++                <IconEye size={16} /> {t('Sichtbar für …')}
++              </button>
++            )}
++            <button type="button" className="btn small subtle" onClick={() => setEditing(true)}>{t('Bearbeiten')}</button>
++          </span>
+         </div>
+diff --git a/src/components/RecapReviewView.tsx b/src/components/RecapReviewView.tsx
+index 4653433..91c8e09 100644
+--- a/src/components/RecapReviewView.tsx
++++ b/src/components/RecapReviewView.tsx
+@@ -57,3 +57,3 @@ export function reviewNeedsAttention(recap: Recap): boolean {
+ 
+-export function RecapReviewView({ sessionId, recap, members = [], showReport = true, onPick, after }: {
++export function RecapReviewView({ sessionId, recap, members = [], showReport = true, onPick, after, highlight }: {
+   sessionId: string;
+@@ -67,2 +67,4 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
+   after?: (index: number) => ReactNode;
++  /** Arbeitsplatz: Absätze hervorheben, in denen der gerade angesehene Vorschlag vorkommt */
++  highlight?: ((paragraph: string) => boolean) | null;
+ }) {
+@@ -89,2 +91,4 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
+ 
++  const hl = (para: string, cls: string) => (highlight && highlight(para) ? `${cls} hl` : cls);
++
+   // Text eines Absatzes; mit onPick antippbar (nur Zeiger und Finger – mit Tastatur gibt es die Zeile am Ende)
+@@ -97,3 +101,3 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
+       <div className="review">
+-        {paragraphs.map((para, i) => <div key={i} className="review-para">{text(para, i)}{after?.(i)}</div>)}
++        {paragraphs.map((para, i) => <div key={i} className={hl(para, 'review-para')}>{text(para, i)}{after?.(i)}</div>)}
+       </div>
+@@ -114,3 +118,3 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
+         if (!info || !isFlagged(info)) {
+-          return <div key={i} className="review-para">{text(para, i)}{after?.(i)}</div>;
++          return <div key={i} className={hl(para, 'review-para')}>{text(para, i)}{after?.(i)}</div>;
+         }
+@@ -118,3 +122,3 @@ export function RecapReviewView({ sessionId, recap, members = [], showReport = t
+         return (
+-          <div key={i} className={`review-para flagged v-${info.verdict}`}>
++          <div key={i} className={hl(para, `review-para flagged v-${info.verdict}`)}>
+             {text(para, i)}
+diff --git a/src/components/Screen.tsx b/src/components/Screen.tsx
+index 4a6332f..ab123e4 100644
+--- a/src/components/Screen.tsx
++++ b/src/components/Screen.tsx
+@@ -21,2 +21,4 @@ interface Props {
+   narrow?: boolean;
++  /** Arbeitsplatz (z. B. Kapitel prüfen): ab 1200 px volle Breite, Spalten scrollen für sich */
++  wide?: boolean;
+   children: ReactNode;
+@@ -24,3 +26,3 @@ interface Props {
+ 
+-export function Screen({ overline, title, back, backTo, nav = true, hero, narrow, children }: Props) {
++export function Screen({ overline, title, back, backTo, nav = true, hero, narrow, wide, children }: Props) {
+   const navigate = useNavigate();
+@@ -28,3 +30,3 @@ export function Screen({ overline, title, back, backTo, nav = true, hero, narrow
+   // Breite Bildschirme: Navigation links statt unten (siehe theme.css, .screen.with-nav)
+-  const cls = ['screen', nav ? 'with-nav' : '', narrow ? 'narrow' : ''].filter(Boolean).join(' ');
++  const cls = ['screen', nav ? 'with-nav' : '', narrow ? 'narrow' : '', wide ? 'wide' : ''].filter(Boolean).join(' ');
+   if (withHero) {
+@@ -73,2 +75,16 @@ export function Screen({ overline, title, back, backTo, nav = true, hero, narrow
+ 
++/** Breiter Bildschirm (Arbeitsplatz ab 1200 px), folgt Größenänderungen */
++export const WORKSPACE = '(min-width: 1200px)';
++export function useWorkspace(): boolean {
++  const [wide, setWide] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(WORKSPACE).matches);
++  useEffect(() => {
++    const mq = window.matchMedia?.(WORKSPACE);
++    if (!mq) return;
++    const on = () => setWide(mq.matches);
++    mq.addEventListener('change', on);
++    return () => mq.removeEventListener('change', on);
++  }, []);
++  return wide;
++}
++
+ /**
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index d1ffc78..713b23b 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -1181,2 +1181,5 @@ export const en: Record<string, string> = {
+   "Tipp: Tippe einen Absatz an, um genau dort etwas anzumerken.": "Tip: tap a paragraph to leave a note right there.",
++  "Vorschläge ({n})": "Suggestions ({n})",
++  "Vorschläge": "Suggestions",
++  "ausgefüllt": "filled in",
+ };
+diff --git a/src/pages/Review.tsx b/src/pages/Review.tsx
+index b9119c7..8168d6e 100644
+--- a/src/pages/Review.tsx
++++ b/src/pages/Review.tsx
+@@ -10,3 +10,3 @@ import { ProposalCard } from '../components/ProposalCard';
+ import { IconLock } from '../components/Icons';
+-import { ErrorBox, Screen } from '../components/Screen';
++import { ErrorBox, Screen, useWorkspace } from '../components/Screen';
+ import { RecapReviewView, reportSentence, reviewNeedsAttention } from '../components/RecapReviewView';
+@@ -14,2 +14,3 @@ import { namesSkipped, serverHasNameCheck } from './NamesPage';
+ import { ParagraphHint, RevisionBox, RevisionDraft, paragraphRef, revisionOpen } from '../review/Revision';
++import { mentions } from '../review/mentions';
+ 
+@@ -105,2 +106,26 @@ export function Review() {
+ 
++  // Breit (ab 1200 px, Arbeitsplatz): links das Kapitel, rechts die Vorschläge mit fester Fußzeile; beide scrollen für sich.
++  // Schmal: alles untereinander in dieser Reihenfolge.
++  const wide = useWorkspace();
++  // Fährt man über einen Vorschlag, werden die Absätze hervorgehoben, in denen er vorkommt
++  const [hoverTitle, setHoverTitle] = useState<string | null>(null);
++
++  const tools = [
++    termCount > 0 && (
++      <button key="names" type="button" className="btn small subtle" onClick={() => navigate(p(`/s/${sessionId}/namen`))}>
++        {tn(termCount, '{n} unsicheren Namen prüfen', '{n} unsichere Namen prüfen')}
++      </button>
++    ),
++    canRewrite && (
++      <button key="voices" type="button" className="btn small subtle" onClick={() => navigate(p(`/s/${sessionId}/stimmen`))}>
++        {t('Stimmen prüfen')}
++      </button>
++    ),
++    canRewrite && proposals && (
++      <button key="rewrite" type="button" className="btn small subtle" disabled={busy} onClick={rewrite}>
++        {t('Kapitel neu schreiben')}
++      </button>
++    )
++  ].filter(Boolean);
++
+   return (
+@@ -108,2 +133,3 @@ export function Review() {
+       back
++      wide
+       overline={<span className="row" style={{ gap: 6 }}><IconLock size={14} /> {session ? t('Kapitel {n}', { n: session.number }) + ' · ' + t('nur für dich') : t('Nur für dich')}</span>}
+@@ -113,16 +139,8 @@ export function Review() {
+ 
+-      {/* Breit: links Recap, Notiz und Veröffentlichen – rechts die Vorschläge; schmal in dieser Reihenfolge untereinander */}
+-      <div className="split">
++      <div className="split review-split">
+       <div className="a">
+-      {termCount > 0 && (
+-        <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start' }} onClick={() => navigate(p(`/s/${sessionId}/namen`))}>
+-          {tn(termCount, '{n} unsicheren Namen prüfen', '{n} unsichere Namen prüfen')}
+-        </button>
+-      )}
+-      {canRewrite && (
+-        <button type="button" className="btn small outline" style={{ alignSelf: 'flex-start' }} onClick={() => navigate(p(`/s/${sessionId}/stimmen`))}>
+-          {t('Stimmen prüfen')}
+-        </button>
+-      )}
+-      {recap && <RecapEditor sessionId={sessionId} recap={recap} members={members} onSaved={setRecap} onError={setError} />}
++      {/* Werkzeuge als eine schmale Zeile */}
++      {tools.length > 0 && <div className="review-tools">{tools}</div>}
++      {recap && <RecapEditor sessionId={sessionId} recap={recap} members={members} onSaved={setRecap} onError={setError}
++        alwaysOpen={wide} highlight={hoverTitle} />}
+       </div>
+@@ -130,16 +148,23 @@ export function Review() {
+       <div className="b">
+-      <p className="muted small" style={{ margin: 0 }}>
+-        {t('Nur Übernommenes kommt in die Bibel.')}
+-      </p>
+-
+-      {/* Bei vielen Vorschlägen: alles Offene auf einmal entscheiden */}
+-      {proposals && openCount > 1 && (
+-        <div className="row wrap" style={{ gap: 8 }}>
+-          <button type="button" className="btn small moss outline" onClick={() => bulk('accepted')}>{t('Alle offenen übernehmen')}</button>
+-          <button type="button" className="btn small outline" onClick={() => bulk('rejected')}>{t('Alle offenen verwerfen')}</button>
++      <div className="review-proposals-head">
++        <div className="row between wrap" style={{ gap: 8 }}>
++          <strong>{proposals ? t('Vorschläge ({n})', { n: proposals.length }) : t('Vorschläge')}</strong>
++          {/* Bei vielen Vorschlägen: alles Offene auf einmal entscheiden */}
++          {proposals && openCount > 1 && (
++            <span className="row wrap" style={{ gap: 4 }}>
++              <button type="button" className="btn small subtle" onClick={() => bulk('accepted')}>{t('Alle offenen übernehmen')}</button>
++              <button type="button" className="btn small subtle" onClick={() => bulk('rejected')}>{t('Alle offenen verwerfen')}</button>
++            </span>
++          )}
+         </div>
+-      )}
++        <p className="muted small" style={{ margin: 0 }}>{t('Nur Übernommenes kommt in die Bibel.')}</p>
++      </div>
++
++      <div className="review-proposals">
+       {proposals?.map((p) => (
+-        <ProposalCard key={p.id} proposal={p} players={players} onError={setError}
+-          onChange={(u) => setProposals((list) => list?.map((x) => (x.id === u.id ? u : x)) ?? null)} />
++        <div key={p.id} onMouseEnter={() => setHoverTitle(p.title)} onMouseLeave={() => setHoverTitle(null)}
++          onFocus={() => setHoverTitle(p.title)} onBlur={() => setHoverTitle(null)}>
++          <ProposalCard proposal={p} players={players} onError={setError}
++            onChange={(u) => setProposals((list) => list?.map((x) => (x.id === u.id ? u : x)) ?? null)} />
++        </div>
+       ))}
+@@ -151,37 +176,33 @@ export function Review() {
+ 
+-      <div className="c">
+-
++      {/* Fußzeile: SL-Notiz zum Aufklappen, Stand und Veröffentlichen – im Arbeitsplatz immer sichtbar */}
+       {proposals && (
+-        <div className="card secret">
+-          <label htmlFor="gm-note" className="row" style={{ gap: 8, fontFamily: 'var(--display)', fontWeight: 700 }}>
+-            <IconLock /> {t('Geheime SL-Notiz')}
+-          </label>
+-          <textarea
+-            id="gm-note"
+-            value={note}
+-            onChange={(e) => {
+-              setNote(e.target.value);
+-              setNoteSaved(false);
+-            }}
+-            onBlur={saveNote}
+-            style={{ background: 'var(--paper-raised)' }}
+-          />
+-          <div className="muted small">{t('Erscheint nie im Recap oder in der Spieleransicht.')}{noteSaved ? '' : ' ' + t('Wird beim Verlassen des Feldes gespeichert.')}</div>
+-        </div>
+-      )}
+-
+-      {proposals && (
+-        <>
+-          <p className="muted" style={{ margin: 0, textAlign: 'center' }}>
+-            {t('{done} von {total} Vorschlägen geprüft', { done: proposals.length - openCount, total: proposals.length })}
+-          </p>
+-          <button type="button" className="btn" disabled={busy} onClick={publish}>
+-            {busy ? t('Wird veröffentlicht …') : t('Recap veröffentlichen')}
+-          </button>
+-          {canRewrite && (
+-            <button type="button" className="btn small ghost" style={{ alignSelf: 'center' }} disabled={busy} onClick={rewrite}>
+-              {t('Kapitel neu schreiben')}
++        <div className="review-foot">
++          {/* Schmal offen, wenn schon etwas drinsteht; im Arbeitsplatz zu, damit die Vorschläge Platz haben */}
++          <details className="card secret" open={(!wide && !!note.trim()) || undefined}>
++            <summary className="row" style={{ gap: 8, fontFamily: 'var(--display)', fontWeight: 700 }}>
++              <IconLock /> {t('Geheime SL-Notiz')}
++              {note.trim() && <span className="muted small" style={{ fontFamily: 'var(--font-sans)', fontWeight: 400 }}>· {t('ausgefüllt')}</span>}
++            </summary>
++            <textarea
++              id="gm-note"
++              aria-label={t('Geheime SL-Notiz')}
++              value={note}
++              onChange={(e) => {
++                setNote(e.target.value);
++                setNoteSaved(false);
++              }}
++              onBlur={saveNote}
++              style={{ background: 'var(--paper-raised)' }}
++            />
++            <div className="muted small">{t('Erscheint nie im Recap oder in der Spieleransicht.')}{noteSaved ? '' : ' ' + t('Wird beim Verlassen des Feldes gespeichert.')}</div>
++          </details>
++          <div className="review-publish">
++            <span className="muted">
++              {t('{done} von {total} Vorschlägen geprüft', { done: proposals.length - openCount, total: proposals.length })}
++            </span>
++            <button type="button" className="btn" disabled={busy} onClick={publish}>
++              {busy ? t('Wird veröffentlicht …') : t('Recap veröffentlichen')}
+             </button>
+-          )}
+-        </>
++          </div>
++        </div>
+       )}
+@@ -197,3 +218,3 @@ export function Review() {
+  */
+-function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
++function RecapEditor({ sessionId, recap, members, onSaved, onError, alwaysOpen = false, highlight = null }: {
+   sessionId: string;
+@@ -201,2 +222,6 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
+   members: Member[];
++  /** Arbeitsplatz: Kapitel immer offen, nicht zum Zuklappen */
++  alwaysOpen?: boolean;
++  /** Titel eines Vorschlags – Absätze, in denen er vorkommt, werden hervorgehoben */
++  highlight?: string | null;
+   onSaved: (r: Recap) => void;
+@@ -264,5 +289,3 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
+ 
+-  return (
+-    <details className="card" open={reviewNeedsAttention(recap) || !!recap.revision || undefined}>
+-      <summary>
++  const head = (
+         <span style={{ flex: 1 }}>
+@@ -271,3 +294,5 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
+         </span>
+-      </summary>
++  );
++  const body = (
++    <>
+       {/* Mit Gegenprüfung (ab 0.4.6) je Absatz eine Randmarke mit Belegen, sonst der reine Text; liegt ein
+@@ -278,2 +303,3 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
+           : <RecapReviewView sessionId={sessionId} recap={recap} members={members} showReport={false}
++              highlight={highlight ? mentions(highlight) : undefined}
+               onPick={canRevise && !revisionOpen(recap) ? pick : undefined}
+@@ -302,2 +328,13 @@ function RecapEditor({ sessionId, recap, members, onSaved, onError }: {
+       )}
++    </>
++  );
++
++  // Arbeitsplatz: Kapitel immer offen; sonst zum Aufklappen (klappt bei Stellen zum Ansehen von selbst auf)
++  if (alwaysOpen) {
++    return <section className="card recap-sheet"><div className="recap-sheet-head">{head}</div>{body}</section>;
++  }
++  return (
++    <details className="card" open={reviewNeedsAttention(recap) || !!recap.revision || undefined}>
++      <summary>{head}</summary>
++      {body}
+     </details>
+diff --git a/src/review/mentions.ts b/src/review/mentions.ts
+new file mode 100644
+index 0000000..1687248
+--- /dev/null
++++ b/src/review/mentions.ts
+@@ -0,0 +1,14 @@
++/*
++ * Kommt ein Vorschlag (z. B. „Hauptfrau Veyra Dornfeld“, „Das gestohlene Siegel“) in einem Absatz vor? Für die
++ * Hervorhebung im Arbeitsplatz. Gesucht werden die großgeschriebenen Wörter des Titels ab 4 Buchstaben, ohne
++ * Artikel – „Veyra“ oder „Dornfeld“ genügt. Ohne Laufzeit-Importe (Test: scripts/tests/mentions.test.mjs).
++ */
++const SKIP = new Set(['der', 'die', 'das', 'den', 'dem', 'des', 'ein', 'eine', 'einen', 'the', 'and', 'von', 'und']);
++
++/** Prüffunktion für Absätze; null, wenn der Titel nichts Brauchbares enthält */
++export function mentions(title: string): ((paragraph: string) => boolean) | null {
++  const words = (title.match(/[\p{Lu}][\p{L}'-]{3,}/gu) ?? []).filter((w) => !SKIP.has(w.toLowerCase()));
++  if (!words.length) return null;
++  const tests = words.map((w) => new RegExp(`(^|[^\\p{L}])${w.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')}`, 'u'));
++  return (paragraph) => tests.some((re) => re.test(paragraph));
++}
+diff --git a/src/theme.css b/src/theme.css
+index 04f8292..f801fbc 100644
+--- a/src/theme.css
++++ b/src/theme.css
+@@ -201,3 +201,3 @@ textarea:focus-visible {
+ .screen-header {
+-  padding: var(--space-6) 20px var(--space-3);
++  padding: var(--space-6) var(--pad, 20px) var(--space-3);
+   display: flex;
+@@ -1929 +1929,49 @@ button.table-group-face {
+ }
++
++/* ===== Kapitel prüfen: Werkzeugzeile, Vorschläge, Fußzeile; ab 1200 px Arbeitsplatz ===== */
++.review-tools { display: flex; flex-wrap: wrap; gap: 0 16px; margin: -6px 0 0 -12px; }
++.review-proposals-head { display: flex; flex-direction: column; gap: 2px; }
++.review-proposals { display: flex; flex-direction: column; gap: 14px; }
++.review-foot { display: flex; flex-direction: column; gap: 10px; }
++.review-foot details.card.secret textarea { min-height: 72px; }
++.review-publish { display: flex; flex-direction: column; gap: 8px; }
++.review-publish > .muted { text-align: center; }
++.recap-sheet-head { padding-bottom: 4px; }
++.proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
++.proposal-actions > .btn { flex: 1 1 120px; }
++.proposal-links { display: flex; flex-wrap: wrap; gap: 0 8px; flex-basis: 100%; }
++/* Vorschlag im Kapitel wiederfinden: Absatz leise hinterlegt */
++.review-para.hl > .recap { background: var(--paper-sunken); border-radius: var(--radius-sm); box-shadow: 0 0 0 6px var(--paper-sunken); }
++@media (prefers-reduced-motion: no-preference) { .review-para > .recap { transition: background 150ms ease, box-shadow 150ms ease; } }
++
++@media (min-width: 1200px) {
++  .screen.wide { max-width: 1680px; }
++  .screen.wide > .screen-main { overflow: hidden; padding-bottom: 0; }
++  .review-split {
++    flex: 1;
++    min-height: 0;
++    grid-template-columns: minmax(0, 1.45fr) minmax(400px, 1fr);
++    grid-template-rows: minmax(0, 1fr);
++    grid-template-areas: 'a b';
++    align-items: stretch;
++    column-gap: 40px;
++  }
++  /* Beide Spalten scrollen für sich */
++  .review-split > .a { overflow-y: auto; padding: 4px 12px var(--space-6) 4px; }
++  .review-split > .b {
++    display: grid;
++    grid-template-rows: auto minmax(0, 1fr) auto;
++    gap: 12px;
++    min-height: 0;
++    overflow: hidden;
++  }
++  .review-proposals { overflow-y: auto; padding: 4px 8px 4px 4px; }
++  .review-foot {
++    border-top: 1px solid var(--line);
++    padding: 12px 4px var(--space-4);
++  }
++  .review-foot details.card.secret:not([open]) { padding-block: 0; }
++  .review-publish { flex-direction: row; align-items: center; justify-content: space-between; }
++  .proposal-actions > .btn { flex: 0 1 auto; min-width: 112px; }
++  .proposal-links { flex-basis: auto; margin-left: auto; }
++}
