@@ -1,0 +1,3 @@
+- Kapitel prüfen am großen Bildschirm: Links steht das Kapitel, rechts die Vorschläge, beide scrollen für sich. „Recap veröffentlichen“ bleibt unten rechts immer sichtbar.
+- Zeigst du auf einen Vorschlag, wird im Kapitel der Absatz hinterlegt, in dem er vorkommt.
+- Die Vorschlagskarten sind schlanker: Übernehmen und Verwerfen in einer Reihe, Sichtbarkeit und Bearbeiten als kleine Links. Unsichere Namen, Stimmen prüfen und Kapitel neu schreiben stehen oben in einer Zeile.
